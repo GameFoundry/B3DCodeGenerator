@@ -169,11 +169,11 @@ struct UserTypeInfo
 {
 	UserTypeInfo() {}
 
-	UserTypeInfo(SmallVector<std::string, 4> ns, const std::string& scriptName, ParsedType type, const std::string& declFile, const std::string& destFile)
+	UserTypeInfo(SmallVector<std::string, 4> ns, const std::string& scriptName, ::ParsedType type, const std::string& declFile, const std::string& destFile)
 		:ns(std::move(ns)), scriptName(scriptName), type(type), declFile(declFile), destFile(destFile), destFileEditor(destFile)
 	{ }
 
-	UserTypeInfo(SmallVector<std::string, 4> ns, const std::string& scriptName, ParsedType type, const std::string& declFile, const std::string& destFile,
+	UserTypeInfo(SmallVector<std::string, 4> ns, const std::string& scriptName, ::ParsedType type, const std::string& declFile, const std::string& destFile,
 		const std::string& destFileEditor)
 		:ns(std::move(ns)), scriptName(scriptName), type(type), declFile(declFile), destFile(destFile), destFileEditor(destFileEditor)
 	{ }
@@ -183,7 +183,7 @@ struct UserTypeInfo
 	std::string declFile;
 	std::string destFile;
 	std::string destFileEditor;
-	ParsedType type;
+	::ParsedType type;
 	BuiltinType::Kind underlyingType; // For enums
 };
 
@@ -662,7 +662,7 @@ inline UserTypeInfo getTypeInfo(const std::string& sourceType, int flags)
 	{
 		UserTypeInfo outType;
 		outType.scriptName = mapCppTypeToCSType(sourceType);
-		outType.type = ParsedType::Builtin;
+		outType.type = ::ParsedType::Builtin;
 
 		return outType;
 	}
@@ -671,7 +671,7 @@ inline UserTypeInfo getTypeInfo(const std::string& sourceType, int flags)
 	{
 		UserTypeInfo outType;
 		outType.scriptName = "string";
-		outType.type = ParsedType::String;
+		outType.type = ::ParsedType::String;
 
 		return outType;
 	}
@@ -680,7 +680,7 @@ inline UserTypeInfo getTypeInfo(const std::string& sourceType, int flags)
 	{
 		UserTypeInfo outType;
 		outType.scriptName = "string";
-		outType.type = ParsedType::WString;
+		outType.type = ::ParsedType::WString;
 
 		return outType;
 	}
@@ -689,7 +689,7 @@ inline UserTypeInfo getTypeInfo(const std::string& sourceType, int flags)
 	{
 		UserTypeInfo outType;
 		outType.scriptName = "string";
-		outType.type = ParsedType::Path;
+		outType.type = ::ParsedType::Path;
 
 		return outType;
 	}
@@ -698,7 +698,7 @@ inline UserTypeInfo getTypeInfo(const std::string& sourceType, int flags)
 	{
 		UserTypeInfo outType;
 		outType.scriptName = "object";
-		outType.type = ParsedType::MonoObject;
+		outType.type = ::ParsedType::MonoObject;
 
 		return outType;
 	}
@@ -719,12 +719,12 @@ inline UserTypeInfo getTypeInfo(const std::string& sourceType, int flags)
 			{
 				outType = iterFind->second;
 				outType.scriptName = "RRef<" + iterFind->second.scriptName + ">";
-				assert(outType.type == ParsedType::ParsedType::Resource);
+				assert(outType.type == ::ParsedType::Resource);
 			}
 			else
 			{
 				outType.scriptName = "RRefBase";
-				outType.type = ParsedType::Resource;
+				outType.type = ::ParsedType::Resource;
 
 				errs() << "Unable to map type \"" << sourceType << "\". Assuming generic resource.\n";
 			}
@@ -750,7 +750,7 @@ inline UserTypeInfo getTypeInfo(const std::string& sourceType, int flags)
 		{
 			UserTypeInfo outType;
 			outType.scriptName = "AsyncOp<" + sourceType + ">";
-			outType.type = ParsedType::Class;
+			outType.type = ::ParsedType::Class;
 
 			errs() << "Unable to map type \"" << sourceType << "\". Assuming same name as source. \n";
 			return outType;
@@ -762,7 +762,7 @@ inline UserTypeInfo getTypeInfo(const std::string& sourceType, int flags)
 	{
 		UserTypeInfo outType;
 		outType.scriptName = mapCppTypeToCSType(sourceType);
-		outType.type = ParsedType::Builtin;
+		outType.type = ::ParsedType::Builtin;
 
 		errs() << "Unable to map type \"" << sourceType << "\". Assuming same name as source.\n";
 		return outType;
@@ -819,12 +819,12 @@ inline const std::string& escapeXML(const std::string& data)
 
 inline bool isInt64(const UserTypeInfo& typeInfo)
 {
-	return typeInfo.type == ParsedType::Builtin && (typeInfo.scriptName == "long" || typeInfo.scriptName == "ulong");
+	return typeInfo.type == ::ParsedType::Builtin && (typeInfo.scriptName == "long" || typeInfo.scriptName == "ulong");
 }
 
 inline bool isInteger(const UserTypeInfo& typeInfo)
 {
-	return typeInfo.type == ParsedType::Builtin && 
+	return typeInfo.type == ::ParsedType::Builtin &&
 		(typeInfo.scriptName == "int" || typeInfo.scriptName == "uint" ||
 			typeInfo.scriptName == "long" || typeInfo.scriptName == "ulong" ||
 			typeInfo.scriptName == "short" || typeInfo.scriptName == "ushort" ||
@@ -833,7 +833,7 @@ inline bool isInteger(const UserTypeInfo& typeInfo)
 
 inline bool isReal(const UserTypeInfo& typeInfo)
 {
-	return typeInfo.type == ParsedType::Builtin && 
+	return typeInfo.type == ::ParsedType::Builtin &&
 		(typeInfo.scriptName == "float" || typeInfo.scriptName == "double");
 }
 
@@ -935,19 +935,19 @@ inline bool isStruct(int flags)
 	return (flags & (int)ClassFlags::IsStruct) != 0;
 }
 
-inline bool isHandleType(ParsedType type)
+inline bool isHandleType(::ParsedType type)
 {
-	return type == ParsedType::Resource || type == ParsedType::SceneObject || type == ParsedType::Component;
+	return type == ::ParsedType::Resource || type == ::ParsedType::SceneObject || type == ::ParsedType::Component;
 }
 
-inline bool isClassType(ParsedType type)
+inline bool isClassType(::ParsedType type)
 {
-	return type == ParsedType::Class || type == ParsedType::ReflectableClass;
+	return type == ::ParsedType::Class || type == ::ParsedType::ReflectableClass;
 }
 
-inline bool isPlainStruct(ParsedType type, int flags)
+inline bool isPlainStruct(::ParsedType type, int flags)
 {
-	return type == ParsedType::Struct && !isArrayOrVector(flags);
+	return type == ::ParsedType::Struct && !isArrayOrVector(flags);
 }
 
 inline bool isPassedByValue(int flags)
@@ -979,35 +979,35 @@ inline bool willBeDereferenced(int flags)
 	return (isSrcReference(flags) || isSrcValue(flags) || isSrcPointer(flags)) && !isSrcSPtr(flags) && !isSrcRHandle(flags) && !isSrcGHandle(flags);
 }
 
-inline bool needsIntermediateArray(ParsedType type, int flags = 0)
+inline bool needsIntermediateArray(::ParsedType type, int flags = 0)
 {
-	if(type == ParsedType::Class || type == ParsedType::ReflectableClass)
+	if(type == ::ParsedType::Class || type == ::ParsedType::ReflectableClass)
 		return !isSrcSPtr(flags);
 
 	return false;
 }
 
-inline bool isReferenceType(ParsedType type, int flags)
+inline bool isReferenceType(::ParsedType type, int flags)
 {
 	if (isArrayOrVector(flags))
 		return true;
 
 	switch(type)
 	{
-	case ParsedType::Component:
-	case ParsedType::SceneObject:
-	case ParsedType::Resource:
-	case ParsedType::GUIElement:
-	case ParsedType::Class:
-	case ParsedType::ReflectableClass:
-	case ParsedType::String:
-	case ParsedType::WString:
-	case ParsedType::Path:
-	case ParsedType::MonoObject:
+	case ::ParsedType::Component:
+	case ::ParsedType::SceneObject:
+	case ::ParsedType::Resource:
+	case ::ParsedType::GUIElement:
+	case ::ParsedType::Class:
+	case ::ParsedType::ReflectableClass:
+	case ::ParsedType::String:
+	case ::ParsedType::WString:
+	case ::ParsedType::Path:
+	case ::ParsedType::MonoObject:
 		return true;
-	case ParsedType::Struct:
-	case ParsedType::Enum:
-	case ParsedType::Builtin:
+	case ::ParsedType::Struct:
+	case ::ParsedType::Enum:
+	case ::ParsedType::Builtin:
 	default: 
 		return false;
 	}
@@ -1018,7 +1018,7 @@ inline bool isCSOnly(int flags)
 	return (flags & (int)MethodFlags::CSOnly) != 0;
 }
 
-inline bool canBeReturned(ParsedType type, int flags)
+inline bool canBeReturned(::ParsedType type, int flags)
 {
 	if (isOutput(flags))
 		return false;
@@ -1026,7 +1026,7 @@ inline bool canBeReturned(ParsedType type, int flags)
 	if (isArrayOrVector(flags))
 		return true;
 
-	if (type == ParsedType::Struct)
+	if (type == ::ParsedType::Struct)
 		return false;
 
 	return true;
@@ -1078,13 +1078,13 @@ inline std::string getDefaultValue(const std::string& typeName, int flags, const
 	if(isArrayOrVector(flags))
 		return "null";
 
-	if (typeInfo.type == ParsedType::Builtin)
+	if (typeInfo.type == ::ParsedType::Builtin)
 		return "0";
-	else if (typeInfo.type == ParsedType::Enum)
+	else if (typeInfo.type == ::ParsedType::Enum)
 		return "(" + typeInfo.scriptName + ")0";
-	else if (typeInfo.type == ParsedType::Struct)
+	else if (typeInfo.type == ::ParsedType::Struct)
 		return typeInfo.scriptName + ".Default()";
-	else if (typeInfo.type == ParsedType::String || typeInfo.type == ParsedType::WString || typeInfo.type == ParsedType::Path)
+	else if (typeInfo.type == ::ParsedType::String || typeInfo.type == ::ParsedType::WString || typeInfo.type == ::ParsedType::Path)
 		return "\"\"";
 	else // Some class type
 		return "null";
@@ -1115,7 +1115,7 @@ inline std::string getRelativeTo(const StringRef& path, const StringRef& relativ
 	}
 
 	if (!foundRelative)
-		return path;
+		return path.str();
 
 	for(; iterRelativePath != llvm::sys::path::end(absRelativeTo); ++iterRelativePath)
 		llvm::sys::path::append(output, "..");

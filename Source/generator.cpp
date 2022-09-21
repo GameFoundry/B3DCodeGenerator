@@ -1,7 +1,7 @@
 #include "common.h"
 #include <chrono>
 
-std::string getInteropCppVarType(const std::string& typeName, ParsedType type, int flags, bool forStruct = false)
+std::string getInteropCppVarType(const std::string& typeName, ::ParsedType type, int flags, bool forStruct = false)
 {
 	if (isArrayOrVector(flags))
 	{
@@ -13,12 +13,12 @@ std::string getInteropCppVarType(const std::string& typeName, ParsedType type, i
 
 	switch (type)
 	{
-	case ParsedType::Builtin:
+	case ::ParsedType::Builtin:
 		if (isOutput(flags) && !forStruct)
 			return typeName + "*";
 		else
 			return typeName;
-	case ParsedType::Enum:
+	case ::ParsedType::Enum:
 		if (isFlagsEnum(flags) && forStruct)
 			return "Flags<" + typeName + ">";
 		else
@@ -28,7 +28,7 @@ std::string getInteropCppVarType(const std::string& typeName, ParsedType type, i
 			else
 				return typeName;
 		}
-	case ParsedType::Struct:
+	case ::ParsedType::Struct:
 		if(isComplexStruct(flags))
 		{
 			if (forStruct)
@@ -43,9 +43,9 @@ std::string getInteropCppVarType(const std::string& typeName, ParsedType type, i
 			else
 				return typeName + "*";
 		}
-	case ParsedType::String:
-	case ParsedType::WString:
-	case ParsedType::Path:
+	case ::ParsedType::String:
+	case ::ParsedType::WString:
+	case ::ParsedType::Path:
 		if (isOutput(flags) && !forStruct)
 			return "MonoString**";
 		else
@@ -58,11 +58,11 @@ std::string getInteropCppVarType(const std::string& typeName, ParsedType type, i
 	}
 }
 
-std::string getCppVarType(const std::string& typeName, ParsedType type, int flags = 0, bool assumeDefaultTypes = true)
+std::string getCppVarType(const std::string& typeName, ::ParsedType type, int flags = 0, bool assumeDefaultTypes = true)
 {
-	if (type == ParsedType::Resource)
+	if (type == ::ParsedType::Resource)
 		return "ResourceHandle<" + typeName + ">";
-	else if (type == ParsedType::SceneObject || type == ParsedType::Component)
+	else if (type == ::ParsedType::SceneObject || type == ::ParsedType::Component)
 		return "GameObjectHandle<" + typeName + ">";
 	else if (isClassType(type))
 	{
@@ -78,21 +78,21 @@ std::string getCppVarType(const std::string& typeName, ParsedType type, int flag
 				return typeName;
 		}
 	}
-	else if (type == ParsedType::String)
+	else if (type == ::ParsedType::String)
 		return "String";
-	else if (type == ParsedType::WString)
+	else if (type == ::ParsedType::WString)
 		return "WString";
-	else if (type == ParsedType::Path)
+	else if (type == ::ParsedType::Path)
 		return "Path";
-	else if (type == ParsedType::Enum && isFlagsEnum(flags))
+	else if (type == ::ParsedType::Enum && isFlagsEnum(flags))
 		return "Flags<" + typeName + ">";
-	else if(type == ParsedType::GUIElement)
+	else if(type == ::ParsedType::GUIElement)
 		return typeName + "*";
 	else
 		return typeName;
 }
 
-std::string getCSVarType(const std::string& typeName, ParsedType type, int flags, bool paramPrefixes,
+std::string getCSVarType(const std::string& typeName, ::ParsedType type, int flags, bool paramPrefixes,
 	bool arraySuffixes, bool forceStructAsRef, bool forSignature = false)
 {
 	std::stringstream output;
@@ -121,16 +121,16 @@ std::string getCSVarType(const std::string& typeName, ParsedType type, int flags
 	return output.str();
 }
 
-std::string generateGetInternalLine(const std::string& sourceClassName, const std::string& obj, ParsedType classType, int flags)
+std::string generateGetInternalLine(const std::string& sourceClassName, const std::string& obj, ::ParsedType classType, int flags)
 {
 	bool isRRef = getPassAsResourceRef(flags);
 	bool isBase = isBaseParam(flags);
 
 	std::stringstream output;
 	if (isClassType(classType))
-		output << obj << "->getInternal()";
-	else if(classType == ParsedType::GUIElement)
-		output << "static_cast<" << sourceClassName << "*>(" << obj << "->getGUIElement())";
+		output << obj << "->GetInternal()";
+	else if(classType == ::ParsedType::GUIElement)
+		output << "static_cast<" << sourceClassName << "*>(" << obj << "->GetGUIElement())";
 	else // Must be one of the handle types
 	{
 		assert(isHandleType(classType));
@@ -138,21 +138,21 @@ std::string generateGetInternalLine(const std::string& sourceClassName, const st
 		if (!isBase || isRRef)
 		{
 			if(isRRef)
-				output << "static_resource_cast<" << sourceClassName << ">(" << obj << "->getHandle())";
+				output << "static_resource_cast<" << sourceClassName << ">(" << obj << "->GetHandle())";
 			else
 			{
-				if(classType == ParsedType::Resource && sourceClassName == "Resource")
-					output << "static_resource_cast<" << sourceClassName << ">(" << obj << "->getGenericHandle())";
+				if(classType == ::ParsedType::Resource && sourceClassName == "Resource")
+					output << "static_resource_cast<" << sourceClassName << ">(" << obj << "->GetGenericHandle())";
 				else
-					output << obj << "->getHandle()";
+					output << obj << "->GetHandle()";
 			}
 		}
 		else
 		{
-			if (classType == ParsedType::Resource)
-				output << "static_resource_cast<" << sourceClassName << ">(" << obj << "->getGenericHandle())";
-			else if (classType == ParsedType::Component)
-				output << "static_object_cast<" << sourceClassName << ">(" << obj << "->getComponent())";
+			if (classType == ::ParsedType::Resource)
+				output << "static_resource_cast<" << sourceClassName << ">(" << obj << "->GetGenericHandle())";
+			else if (classType == ::ParsedType::Component)
+				output << "static_object_cast<" << sourceClassName << ">(" << obj << "->GetComponent())";
 		}
 	}
 	
@@ -160,7 +160,7 @@ std::string generateGetInternalLine(const std::string& sourceClassName, const st
 }
 
 std::string generateManagedToScriptObjectLine(const std::string& indent, const std::string& scriptType, 
-	const std::string& scriptName, const std::string& name, ParsedType type, int flags)
+	const std::string& scriptName, const std::string& name, ::ParsedType type, int flags)
 {
 	bool isRRef = getPassAsResourceRef(flags);
 	bool isBase = isBaseParam(flags);
@@ -169,18 +169,18 @@ std::string generateManagedToScriptObjectLine(const std::string& indent, const s
 	if (!isBase || isRRef)
 	{
 		output << indent << scriptType << "* " << scriptName << ";" << std::endl;
-		output << indent << scriptName << " = " << scriptType << "::toNative(" << name << ");" << std::endl;
+		output << indent << scriptName << " = " << scriptType << "::ToNative(" << name << ");" << std::endl;
 	}
 	else
 	{
 		std::string scriptBaseType;
-		if(type == ParsedType::GUIElement)
+		if(type == ::ParsedType::GUIElement)
 			scriptBaseType = "ScriptGUIElementBaseTBase";
 		else
 			scriptBaseType = scriptType + "Base";
 
 		output << indent << scriptBaseType << "* " << scriptName << ";" << std::endl;
-		output << indent << scriptName << " = (" << scriptBaseType << "*)" << scriptType << "::toNative(" << name << ");" << std::endl;
+		output << indent << scriptName << " = (" << scriptBaseType << "*)" << scriptType << "::ToNative(" << name << ");" << std::endl;
 	}
 
 	return output.str();
@@ -196,39 +196,39 @@ std::string getAsManagedToCppArgumentPlain (const std::string& name, int flags, 
 		return name;
 }
 
-std::string getAsManagedToCppArgument(const std::string& name, ParsedType type, int flags, const std::string& methodName)
+std::string getAsManagedToCppArgument(const std::string& name, ::ParsedType type, int flags, const std::string& methodName)
 {
 	switch (type)
 	{
-	case ParsedType::Builtin:
-	case ParsedType::Enum: // Input type is either value or pointer depending if output or not
+	case ::ParsedType::Builtin:
+	case ::ParsedType::Enum: // Input type is either value or pointer depending if output or not
 		return getAsManagedToCppArgumentPlain(name, flags, isOutput(flags), methodName);
-	case ParsedType::Struct: // Input type is always a pointer
+	case ::ParsedType::Struct: // Input type is always a pointer
 		if (isComplexStruct(flags))
 			return getAsManagedToCppArgumentPlain(name, flags, false, methodName);
 		else
 			return getAsManagedToCppArgumentPlain(name, flags, true, methodName);
-	case ParsedType::MonoObject: // Input type is either a pointer or a pointer to pointer, depending if output or not
+	case ::ParsedType::MonoObject: // Input type is either a pointer or a pointer to pointer, depending if output or not
 		{
 			if (isOutput(flags))
 				return "&" + name;
 			else
 				return name;
 		}
-	case ParsedType::String: // Input type is always a value
-	case ParsedType::WString: 
-	case ParsedType::Path:
+	case ::ParsedType::String: // Input type is always a value
+	case ::ParsedType::WString:
+	case ::ParsedType::Path:
 		return getAsManagedToCppArgumentPlain(name, flags, false, methodName);
-	case ParsedType::GUIElement: // Input type is always a pointer
+	case ::ParsedType::GUIElement: // Input type is always a pointer
 		return getAsManagedToCppArgumentPlain(name, flags, true, methodName);
-	case ParsedType::Component: // Input type is always a handle
-	case ParsedType::SceneObject:
-	case ParsedType::Resource:
+	case ::ParsedType::Component: // Input type is always a handle
+	case ::ParsedType::SceneObject:
+	case ::ParsedType::Resource:
 	{
 		if (isSrcRHandle(flags) || isSrcGHandle(flags))
 			return name;
 		else if (isSrcSPtr(flags))
-			return name + ".getInternalPtr()";
+			return name + ".GetInternalPtr()";
 		else if (isSrcPointer(flags))
 			return name + ".get()";
 		else if (isSrcReference(flags) || isSrcValue(flags))
@@ -239,8 +239,8 @@ std::string getAsManagedToCppArgument(const std::string& name, ParsedType type, 
 			return name;
 		}
 	}
-	case ParsedType::Class: // Input type is always a SPtr
-	case ParsedType::ReflectableClass:
+	case ::ParsedType::Class: // Input type is always a SPtr
+	case ::ParsedType::ReflectableClass:
 	{
 		assert(!isSrcRHandle(flags) && !isSrcGHandle(flags));
 
@@ -263,12 +263,12 @@ std::string getAsManagedToCppArgument(const std::string& name, ParsedType type, 
 	}
 }
 
-std::string getAsCppToManagedArgument(const std::string& name, ParsedType type, int flags, const std::string& methodName)
+std::string getAsCppToManagedArgument(const std::string& name, ::ParsedType type, int flags, const std::string& methodName)
 {
 	switch (type)
 	{
-	case ParsedType::Builtin:
-	case ParsedType::Enum: // Always passed as value type, input can be either pointer or ref/value type
+	case ::ParsedType::Builtin:
+	case ::ParsedType::Enum: // Always passed as value type, input can be either pointer or ref/value type
 	{
 		if (isSrcPointer(flags))
 			return "*" + name;
@@ -280,7 +280,7 @@ std::string getAsCppToManagedArgument(const std::string& name, ParsedType type, 
 			return name;
 		}
 	}
-	case ParsedType::Struct: // Always passed as a pointer, input can be either pointer or ref/value type
+	case ::ParsedType::Struct: // Always passed as a pointer, input can be either pointer or ref/value type
 	{
 		if (isSrcPointer(flags))
 			return name;
@@ -292,15 +292,15 @@ std::string getAsCppToManagedArgument(const std::string& name, ParsedType type, 
 			return name;
 		}
 	}
-	case ParsedType::MonoObject: // Always passed as a pointer, input must always be a pointer
-	case ParsedType::String:
-	case ParsedType::WString:
-	case ParsedType::Path:
-	case ParsedType::Component:
-	case ParsedType::SceneObject:
-	case ParsedType::Resource:
-	case ParsedType::Class:
-	case ParsedType::ReflectableClass:
+	case ::ParsedType::MonoObject: // Always passed as a pointer, input must always be a pointer
+	case ::ParsedType::String:
+	case ::ParsedType::WString:
+	case ::ParsedType::Path:
+	case ::ParsedType::Component:
+	case ::ParsedType::SceneObject:
+	case ::ParsedType::Resource:
+	case ::ParsedType::Class:
+	case ::ParsedType::ReflectableClass:
 			return name;
 	default: // Some object type
 		assert(false);
@@ -308,16 +308,16 @@ std::string getAsCppToManagedArgument(const std::string& name, ParsedType type, 
 	}
 }
 
-std::string getAsCppToInteropArgument(const std::string& name, ParsedType type, int flags, const std::string& methodName)
+std::string getAsCppToInteropArgument(const std::string& name, ::ParsedType type, int flags, const std::string& methodName)
 {
 	switch (type)
 	{
-	case ParsedType::Builtin: // Always passed as value type, input can be either pointer or ref/value type
-	case ParsedType::Enum: 
-	case ParsedType::String:
-	case ParsedType::WString:
-	case ParsedType::Path:
-	case ParsedType::Struct:
+	case ::ParsedType::Builtin: // Always passed as value type, input can be either pointer or ref/value type
+	case ::ParsedType::Enum:
+	case ::ParsedType::String:
+	case ::ParsedType::WString:
+	case ::ParsedType::Path:
+	case ::ParsedType::Struct:
 	{
 		if (isSrcPointer(flags))
 			return "*" + name;
@@ -329,19 +329,19 @@ std::string getAsCppToInteropArgument(const std::string& name, ParsedType type, 
 			return name;
 		}
 	}
-	case ParsedType::MonoObject: // Always passed as a pointer, input must always be a pointer
-	case ParsedType::GUIElement:
+	case ::ParsedType::MonoObject: // Always passed as a pointer, input must always be a pointer
+	case ::ParsedType::GUIElement:
 			return name;
-	case ParsedType::Component: // Always passed as a handle, input must be a handle
+	case ::ParsedType::Component: // Always passed as a handle, input must be a handle
 		if (!isSrcGHandle(flags))
 			outs() << "Error: Unsure how to pass parameter \"" << name << "\" to method \"" << methodName << "\".\n";
 
 		if(getIsComponentOrActor(flags))
-			return name + ".getComponent()";
+			return name + ".GetComponent()";
 
 		return name;
-	case ParsedType::SceneObject:
-	case ParsedType::Resource:
+	case ::ParsedType::SceneObject:
+	case ::ParsedType::Resource:
 	{
 		if (isSrcRHandle(flags) || isSrcGHandle(flags))
 			return name;
@@ -350,8 +350,8 @@ std::string getAsCppToInteropArgument(const std::string& name, ParsedType type, 
 			return name;
 		}
 	}
-	case ParsedType::Class: // Always passed as a sptr, input can be a sptr, pointer, reference or value type
-	case ParsedType::ReflectableClass:
+	case ::ParsedType::Class: // Always passed as a sptr, input can be a sptr, pointer, reference or value type
+	case ::ParsedType::ReflectableClass:
 	{
 		assert(!isSrcRHandle(flags) && !isSrcGHandle(flags));
 
@@ -379,11 +379,11 @@ std::string getScriptInteropType(const std::string& name, bool resourceRef = fal
 	if (iterFind == cppToCsTypeMap.end())
 		outs() << "Warning: Type \"" << name << "\" referenced as a script interop type, but no script interop mapping found. Assuming default type name.\n";
 
-	bool isValidInteropType = iterFind->second.type != ParsedType::Builtin &&
-		iterFind->second.type != ParsedType::Enum &&
-		iterFind->second.type != ParsedType::String &&
-		iterFind->second.type != ParsedType::WString &&
-		iterFind->second.type != ParsedType::Path;
+	bool isValidInteropType = iterFind->second.type != ::ParsedType::Builtin &&
+		iterFind->second.type != ::ParsedType::Enum &&
+		iterFind->second.type != ::ParsedType::String &&
+		iterFind->second.type != ::ParsedType::WString &&
+		iterFind->second.type != ::ParsedType::Path;
 
 	if (!isValidInteropType)
 		outs() << "Error: Type \"" << name << "\" referenced as a script interop type, but script interop object cannot be generated for this object type.\n";
@@ -392,7 +392,7 @@ std::string getScriptInteropType(const std::string& name, bool resourceRef = fal
 
 	if(resourceRef)
 	{
-		if(iterFind->second.type != ParsedType::Resource)
+		if(iterFind->second.type != ::ParsedType::Resource)
 			outs() << "Error: Type \"" << name << "\" cannot be wrapped in a resource reference.\n";
 
 		return "ScriptRRefBase";
@@ -500,16 +500,16 @@ bool hasParameterlessConstructor(const ClassInfo& classInfo)
 void gatherIncludes(const std::string& typeName, int flags, bool isEditor, IncludesInfo& output)
 {
 	UserTypeInfo typeInfo = getTypeInfo(typeName, flags);
-	if (typeInfo.type == ParsedType::Class || typeInfo.type == ParsedType::ReflectableClass || 
-		typeInfo.type == ParsedType::Struct || typeInfo.type == ParsedType::Component || 
-		typeInfo.type == ParsedType::SceneObject || typeInfo.type == ParsedType::Resource || 
-		typeInfo.type == ParsedType::Enum)
+	if (typeInfo.type == ::ParsedType::Class || typeInfo.type == ::ParsedType::ReflectableClass ||
+		typeInfo.type == ::ParsedType::Struct || typeInfo.type == ::ParsedType::Component ||
+		typeInfo.type == ::ParsedType::SceneObject || typeInfo.type == ::ParsedType::Resource ||
+		typeInfo.type == ::ParsedType::Enum)
 	{
 		auto iterFind = output.includes.find(typeName);
 		if (iterFind == output.includes.end())
 		{
 			uint32_t sourceIncludeType = 0;
-			uint32_t interopIncludeType = typeInfo.type != ParsedType::Enum ? IT_IMPL : 0;
+			uint32_t interopIncludeType = typeInfo.type != ::ParsedType::Enum ? IT_IMPL : 0;
 			bool isStruct = false;
 
 			if(getPassAsResourceRef(flags))
@@ -518,14 +518,14 @@ void gatherIncludes(const std::string& typeName, int flags, bool isEditor, Inclu
 				interopIncludeType = 0;
 			}
 			
-			if(typeInfo.type == ParsedType::Struct && !isComplexStruct(flags))
+			if(typeInfo.type == ::ParsedType::Struct && !isComplexStruct(flags))
 			{
 				sourceIncludeType = IT_HEADER;
 				isStruct = true;
 			}
 
 			// If enum or passed by value we need to include the header for the source type
-			if(typeInfo.type == ParsedType::Enum || isSrcValue(flags))
+			if(typeInfo.type == ::ParsedType::Enum || isSrcValue(flags))
 				sourceIncludeType = IT_HEADER;
 
 			// If a class is being passed by reference or a raw pointer then we need the declaration because we perform
@@ -552,17 +552,17 @@ void gatherIncludes(const std::string& typeName, int flags, bool isEditor, Inclu
 		}
 	}
 
-	if (typeInfo.type == ParsedType::Struct && isComplexStruct(flags))
+	if (typeInfo.type == ::ParsedType::Struct && isComplexStruct(flags))
 		output.fwdDecls[typeName] = { typeInfo.ns, getStructInteropType(typeName), true };
 
-	if (typeInfo.type == ParsedType::Resource)
+	if (typeInfo.type == ::ParsedType::Resource)
 	{
 		output.requiresResourceManager = true;
 
 		if (getPassAsResourceRef(flags))
 			output.requiresRRef = true;
 	}
-	else if (typeInfo.type == ParsedType::Component || typeInfo.type == ParsedType::SceneObject)
+	else if (typeInfo.type == ::ParsedType::Component || typeInfo.type == ::ParsedType::SceneObject)
 		output.requiresGameObjectManager = true;
 
    if(getIsAsyncOp(flags))
@@ -594,8 +594,8 @@ void gatherIncludes(const FieldInfo& fieldInfo, bool isEditor, IncludesInfo& out
 	UserTypeInfo fieldTypeInfo = getTypeInfo(fieldInfo.typeName, fieldInfo.flags);
 
 	// These types never require additional includes
-	if (fieldTypeInfo.type == ParsedType::Builtin || fieldTypeInfo.type == ParsedType::String || 
-		fieldTypeInfo.type == ParsedType::WString || fieldTypeInfo.type == ParsedType::Path)
+	if (fieldTypeInfo.type == ::ParsedType::Builtin || fieldTypeInfo.type == ::ParsedType::String ||
+		fieldTypeInfo.type == ::ParsedType::WString || fieldTypeInfo.type == ::ParsedType::Path)
 		return;
 
 	// If passed by value, we needs its header in our header
@@ -606,9 +606,9 @@ void gatherIncludes(const FieldInfo& fieldInfo, bool isEditor, IncludesInfo& out
 		output.includes[fieldInfo.typeName] = IncludeInfo(fieldInfo.typeName, fieldTypeInfo, IT_HEADER, complexStruct ? IT_HEADER : 0, false, isEditor);
 	}
 
-	if (fieldTypeInfo.type == ParsedType::Class || fieldTypeInfo.type == ParsedType::ReflectableClass ||
-		fieldTypeInfo.type == ParsedType::Struct || fieldTypeInfo.type == ParsedType::Component || 
-		fieldTypeInfo.type == ParsedType::SceneObject || fieldTypeInfo.type == ParsedType::Resource)
+	if (fieldTypeInfo.type == ::ParsedType::Class || fieldTypeInfo.type == ::ParsedType::ReflectableClass ||
+		fieldTypeInfo.type == ::ParsedType::Struct || fieldTypeInfo.type == ::ParsedType::Component ||
+		fieldTypeInfo.type == ::ParsedType::SceneObject || fieldTypeInfo.type == ::ParsedType::Resource)
 	{
 		bool isRRef = getPassAsResourceRef(fieldInfo.flags);
 
@@ -618,16 +618,16 @@ void gatherIncludes(const FieldInfo& fieldInfo, bool isEditor, IncludesInfo& out
 			output.includes[name] = IncludeInfo(fieldInfo.typeName, fieldTypeInfo, IT_IMPL, IT_IMPL, false, isEditor);
 		}
 
-		if (fieldTypeInfo.type == ParsedType::Resource)
+		if (fieldTypeInfo.type == ::ParsedType::Resource)
 		{
 			output.requiresResourceManager = true;
 
 			if (getPassAsResourceRef(fieldInfo.flags))
 				output.requiresRRef = true;
 		}
-		else if (fieldTypeInfo.type == ParsedType::Component || fieldTypeInfo.type == ParsedType::SceneObject)
+		else if (fieldTypeInfo.type == ::ParsedType::Component || fieldTypeInfo.type == ::ParsedType::SceneObject)
 			output.requiresGameObjectManager = true;
-		else if(fieldTypeInfo.type == ParsedType::Class || fieldTypeInfo.type == ParsedType::ReflectableClass)
+		else if(fieldTypeInfo.type == ::ParsedType::Class || fieldTypeInfo.type == ::ParsedType::ReflectableClass)
 		{
 			bool isBase = isBaseParam(fieldInfo.flags);
 			if (isBase)
@@ -902,7 +902,7 @@ void resolveCopydocComment(CommentEntry& comment, const std::string& parentType,
 		return;
 
 	CommentEntry outComment;
-	if (!parseCopydocString(copydocArg, parentType, curNS, outComment))
+	if (!parseCopydocString(copydocArg.str(), parentType, curNS, outComment))
 	{
 		comment = CommentEntry();
 		return;
@@ -1424,7 +1424,7 @@ void postProcessFileInfos()
 
 		UserTypeInfo typeInfo = getTypeInfo(paramInfo.typeName, paramInfo.flags);
 
-		if (typeInfo.type != ParsedType::Enum)
+		if (typeInfo.type != ::ParsedType::Enum)
 			return;
 
 		int enumIdx = atoi(paramInfo.defaultValue.c_str());
@@ -1488,7 +1488,7 @@ void postProcessFileInfos()
 			{
 				UserTypeInfo typeInfo = getTypeInfo(fieldInfo.typeName, fieldInfo.flags);
 
-				if(isArrayOrVector(fieldInfo.flags) || !(typeInfo.type == ParsedType::Builtin || typeInfo.type == ParsedType::Enum))
+				if(isArrayOrVector(fieldInfo.flags) || !(typeInfo.type == ::ParsedType::Builtin || typeInfo.type == ::ParsedType::Enum))
 				{
 					structInfo.requiresInterop = true;
 					break;
@@ -1508,7 +1508,7 @@ void postProcessFileInfos()
 		auto markComplexType = [](const std::string& type, int& flags)
 		{
 			UserTypeInfo typeInfo = getTypeInfo(type, flags);
-			if (typeInfo.type != ParsedType::Struct)
+			if (typeInfo.type != ::ParsedType::Struct)
 				return;
 
 			StructInfo* structInfo = findStructInfo(type);
@@ -1519,8 +1519,8 @@ void postProcessFileInfos()
 		auto markBaseType = [&findClassInfo](const std::string& type, int& flags)
 		{
 			UserTypeInfo typeInfo = getTypeInfo(type, flags);
-			if (typeInfo.type != ParsedType::Class && typeInfo.type != ParsedType::ReflectableClass && 
-				typeInfo.type != ParsedType::GUIElement && !isHandleType(typeInfo.type))
+			if (typeInfo.type != ::ParsedType::Class && typeInfo.type != ::ParsedType::ReflectableClass &&
+				typeInfo.type != ::ParsedType::GUIElement && !isHandleType(typeInfo.type))
 				return;
 
 			ClassInfo* classInfo = findClassInfo(type, false);
@@ -1604,15 +1604,15 @@ void postProcessFileInfos()
 
 				fileInfo.second.forwardDeclarations.insert({ classInfo.ns, classInfo.cleanName, isStruct(classInfo.flags), classInfo.templParams });
 
-				if (typeInfo.type == ParsedType::Resource)
+				if (typeInfo.type == ::ParsedType::Resource)
 					fileInfo.second.referencedHeaderIncludes.push_back("Wrappers/BsScriptResource.h");
-				else if (typeInfo.type == ParsedType::Component)
+				else if (typeInfo.type == ::ParsedType::Component)
 					fileInfo.second.referencedHeaderIncludes.push_back("Wrappers/BsScriptComponent.h");
-				else if (typeInfo.type == ParsedType::SceneObject)
+				else if (typeInfo.type == ::ParsedType::SceneObject)
 					fileInfo.second.referencedHeaderIncludes.push_back("Wrappers/BsScriptSceneObject.h");
-				else if (typeInfo.type == ParsedType::GUIElement)
+				else if (typeInfo.type == ::ParsedType::GUIElement)
 					fileInfo.second.referencedHeaderIncludes.push_back("Wrappers/GUI/BsScriptGUIElement.h");
-				else if (typeInfo.type == ParsedType::ReflectableClass)
+				else if (typeInfo.type == ::ParsedType::ReflectableClass)
 					fileInfo.second.referencedHeaderIncludes.push_back("Wrappers/BsScriptReflectable.h");
 				else // Class
 					fileInfo.second.referencedHeaderIncludes.push_back("BsScriptObject.h");
@@ -1627,7 +1627,7 @@ void postProcessFileInfos()
 						fileInfo.second.referencedHeaderIncludes.push_back(baseTypeInfo.destFile);
 				}
 
-				if (typeInfo.type != ParsedType::ReflectableClass && classInfo.templParams.empty())
+				if (typeInfo.type != ::ParsedType::ReflectableClass && classInfo.templParams.empty())
 					fileInfo.second.referencedSourceIncludes.push_back(typeInfo.declFile);
 				else
 				{
@@ -1799,7 +1799,7 @@ std::string generateCppMethodSignature(const MethodInfo& methodInfo, const std::
 	if (!nestedName.empty())
 		output << nestedName << "::";
 
-	output << "Internal_" << methodInfo.interopName << "(";
+	output << "Internal" << methodInfo.interopName << "(";
 
 	if (isCtor)
 	{
@@ -1912,7 +1912,7 @@ std::string generateCppEventThunk(const MethodInfo& eventInfo, bool isModule)
 	{
 		UserTypeInfo paramTypeInfo = getTypeInfo(I->typeName, I->flags);
 
-		if (paramTypeInfo.type == ParsedType::Struct)
+		if (paramTypeInfo.type == ::ParsedType::Struct)
 			output << "MonoObject* " << I-> name << ", ";
 		else
 			output << getInteropCppVarType(I->typeName, paramTypeInfo.type, I->flags) << " " << I->name << ", ";
@@ -1932,9 +1932,9 @@ std::string generateClassNativeToScriptObjectLine(int flags, const std::string& 
 	auto generateCreateLine = [&output, &outputName, asRef](const std::string& scriptType, const std::string& argName, const std::string& indent)
 	{
 		if (asRef)
-			output << indent << "MonoUtil::referenceCopy(" << outputName << ", " << scriptType << "::create(" << argName << "));\n";
+			output << indent << "MonoUtil::ReferenceCopy(" << outputName << ", " << scriptType << "::Create(" << argName << "));\n";
 		else
-			output << indent << outputName << " = " << scriptType << "::create(" << argName << ");\n";
+			output << indent << outputName << " = " << scriptType << "::Create(" << argName << ");\n";
 	};
 
 	if(isBaseParam(flags))
@@ -1975,37 +1975,37 @@ std::string generateClassNativeToScriptObjectLine(int flags, const std::string& 
 	return output.str();
 }
 
-std::string generateNativeToScriptObjectLine(ParsedType type, int flags, const std::string& scriptName,
+std::string generateNativeToScriptObjectLine(::ParsedType type, int flags, const std::string& scriptName,
 	const std::string& argName, const std::string& indent = "\t\t")
 {
 	std::stringstream output;
 
-	if (type == ParsedType::Resource)
+	if (type == ::ParsedType::Resource)
 	{
 		if(getPassAsResourceRef(flags))
 		{
 			output << indent << "ScriptRRefBase* " << scriptName << ";\n";
-			output << indent << scriptName << " = ScriptResourceManager::instance().getScriptRRef(" << argName << ");\n";
+			output << indent << scriptName << " = ScriptResourceManager::Instance().GetScriptRRef(" << argName << ");\n";
 		}
 		else
 		{
 			output << indent << "ScriptResourceBase* " << scriptName << ";\n";
-			output << indent << scriptName << " = ScriptResourceManager::instance().getScriptResource(" << argName
+			output << indent << scriptName << " = ScriptResourceManager::Instance().GetScriptResource(" << argName
 				<< ", true);\n";
 		}
 	}
-	else if (type == ParsedType::Component)
+	else if (type == ::ParsedType::Component)
 	{
 		output << indent << "ScriptComponentBase* " << scriptName << " = nullptr;\n";
 		output << indent << "if(" << argName << ")\n";
-		output << indent << "\t" << scriptName << " = ScriptGameObjectManager::instance().getBuiltinScriptComponent(" <<
+		output << indent << "\t" << scriptName << " = ScriptGameObjectManager::Instance().GetBuiltinScriptComponent(" <<
 			"static_object_cast<Component>(" << argName << "));\n";
 	}
-	else if (type == ParsedType::SceneObject)
+	else if (type == ::ParsedType::SceneObject)
 	{
 		output << indent << "ScriptSceneObject* " << scriptName << " = nullptr;\n";
 		output << indent << "if(" << argName << ")\n";
-		output << indent << scriptName << " = ScriptGameObjectManager::instance().getOrCreateScriptSceneObject(" <<
+		output << indent << scriptName << " = ScriptGameObjectManager::Instance().GetOrCreateScriptSceneObject(" <<
 			argName << ");\n";
 	}
 	else
@@ -2027,8 +2027,8 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 			return "";
 		}
 
-		if (paramTypeInfo.type != ParsedType::ReflectableClass && paramTypeInfo.type != ParsedType::Class && 
-			paramTypeInfo.type != ParsedType::Resource)
+		if (paramTypeInfo.type != ::ParsedType::ReflectableClass && paramTypeInfo.type != ::ParsedType::Class &&
+			paramTypeInfo.type != ::ParsedType::Resource)
 		{
 			outs() << "Error: Type not supported as an AsyncOp return value. \n";
 			return "";
@@ -2064,9 +2064,9 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 		if(varTypeInfo.typeName != "Any")
 		{
 			std::string scriptType = getScriptInteropType(varTypeInfo.typeName,
-				paramTypeInfo.type == ParsedType::Resource && getPassAsResourceRef(varTypeInfo.flags));
+				paramTypeInfo.type == ::ParsedType::Resource && getPassAsResourceRef(varTypeInfo.flags));
 
-			monoType = scriptType + "::getMetaData()->scriptClass";
+			monoType = scriptType + "::GetMetaData()->scriptClass";
 
 			postCallActions << "\t\tauto convertCallback = [](const Any& returnVal)\n";
 			postCallActions << "\t\t{\n";
@@ -2075,13 +2075,13 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 
 			if (!isArrayOrVector(varTypeInfo.flags))
 			{
-				if (paramTypeInfo.type == ParsedType::ReflectableClass || paramTypeInfo.type == ParsedType::Class)
+				if (paramTypeInfo.type == ::ParsedType::ReflectableClass || paramTypeInfo.type == ::ParsedType::Class)
 					postCallActions << generateClassNativeToScriptObjectLine(varTypeInfo.flags, varTypeInfo.typeName, "monoObj", scriptType, "nativeObj", false, "\t\t\t");
 				else // Resource
 				{
 					postCallActions << generateNativeToScriptObjectLine(paramTypeInfo.type, varTypeInfo.flags, "scriptObj", "nativeObj", "\t\t\t");
 					postCallActions << "\t\t\tif(scriptObj != nullptr)" << std::endl;
-					postCallActions << "\t\t\t\tmonoObj = scriptObj->getManagedInstance();" << std::endl;
+					postCallActions << "\t\t\t\tmonoObj = scriptObj->GetManagedInstance();" << std::endl;
 					postCallActions << "\t\t\telse" << std::endl;
 					postCallActions << "\t\t\t\tmonoObj = nullptr;" << std::endl;
 				}
@@ -2099,14 +2099,14 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 				postCallActions << ";\n";
 
 				postCallActions << "\t\t\tScriptArray " << arrayName;
-				postCallActions << " = " << "ScriptArray::create<" << scriptType << ">(arraySize);" << std::endl;
+				postCallActions << " = " << "ScriptArray::Create<" << scriptType << ">(arraySize);" << std::endl;
 				postCallActions << "\t\t\tfor(int i = 0; i < arraySize; i++)" << std::endl;
 				postCallActions << "\t\t\t{" << std::endl;
 
 				switch (paramTypeInfo.type)
 				{
-				case ParsedType::ReflectableClass:
-				case ParsedType::Class:
+				case ::ParsedType::ReflectableClass:
+				case ::ParsedType::Class:
 				{
 					std::string elemName = "arrayElem" + name;
 
@@ -2140,15 +2140,15 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 					postCallActions << "\t\t\t\t" << arrayName << ".set(i, " << elemName << ");" << std::endl;
 					break;
 				}
-				case ParsedType::Resource:
+				case ::ParsedType::Resource:
 				{
 					std::string scriptName = "scriptObj";
 
 					postCallActions << generateNativeToScriptObjectLine(paramTypeInfo.type, varTypeInfo.flags, scriptName, "nativeObj[i]", "\t\t\t\t");
 					postCallActions << "\t\t\t\tif(" << scriptName << " != nullptr)" << std::endl;
-					postCallActions << "\t\t\t\t\t" << arrayName << ".set(i, " << scriptName << "->getManagedInstance());" << std::endl;
+					postCallActions << "\t\t\t\t\t" << arrayName << ".Set(i, " << scriptName << "->GetManagedInstance());" << std::endl;
 					postCallActions << "\t\t\t\telse" << std::endl;
-					postCallActions << "\t\t\t\t\t" << arrayName << ".set(i, nullptr);" << std::endl;
+					postCallActions << "\t\t\t\t\t" << arrayName << ".Set(i, nullptr);" << std::endl;
 				}
 				break;
 				default:
@@ -2157,7 +2157,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 				}
 
 				postCallActions << "\t\t\t}" << std::endl;
-				postCallActions << "\t\t\tmonoObj = " << arrayName << ".getInternal();" << std::endl;
+				postCallActions << "\t\t\tmonoObj = " << arrayName << ".GetInternal();" << std::endl;
 			}
 
 			postCallActions << "\t\t\treturn monoObj;\n";
@@ -2168,9 +2168,9 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 			postCallActions << "\t\tauto convertCallback = nullptr;\n";
 
 		if (returnValue)
-			postCallActions << "\t\t" << name << " = " << "ScriptAsyncOpBase::create(" << argName << ", convertCallback, " << monoType << ");\n";
+			postCallActions << "\t\t" << name << " = " << "ScriptAsyncOpBase::Create(" << argName << ", convertCallback, " << monoType << ");\n";
 		else
-			postCallActions << "\t\tMonoUtil::referenceCopy(" << name << ", " << "ScriptAsyncOpBase::create(" << argName << ", convertCallback, " << monoType << "));\n";
+			postCallActions << "\t\tMonoUtil::ReferenceCopy(" << name << ", " << "ScriptAsyncOpBase::Create(" << argName << ", convertCallback, " << monoType << "));\n";
 
 		return argName;
 	}
@@ -2181,9 +2181,9 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 
 		switch (paramTypeInfo.type)
 		{
-		case ParsedType::Builtin:
-		case ParsedType::Enum:
-		case ParsedType::Struct:
+		case ::ParsedType::Builtin:
+		case ::ParsedType::Enum:
+		case ::ParsedType::Struct:
 			if (returnValue)
 			{
 				argName = "tmp" + name;
@@ -2193,18 +2193,18 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 				else
 					preCallActions << "\t\t" << varTypeInfo.typeName << " " << argName << ";" << std::endl;
 
-				if (paramTypeInfo.type == ParsedType::Struct)
+				if (paramTypeInfo.type == ::ParsedType::Struct)
 				{
 					if(isComplexStruct(varTypeInfo.flags))
 					{
 						std::string scriptType = getScriptInteropType(varTypeInfo.typeName);
 
 						postCallActions << "\t\t" << getStructInteropType(varTypeInfo.typeName) << " interop" << name << ";\n";
-						postCallActions << "\t\tinterop" << name << " = " << scriptType << "::toInterop(" << argName << ");\n";
+						postCallActions << "\t\tinterop" << name << " = " << scriptType << "::ToInterop(" << argName << ");\n";
 
-						postCallActions << "\t\tMonoUtil::valueCopy(" << name << ", ";
+						postCallActions << "\t\tMonoUtil::ValueCopy(" << name << ", ";
 						postCallActions << "&interop" << name << ", ";
-						postCallActions << scriptType << "::getMetaData()->scriptClass->_getInternalClass());\n";
+						postCallActions << scriptType << "::GetMetaData()->scriptClass->GetInternalClassInternal());\n";
 					}
 					else
 						postCallActions << "\t\t*" << name << " = " << argName << ";" << std::endl;
@@ -2216,7 +2216,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 			}
 			else if (isOutput(varTypeInfo.flags))
 			{
-				if(paramTypeInfo.type == ParsedType::Struct && isComplexStruct(varTypeInfo.flags))
+				if(paramTypeInfo.type == ::ParsedType::Struct && isComplexStruct(varTypeInfo.flags))
 				{
 					argName = "tmp" + name;
 					preCallActions << "\t\t" << varTypeInfo.typeName << " " << argName << ";" << std::endl;
@@ -2226,9 +2226,9 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 					postCallActions << "\t\t" << getStructInteropType(varTypeInfo.typeName) << " interop" << name << ";\n";
 					postCallActions << "\t\tinterop" << name << " = " << scriptType << "::toInterop(" << argName << ");\n";
 
-					postCallActions << "\t\tMonoUtil::valueCopy(" << name << ", ";
+					postCallActions << "\t\tMonoUtil::ValueCopy(" << name << ", ";
 					postCallActions << "&interop" << name << ", ";
-					postCallActions << scriptType << "::getMetaData()->scriptClass->_getInternalClass());\n";
+					postCallActions << scriptType << "::GetMetaData()->scriptClass->GetInternalClassInternal());\n";
 				}
 				else if (isFlagsEnum(varTypeInfo.flags))
 				{
@@ -2242,59 +2242,59 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 			}
 			else
 			{
-				if(paramTypeInfo.type == ParsedType::Struct && isComplexStruct(varTypeInfo.flags))
+				if(paramTypeInfo.type == ::ParsedType::Struct && isComplexStruct(varTypeInfo.flags))
 				{
 					argName = "tmp" + name;
 					preCallActions << "\t\t" << varTypeInfo.typeName << " " << argName << ";" << std::endl;
 
 					std::string scriptType = getScriptInteropType(varTypeInfo.typeName);
-					preCallActions << "\t\t" << argName << " = " << scriptType << "::fromInterop(*" << name << ");" << std::endl;
+					preCallActions << "\t\t" << argName << " = " << scriptType << "::FromInterop(*" << name << ");" << std::endl;
 				}
 				else
 					argName = name;
 			}
 
 			break;
-		case ParsedType::String:
+		case ::ParsedType::String:
 		{
 			argName = "tmp" + name;
 			preCallActions << "\t\tString " << argName << ";" << std::endl;
 
 			if (returnValue)
-				postCallActions << "\t\t" << name << " = MonoUtil::stringToMono(" << argName << ");" << std::endl;
+				postCallActions << "\t\t" << name << " = MonoUtil::StringToMono(" << argName << ");" << std::endl;
 			else if (isOutput(varTypeInfo.flags))
-				postCallActions << "\t\tMonoUtil::referenceCopy(" << name << ",  (MonoObject*)MonoUtil::stringToMono(" << argName << "));" << std::endl;
+				postCallActions << "\t\tMonoUtil::ReferenceCopy(" << name << ",  (MonoObject*)MonoUtil::StringToMono(" << argName << "));" << std::endl;
 			else
-				preCallActions << "\t\t" << argName << " = MonoUtil::monoToString(" << name << ");" << std::endl;
+				preCallActions << "\t\t" << argName << " = MonoUtil::MonoToString(" << name << ");" << std::endl;
 		}
 		break;
-		case ParsedType::Path:
+		case ::ParsedType::Path:
 		{
 			argName = "tmp" + name;
 			preCallActions << "\t\tPath " << argName << ";" << std::endl;
 
 			if (returnValue)
-				postCallActions << "\t\t" << name << " = MonoUtil::stringToMono(" << argName << ".toString());" << std::endl;
+				postCallActions << "\t\t" << name << " = MonoUtil::StringToMono(" << argName << ".ToString());" << std::endl;
 			else if (isOutput(varTypeInfo.flags))
-				postCallActions << "\t\tMonoUtil::referenceCopy(" << name << ",  (MonoObject*)MonoUtil::stringToMono(" << argName << ".toString()));" << std::endl;
+				postCallActions << "\t\tMonoUtil::ReferenceCopy(" << name << ",  (MonoObject*)MonoUtil::StringToMono(" << argName << ".ToString()));" << std::endl;
 			else
-				preCallActions << "\t\t" << argName << " = MonoUtil::monoToString(" << name << ");" << std::endl;
+				preCallActions << "\t\t" << argName << " = MonoUtil::MonoToString(" << name << ");" << std::endl;
 		}
 		break;
-		case ParsedType::WString:
+		case ::ParsedType::WString:
 		{
 			argName = "tmp" + name;
 			preCallActions << "\t\tWString " << argName << ";" << std::endl;
 
 			if (returnValue)
-				postCallActions << "\t\t" << name << " = MonoUtil::wstringToMono(" << argName << ");" << std::endl;
+				postCallActions << "\t\t" << name << " = MonoUtil::WstringToMono(" << argName << ");" << std::endl;
 			else if (isOutput(varTypeInfo.flags))
-				postCallActions << "\t\tMonoUtil::referenceCopy(" << name << ", (MonoObject*)MonoUtil::wstringToMono(" << argName << "));" << std::endl;
+				postCallActions << "\t\tMonoUtil::ReferenceCopy(" << name << ", (MonoObject*)MonoUtil::WstringToMono(" << argName << "));" << std::endl;
 			else
-				preCallActions << "\t\t" << argName << " = MonoUtil::monoToWString(" << name << ");" << std::endl;
+				preCallActions << "\t\t" << argName << " = MonoUtil::MonoToWString(" << name << ");" << std::endl;
 		}
 		break;
-		case ParsedType::MonoObject:
+		case ::ParsedType::MonoObject:
 		{
 			argName = "tmp" + name;
 			
@@ -2306,7 +2306,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 			else if (isOutput(varTypeInfo.flags))
 			{
 				preCallActions << "\t\tMonoObject* " << argName << ";" << std::endl;
-				postCallActions << "\t\tMonoUtil::referenceCopy(" << name << ", " << argName << ");" << std::endl;
+				postCallActions << "\t\tMonoUtil::ReferenceCopy(" << name << ", " << argName << ");" << std::endl;
 			}
 			else
 			{
@@ -2314,7 +2314,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 			}
 		}
 		break;
-		case ParsedType::GUIElement:
+		case ::ParsedType::GUIElement:
 		{
 			argName = "tmp" + name;
 			std::string tmpType = getCppVarType(varTypeInfo.typeName, paramTypeInfo.type);
@@ -2335,8 +2335,8 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 			}
 		}
 			break;
-		case ParsedType::Class:
-		case ParsedType::ReflectableClass:
+		case ::ParsedType::Class:
+		case ::ParsedType::ReflectableClass:
 		{
 			argName = "tmp" + name;
 			std::string tmpType = getCppVarType(varTypeInfo.typeName, paramTypeInfo.type);
@@ -2378,7 +2378,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 			{
 				postCallActions << generateNativeToScriptObjectLine(paramTypeInfo.type, varTypeInfo.flags, scriptName, argName);
 				postCallActions << "\t\tif(" << scriptName << " != nullptr)" << std::endl;
-				postCallActions << "\t\t\t" << name << " = " << scriptName << "->getManagedInstance();" << std::endl;
+				postCallActions << "\t\t\t" << name << " = " << scriptName << "->GetManagedInstance();" << std::endl;
 				postCallActions << "\t\telse" << std::endl;
 				postCallActions << "\t\t\t" << name << " = nullptr;" << std::endl;
 			}
@@ -2386,7 +2386,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 			{
 				postCallActions << generateNativeToScriptObjectLine(paramTypeInfo.type, varTypeInfo.flags, scriptName, argName);
 				postCallActions << "\t\tif(" << scriptName << " != nullptr)" << std::endl;
-				postCallActions << "\t\t\tMonoUtil::referenceCopy(" << name << ", " << scriptName << "->getManagedInstance());" << std::endl;
+				postCallActions << "\t\t\tMonoUtil::ReferenceCopy(" << name << ", " << scriptName << "->GetManagedInstance());" << std::endl;
 				postCallActions << "\t\telse" << std::endl;
 				postCallActions << "\t\t\t*" << name << " = nullptr;" << std::endl;
 			}
@@ -2407,14 +2407,14 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 		std::string entryType;
 		switch (paramTypeInfo.type)
 		{
-		case ParsedType::Builtin:
-		case ParsedType::String:
-		case ParsedType::WString:
-		case ParsedType::Path:
-		case ParsedType::Enum:
+		case ::ParsedType::Builtin:
+		case ::ParsedType::String:
+		case ::ParsedType::WString:
+		case ::ParsedType::Path:
+		case ::ParsedType::Enum:
 			entryType = varTypeInfo.typeName;
 			break;
-		case ParsedType::MonoObject:
+		case ::ParsedType::MonoObject:
 			entryType = "MonoObject*";
 			break;
 		default: // Some object or struct type
@@ -2448,42 +2448,42 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 			preCallActions << "\t\t\tScriptArray " << arrayName << "(" << name << ");" << std::endl;
 
 			if(isVector(varTypeInfo.flags) || isSmallVector(varTypeInfo.flags))
-				preCallActions << "\t\t\t" << argName << ".resize(" << arrayName << ".size());" << std::endl;
+				preCallActions << "\t\t\t" << argName << ".resize(" << arrayName << ".Size());" << std::endl;
 
-			preCallActions << "\t\t\tfor(int i = 0; i < (int)" << arrayName << ".size(); i++)" << std::endl;
+			preCallActions << "\t\t\tfor(int i = 0; i < (int)" << arrayName << ".Size(); i++)" << std::endl;
 			preCallActions << "\t\t\t{" << std::endl;
 
 			switch (paramTypeInfo.type)
 			{
-			case ParsedType::Builtin:
-			case ParsedType::String:
-			case ParsedType::WString:
-			case ParsedType::Path:
-				preCallActions << "\t\t\t\t" << argName << "[i] = " << arrayName << ".get<" << entryType << ">(i);" << std::endl;
+			case ::ParsedType::Builtin:
+			case ::ParsedType::String:
+			case ::ParsedType::WString:
+			case ::ParsedType::Path:
+				preCallActions << "\t\t\t\t" << argName << "[i] = " << arrayName << ".Get<" << entryType << ">(i);" << std::endl;
 				break;
-			case ParsedType::MonoObject:
+			case ::ParsedType::MonoObject:
 				outs() << "Error: MonoObject type not supported as input. Ignoring. \n";
 				break;
-			case ParsedType::Enum:
+			case ::ParsedType::Enum:
 			{
 				std::string enumType;
 				mapBuiltinTypeToCppType(paramTypeInfo.underlyingType, enumType);
 
-				preCallActions << "\t\t\t\t" << argName << "[i] = (" << entryType << ")" << arrayName << ".get<" << enumType << ">(i);" << std::endl;
+				preCallActions << "\t\t\t\t" << argName << "[i] = (" << entryType << ")" << arrayName << ".Get<" << enumType << ">(i);" << std::endl;
 				break;
 			}
-			case ParsedType::Struct:
+			case ::ParsedType::Struct:
 
 				preCallActions << "\t\t\t\t" << argName << "[i] = ";
 
 				if (isComplexStruct(varTypeInfo.flags))
 				{
-					preCallActions << entryType << "::fromInterop(";
-					preCallActions << arrayName << ".get<" << getStructInteropType(varTypeInfo.typeName) << ">(i)";
+					preCallActions << entryType << "::FromInterop(";
+					preCallActions << arrayName << ".Get<" << getStructInteropType(varTypeInfo.typeName) << ">(i)";
 					preCallActions << ")";
 				}
 				else
-					preCallActions << arrayName << ".get<" << varTypeInfo.typeName << ">(i)";
+					preCallActions << arrayName << ".Get<" << varTypeInfo.typeName << ">(i)";
 
 				preCallActions << ";\n";
 
@@ -2492,7 +2492,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 			{
 				std::string scriptName = "script" + name;
 
-				preCallActions << generateManagedToScriptObjectLine("\t\t\t\t", entryType, scriptName, arrayName + ".get<MonoObject*>(i)", paramTypeInfo.type, varTypeInfo.flags);
+				preCallActions << generateManagedToScriptObjectLine("\t\t\t\t", entryType, scriptName, arrayName + ".Get<MonoObject*>(i)", paramTypeInfo.type, varTypeInfo.flags);
 				preCallActions << "\t\t\t\tif(" << scriptName << " != nullptr)\n";
 				preCallActions << "\t\t\t\t{\n";
 
@@ -2502,10 +2502,10 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 				preCallActions << "\t\t\t\t\t" << elemPtrType << " " << elemPtrName << " = " << 
 					generateGetInternalLine(varTypeInfo.typeName, scriptName, paramTypeInfo.type, varTypeInfo.flags) << ";\n";
 
-				if(paramTypeInfo.type == ParsedType::Class || paramTypeInfo.type == ParsedType::ReflectableClass)
+				if(paramTypeInfo.type == ::ParsedType::Class || paramTypeInfo.type == ::ParsedType::ReflectableClass)
 				{
 					if(isSrcPointer(varTypeInfo.flags))
-						preCallActions << "\t\t\t\t\t" << argName << "[i] = " << elemPtrName << ".get();\n";
+						preCallActions << "\t\t\t\t\t" << argName << "[i] = " << elemPtrName << ".Get();\n";
 					else if((isSrcReference(varTypeInfo.flags) || isSrcValue(varTypeInfo.flags)) && !isSrcSPtr(varTypeInfo.flags))
 					{
 						preCallActions << "\t\t\t\t\tif(" << elemPtrName << ")\n";
@@ -2541,34 +2541,34 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 			postCallActions << ";\n";
 
 			postCallActions << "\t\tScriptArray " << arrayName;
-			postCallActions << " = " << "ScriptArray::create<" << entryType << ">(arraySize" << name << ");" << std::endl;
+			postCallActions << " = " << "ScriptArray::Create<" << entryType << ">(arraySize" << name << ");" << std::endl;
 			postCallActions << "\t\tfor(int i = 0; i < arraySize" << name << "; i++)" << std::endl;
 			postCallActions << "\t\t{" << std::endl;
 
 			switch (paramTypeInfo.type)
 			{
-			case ParsedType::Builtin:
-			case ParsedType::String:
-			case ParsedType::WString:
-			case ParsedType::Path:
-				postCallActions << "\t\t\t" << arrayName << ".set(i, " << argName << "[i]);" << std::endl;
+			case ::ParsedType::Builtin:
+			case ::ParsedType::String:
+			case ::ParsedType::WString:
+			case ::ParsedType::Path:
+				postCallActions << "\t\t\t" << arrayName << ".Set(i, " << argName << "[i]);" << std::endl;
 				break;
-			case ParsedType::Enum:
+			case ::ParsedType::Enum:
 			{
 				std::string enumType;
 				mapBuiltinTypeToCppType(paramTypeInfo.underlyingType, enumType);
 
 				if(isFlagsEnum(varTypeInfo.flags))
-					postCallActions << "\t\t\t" << arrayName << ".set(i, (" << enumType << ")(uint32_t)" << argName << "[i]);" << std::endl;
+					postCallActions << "\t\t\t" << arrayName << ".Set(i, (" << enumType << ")(uint32_t)" << argName << "[i]);" << std::endl;
 				else
-					postCallActions << "\t\t\t" << arrayName << ".set(i, (" << enumType << ")" << argName << "[i]);" << std::endl;
+					postCallActions << "\t\t\t" << arrayName << ".Set(i, (" << enumType << ")" << argName << "[i]);" << std::endl;
 				break;
 			}
-			case ParsedType::Struct:
-				postCallActions << "\t\t\t" << arrayName << ".set(i, ";
+			case ::ParsedType::Struct:
+				postCallActions << "\t\t\t" << arrayName << ".Set(i, ";
 
 				if(isComplexStruct(varTypeInfo.flags))
-					postCallActions << entryType << "::toInterop(";
+					postCallActions << entryType << "::ToInterop(";
 
 				postCallActions << argName << "[i]";
 
@@ -2578,11 +2578,11 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 				postCallActions << ");\n";
 
 				break;
-			case ParsedType::MonoObject:
-				postCallActions << "\t\t\t" << arrayName << ".set(i, " << argName << "[i]);" << std::endl;
+			case ::ParsedType::MonoObject:
+				postCallActions << "\t\t\t" << arrayName << ".Set(i, " << argName << "[i]);" << std::endl;
 				break;
-			case ParsedType::Class:
-			case ParsedType::ReflectableClass:
+			case ::ParsedType::Class:
+			case ::ParsedType::ReflectableClass:
 			{
 				std::string elemName = "arrayElem" + name;
 
@@ -2613,10 +2613,10 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 				postCallActions << generateClassNativeToScriptObjectLine(varTypeInfo.flags, varTypeInfo.typeName, elemName, 
 					entryType, elemPtrName, false, "\t\t\t");
 
-				postCallActions << "\t\t\t" << arrayName << ".set(i, " << elemName << ");" << std::endl;
+				postCallActions << "\t\t\t" << arrayName << ".Set(i, " << elemName << ");" << std::endl;
 				break;
 			}
-			case ParsedType::GUIElement:
+			case ::ParsedType::GUIElement:
 				outs() << "Error: GUIElement cannot be used as parameter outputs or return values. Ignoring. \n";
 				break;
 			default: // Some resource or game object type
@@ -2625,9 +2625,9 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 
 				postCallActions << generateNativeToScriptObjectLine(paramTypeInfo.type, varTypeInfo.flags, scriptName, argName + "[i]", "\t\t\t");
 				postCallActions << "\t\t\tif(" << scriptName << " != nullptr)" << std::endl;
-				postCallActions << "\t\t\t\t" << arrayName << ".set(i, " << scriptName << "->getManagedInstance());" << std::endl;
+				postCallActions << "\t\t\t\t" << arrayName << ".Set(i, " << scriptName << "->GetManagedInstance());" << std::endl;
 				postCallActions << "\t\t\telse" << std::endl;
-				postCallActions << "\t\t\t\t" << arrayName << ".set(i, nullptr);" << std::endl;
+				postCallActions << "\t\t\t\t" << arrayName << ".Set(i, nullptr);" << std::endl;
 			}
 			break;
 			}
@@ -2635,9 +2635,9 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 			postCallActions << "\t\t}" << std::endl;
 
 			if (returnValue)
-				postCallActions << "\t\t" << name << " = " << arrayName << ".getInternal();" << std::endl;
+				postCallActions << "\t\t" << name << " = " << arrayName << ".GetInternal();" << std::endl;
 			else
-				postCallActions << "\t\tMonoUtil::referenceCopy(" << name << ", (MonoObject*)" << arrayName << ".getInternal());" << std::endl;
+				postCallActions << "\t\tMonoUtil::ReferenceCopy(" << name << ", (MonoObject*)" << arrayName << ".GetInternal());" << std::endl;
 		}
 
 		return argName;
@@ -2660,11 +2660,11 @@ std::string generateFieldConvertBlock(const std::string& name, const VarTypeInfo
 
 		switch (paramTypeInfo.type)
 		{
-		case ParsedType::Builtin:
-		case ParsedType::Enum:
+		case ::ParsedType::Builtin:
+		case ::ParsedType::Enum:
 			arg = "value." + name;
 			break;
-		case ParsedType::Struct:
+		case ::ParsedType::Struct:
 			if(isComplexStruct(varTypeInfo.flags))
 			{
 				std::string interopType = getStructInteropType(varTypeInfo.typeName);
@@ -2674,66 +2674,66 @@ std::string generateFieldConvertBlock(const std::string& name, const VarTypeInfo
 				if(toInterop)
 				{
 					preActions << "\t\t" << interopType << " " << arg << ";" << std::endl;
-					preActions << "\t\t" << arg << " = " << scriptType << "::toInterop(value." << name << ");" << std::endl;
+					preActions << "\t\t" << arg << " = " << scriptType << "::ToInterop(value." << name << ");" << std::endl;
 				}
 				else
 				{
 					preActions << "\t\t" << varTypeInfo.typeName << " " << arg << ";" << std::endl;
-					preActions << "\t\t" << arg << " = " << scriptType << "::fromInterop(value." << name << ");" << std::endl;
+					preActions << "\t\t" << arg << " = " << scriptType << "::FromInterop(value." << name << ");" << std::endl;
 				}
 			}
 			else
 				arg = "value." + name;
 			break;
-		case ParsedType::String:
+		case ::ParsedType::String:
 		{
 			arg = "tmp" + name;
 
 			if(toInterop)
 			{
 				preActions << "\t\tMonoString* " << arg << ";" << std::endl;
-				preActions << "\t\t" << arg << " = MonoUtil::stringToMono(value." << name << ");" << std::endl;
+				preActions << "\t\t" << arg << " = MonoUtil::StringToMono(value." << name << ");" << std::endl;
 			}
 			else
 			{
 				preActions << "\t\tString " << arg << ";" << std::endl;
-				preActions << "\t\t" << arg << " = MonoUtil::monoToString(value." << name << ");" << std::endl;
+				preActions << "\t\t" << arg << " = MonoUtil::MonoToString(value." << name << ");" << std::endl;
 			}
 		}
 		break;
-		case ParsedType::WString:
+		case ::ParsedType::WString:
 		{
 			arg = "tmp" + name;
 
 			if(toInterop)
 			{
 				preActions << "\t\tMonoString* " << arg << ";" << std::endl;
-				preActions << "\t\t" << arg << " = MonoUtil::wstringToMono(value." << name << ");" << std::endl;
+				preActions << "\t\t" << arg << " = MonoUtil::WstringToMono(value." << name << ");" << std::endl;
 			}
 			else
 			{
 				preActions << "\t\tWString " << arg << ";" << std::endl;
-				preActions << "\t\t" << arg << " = MonoUtil::monoToWString(value." << name << ");" << std::endl;
+				preActions << "\t\t" << arg << " = MonoUtil::MonoToWString(value." << name << ");" << std::endl;
 			}
 		}
 		break;
-		case ParsedType::Path:
+		case ::ParsedType::Path:
 		{
 			arg = "tmp" + name;
 
 			if(toInterop)
 			{
 				preActions << "\t\tMonoString* " << arg << ";" << std::endl;
-				preActions << "\t\t" << arg << " = MonoUtil::stringToMono(value." << name << ".toString());" << std::endl;
+				preActions << "\t\t" << arg << " = MonoUtil::StringToMono(value." << name << ".ToString());" << std::endl;
 			}
 			else
 			{
 				preActions << "\t\tPath " << arg << ";" << std::endl;
-				preActions << "\t\t" << arg << " = MonoUtil::monoToString(value." << name << ");" << std::endl;
+				preActions << "\t\t" << arg << " = MonoUtil::MonoToString(value." << name << ");" << std::endl;
 			}
 		}
 		break;
-		case ParsedType::MonoObject:
+		case ::ParsedType::MonoObject:
 		{
 			arg = "tmp" + name;
 
@@ -2741,7 +2741,7 @@ std::string generateFieldConvertBlock(const std::string& name, const VarTypeInfo
 			preActions << "\t\t" << arg << " = " << name << ";" << std::endl;
 		}
 		break;
-		case ParsedType::GUIElement:
+		case ::ParsedType::GUIElement:
 		{
 			arg = "tmp" + name;
 			std::string scriptType = getScriptInteropType(varTypeInfo.typeName);
@@ -2765,8 +2765,8 @@ std::string generateFieldConvertBlock(const std::string& name, const VarTypeInfo
 			}
 		}
 			break;
-		case ParsedType::Class:
-		case ParsedType::ReflectableClass:
+		case ::ParsedType::Class:
+		case ::ParsedType::ReflectableClass:
 		{
 			arg = "tmp" + name;
 			std::string scriptType = getScriptInteropType(varTypeInfo.typeName);
@@ -2805,7 +2805,7 @@ std::string generateFieldConvertBlock(const std::string& name, const VarTypeInfo
 				std::string scriptName = "script" + name;
 				preActions << generateManagedToScriptObjectLine("\t\t", scriptType, scriptName, "value." + name, paramTypeInfo.type, varTypeInfo.flags);
 				preActions << "\t\tif(" << scriptName << " != nullptr)" << std::endl;
-				preActions << "\t\t\t" << arg << " = " << scriptName << "->getInternal();" << std::endl;
+				preActions << "\t\t\t" << arg << " = " << scriptName << "->GetInternal();" << std::endl;
 
 				// Cast to the source type from SPtr
 				if (isSrcValue(varTypeInfo.flags))
@@ -2833,13 +2833,13 @@ std::string generateFieldConvertBlock(const std::string& name, const VarTypeInfo
 				if(!getIsComponentOrActor(varTypeInfo.flags))
 					argName = "value." + name;
 				else
-					argName = "value." + name + ".getComponent()";
+					argName = "value." + name + ".GetComponent()";
 
 				preActions << generateNativeToScriptObjectLine(paramTypeInfo.type, varTypeInfo.flags, scriptName, argName);
 
 				preActions << "\t\tMonoObject* " << arg << ";\n";
 				preActions << "\t\tif(" << scriptName << " != nullptr)\n";
-				preActions << "\t\t\t" << arg << " = " << scriptName << "->getManagedInstance();" << std::endl;
+				preActions << "\t\t\t" << arg << " = " << scriptName << "->GetManagedInstance();" << std::endl;
 				preActions << "\t\telse\n";
 				preActions << "\t\t\t" << arg << " = nullptr;\n";
 			}
@@ -2866,14 +2866,14 @@ std::string generateFieldConvertBlock(const std::string& name, const VarTypeInfo
 		std::string entryType;
 		switch (paramTypeInfo.type)
 		{
-		case ParsedType::Builtin:
-		case ParsedType::String:
-		case ParsedType::WString:
-		case ParsedType::Path:
-		case ParsedType::Enum:
+		case ::ParsedType::Builtin:
+		case ::ParsedType::String:
+		case ::ParsedType::WString:
+		case ::ParsedType::Path:
+		case ::ParsedType::Enum:
 			entryType = varTypeInfo.typeName;
 			break;
-		case ParsedType::MonoObject:
+		case ::ParsedType::MonoObject:
 			entryType = "MonoObject*";
 			break;
 		default: // Some object or struct type
@@ -2904,23 +2904,23 @@ std::string generateFieldConvertBlock(const std::string& name, const VarTypeInfo
 			preActions << "\t\t\tScriptArray " << arrayName << "(value." << name << ");" << std::endl;
 
 			if(isVector(varTypeInfo.flags) || isSmallVector(varTypeInfo.flags))
-				preActions << "\t\t\t" << argName << ".resize(" << arrayName << ".size());" << std::endl;
+				preActions << "\t\t\t" << argName << ".resize(" << arrayName << ".Size());" << std::endl;
 
-			preActions << "\t\t\tfor(int i = 0; i < (int)" << arrayName << ".size(); i++)" << std::endl;
+			preActions << "\t\t\tfor(int i = 0; i < (int)" << arrayName << ".Size(); i++)" << std::endl;
 			preActions << "\t\t\t{" << std::endl;
 
 			switch (paramTypeInfo.type)
 			{
-			case ParsedType::Builtin:
-			case ParsedType::String:
-			case ParsedType::WString:
-			case ParsedType::Path:
-				preActions << "\t\t\t\t" << argName << "[i] = " << arrayName << ".get<" << entryType << ">(i);" << std::endl;
+			case ::ParsedType::Builtin:
+			case ::ParsedType::String:
+			case ::ParsedType::WString:
+			case ::ParsedType::Path:
+				preActions << "\t\t\t\t" << argName << "[i] = " << arrayName << ".Get<" << entryType << ">(i);" << std::endl;
 				break;
-			case ParsedType::MonoObject:
+			case ::ParsedType::MonoObject:
 				outs() << "Error: MonoObject type not supported as input. Ignoring. \n";
 				break;
-			case ParsedType::Enum:
+			case ::ParsedType::Enum:
 			{
 				std::string enumType;
 				mapBuiltinTypeToCppType(paramTypeInfo.underlyingType, enumType);
@@ -2928,24 +2928,24 @@ std::string generateFieldConvertBlock(const std::string& name, const VarTypeInfo
 				preActions << "\t\t\t\t" << argName << "[i] = (" << entryType << ")" << arrayName << ".get<" << enumType << ">(i);" << std::endl;
 				break;
 			}
-			case ParsedType::Struct:
+			case ::ParsedType::Struct:
 				preActions << "\t\t\t\t" << argName << "[i] = ";
 
 				if (isComplexStruct(varTypeInfo.flags))
 				{
-					preActions << entryType << "::fromInterop(";
-					preActions << arrayName << ".get<" << getStructInteropType(varTypeInfo.typeName) << ">(i)";
+					preActions << entryType << "::FromInterop(";
+					preActions << arrayName << ".Get<" << getStructInteropType(varTypeInfo.typeName) << ">(i)";
 					preActions << ")";
 				}
 				else
-					preActions << arrayName << ".get<" << varTypeInfo.typeName << ">(i)";
+					preActions << arrayName << ".Get<" << varTypeInfo.typeName << ">(i)";
 
 				preActions << ";\n";
 				break;
 			default: // Some object type
 			{
 				std::string scriptName = "script" + name;
-				preActions << generateManagedToScriptObjectLine("\t\t\t\t", entryType, scriptName, arrayName + ".get<MonoObject*>(i)", paramTypeInfo.type, varTypeInfo.flags);
+				preActions << generateManagedToScriptObjectLine("\t\t\t\t", entryType, scriptName, arrayName + ".Get<MonoObject*>(i)", paramTypeInfo.type, varTypeInfo.flags);
 				
 				preActions << "\t\t\t\tif(" << scriptName << " != nullptr)\n";
 				preActions << "\t\t\t\t{\n";
@@ -2956,7 +2956,7 @@ std::string generateFieldConvertBlock(const std::string& name, const VarTypeInfo
 				preActions << "\t\t\t\t\t" << elemPtrType << " " << elemPtrName << " = " << 
 					generateGetInternalLine(varTypeInfo.typeName, scriptName, paramTypeInfo.type, varTypeInfo.flags) << ";\n";
 
-				if(paramTypeInfo.type == ParsedType::Class || paramTypeInfo.type == ParsedType::ReflectableClass)
+				if(paramTypeInfo.type == ::ParsedType::Class || paramTypeInfo.type == ::ParsedType::ReflectableClass)
 				{
 					if(isSrcPointer(varTypeInfo.flags))
 						preActions << "\t\t\t\t\t" << argName << "[i] = " << elemPtrName << ".get();\n";
@@ -2992,31 +2992,31 @@ std::string generateFieldConvertBlock(const std::string& name, const VarTypeInfo
 
 			std::string arrayName = "array" + name;
 			preActions << "\t\tScriptArray " << arrayName;
-			preActions << " = " << "ScriptArray::create<" << entryType << ">(arraySize" << name << ");" << std::endl;
+			preActions << " = " << "ScriptArray::Create<" << entryType << ">(arraySize" << name << ");" << std::endl;
 			preActions << "\t\tfor(int i = 0; i < arraySize" << name << "; i++)" << std::endl;
 			preActions << "\t\t{" << std::endl;
 
 			switch (paramTypeInfo.type)
 			{
-			case ParsedType::Builtin:
-			case ParsedType::String:
-			case ParsedType::WString:
-			case ParsedType::Path:
-				preActions << "\t\t\t" << arrayName << ".set(i, value." << name << "[i]);" << std::endl;
+			case ::ParsedType::Builtin:
+			case ::ParsedType::String:
+			case ::ParsedType::WString:
+			case ::ParsedType::Path:
+				preActions << "\t\t\t" << arrayName << ".Set(i, value." << name << "[i]);" << std::endl;
 				break;
-			case ParsedType::Enum:
+			case ::ParsedType::Enum:
 			{
 				std::string enumType;
 				mapBuiltinTypeToCppType(paramTypeInfo.underlyingType, enumType);
 
-				preActions << "\t\t\t" << arrayName << ".set(i, (" << enumType << ")value." << name << "[i]);" << std::endl;
+				preActions << "\t\t\t" << arrayName << ".Set(i, (" << enumType << ")value." << name << "[i]);" << std::endl;
 				break;
 			}
-			case ParsedType::Struct:
+			case ::ParsedType::Struct:
 				preActions << "\t\t\t" << arrayName << ".set(i, ";
 
 				if(isComplexStruct(varTypeInfo.flags))
-					preActions << entryType << "::toInterop(";
+					preActions << entryType << "::ToInterop(";
 
 				preActions << "value." << name << "[i]";
 
@@ -3025,11 +3025,11 @@ std::string generateFieldConvertBlock(const std::string& name, const VarTypeInfo
 
 				preActions << ");\n";
 				break;
-			case ParsedType::MonoObject:
-				preActions << "\t\t\t" << arrayName << ".set(i, value." << name << "[i]);" << std::endl;
+			case ::ParsedType::MonoObject:
+				preActions << "\t\t\t" << arrayName << ".Set(i, value." << name << "[i]);" << std::endl;
 				break;
-			case ParsedType::Class:
-			case ParsedType::ReflectableClass:
+			case ::ParsedType::Class:
+			case ::ParsedType::ReflectableClass:
 			{
 				std::string elemName = "arrayElem" + name;
 
@@ -3060,10 +3060,10 @@ std::string generateFieldConvertBlock(const std::string& name, const VarTypeInfo
 				preActions << generateClassNativeToScriptObjectLine(varTypeInfo.flags, varTypeInfo.typeName, elemName, 
 					entryType, elemPtrName, false, "\t\t\t");
 
-				preActions << "\t\t\t" << arrayName << ".set(i, " << elemName << ");" << std::endl;
+				preActions << "\t\t\t" << arrayName << ".Set(i, " << elemName << ");" << std::endl;
 			}
 			break;
-			case ParsedType::GUIElement:
+			case ::ParsedType::GUIElement:
 				// Unsupported as output
 				break;
 			default: // Some resource or game object type
@@ -3072,15 +3072,15 @@ std::string generateFieldConvertBlock(const std::string& name, const VarTypeInfo
 
 				preActions << generateNativeToScriptObjectLine(paramTypeInfo.type, varTypeInfo.flags, scriptName, "value." + name + "[i]", "\t\t\t");
 				preActions << "\t\t\t\tif(" << scriptName << " != nullptr)\n";
-				preActions << "\t\t\t\t" << arrayName << ".set(i, " << scriptName << "->getManagedInstance());" << std::endl;
+				preActions << "\t\t\t\t" << arrayName << ".Set(i, " << scriptName << "->GetManagedInstance());" << std::endl;
 				preActions << "\t\t\telse\n";
-				preActions << "\t\t\t\t" << arrayName << ".set(i, nullptr);" << std::endl;
+				preActions << "\t\t\t\t" << arrayName << ".Set(i, nullptr);" << std::endl;
 			}
 			break;
 			}
 
 			preActions << "\t\t}" << std::endl;
-			preActions << "\t\t" << argName << " = " << arrayName << ".getInternal();" << std::endl;
+			preActions << "\t\t" << argName << " = " << arrayName << ".GetInternal();" << std::endl;
 		}
 
 		return argName;
@@ -3103,10 +3103,10 @@ std::string generateEventCallbackBodyBlockForParam(const std::string& name, cons
 
 		switch (paramTypeInfo.type)
 		{
-		case ParsedType::Builtin:
+		case ::ParsedType::Builtin:
 			argName = name;
 			break;
-		case ParsedType::Enum:
+		case ::ParsedType::Enum:
 			if(isFlagsEnum(varTypeInfo.flags))
 			{
 				argName = "tmp" + name;
@@ -3116,7 +3116,7 @@ std::string generateEventCallbackBodyBlockForParam(const std::string& name, cons
 			else
 				argName = name;
 			break;
-		case ParsedType::Struct:
+		case ::ParsedType::Struct:
 			{
 				argName = "tmp" + name;
 
@@ -3129,43 +3129,43 @@ std::string generateEventCallbackBodyBlockForParam(const std::string& name, cons
 					std::string interopType = getStructInteropType(varTypeInfo.typeName);
 					
 					preCallActions << "\t\t" << interopType << " " << interopName << ";" << std::endl;
-					preCallActions << "\t\t" << interopName << " = " << scriptType << "::toInterop(" << name << ");" << std::endl;
-					preCallActions << "\t\t" << argName << " = " << scriptType << "::box(" << interopName << ");\n";
+					preCallActions << "\t\t" << interopName << " = " << scriptType << "::ToInterop(" << name << ");" << std::endl;
+					preCallActions << "\t\t" << argName << " = " << scriptType << "::Box(" << interopName << ");\n";
 				}
 				else
-					preCallActions << "\t\t" << argName << " = " << scriptType << "::box(" << name << ");\n";
+					preCallActions << "\t\t" << argName << " = " << scriptType << "::Box(" << name << ");\n";
 			}
 
 			break;
-		case ParsedType::String:
+		case ::ParsedType::String:
 		{
 			argName = "tmp" + name;
 			preCallActions << "\t\tMonoString* " << argName << ";" << std::endl;
-			preCallActions << "\t\t" << argName << " = MonoUtil::stringToMono(" << name << ");" << std::endl;
+			preCallActions << "\t\t" << argName << " = MonoUtil::StringToMono(" << name << ");" << std::endl;
 		}
 		break;
-		case ParsedType::WString:
+		case ::ParsedType::WString:
 		{
 			argName = "tmp" + name;
 			preCallActions << "\t\tMonoString* " << argName << ";" << std::endl;
-			preCallActions << "\t\t" << argName << " = MonoUtil::wstringToMono(" << name << ");" << std::endl;
+			preCallActions << "\t\t" << argName << " = MonoUtil::WstringToMono(" << name << ");" << std::endl;
 		}
 		break;
-		case ParsedType::Path:
+		case ::ParsedType::Path:
 		{
 			argName = "tmp" + name;
 			preCallActions << "\t\tMonoString* " << argName << ";" << std::endl;
-			preCallActions << "\t\t" << argName << " = MonoUtil::stringToMono(" << name << ".toString());" << std::endl;
+			preCallActions << "\t\t" << argName << " = MonoUtil::StringToMono(" << name << ".ToString());" << std::endl;
 		}
 		break;
-		case ParsedType::MonoObject:
+		case ::ParsedType::MonoObject:
 		{
 			argName = "tmp" + name;
 			preCallActions << "\t\tMonoObject* " << argName << " = " << name << ";\n";
 		}
 		break;
-		case ParsedType::Class:
-		case ParsedType::ReflectableClass:
+		case ::ParsedType::Class:
+		case ::ParsedType::ReflectableClass:
 		{
 			argName = "tmp" + name;
 			std::string scriptType = getScriptInteropType(varTypeInfo.typeName);
@@ -3184,7 +3184,7 @@ std::string generateEventCallbackBodyBlockForParam(const std::string& name, cons
 
 			preCallActions << generateNativeToScriptObjectLine(paramTypeInfo.type, varTypeInfo.flags, scriptName, name);
 			preCallActions << "\t\tif(" << scriptName << " != nullptr)\n";
-			preCallActions << "\t\t\t" << argName << " = " << scriptName << "->getManagedInstance();" << std::endl;
+			preCallActions << "\t\t\t" << argName << " = " << scriptName << "->GetManagedInstance();" << std::endl;
 			preCallActions << "\t\telse\n";
 			preCallActions << "\t\t\t" << argName << " = nullptr;\n";
 		}
@@ -3198,14 +3198,14 @@ std::string generateEventCallbackBodyBlockForParam(const std::string& name, cons
 		std::string entryType;
 		switch (paramTypeInfo.type)
 		{
-		case ParsedType::Builtin:
-		case ParsedType::String:
-		case ParsedType::WString:
-		case ParsedType::Path:
-		case ParsedType::Enum:
+		case ::ParsedType::Builtin:
+		case ::ParsedType::String:
+		case ::ParsedType::WString:
+		case ::ParsedType::Path:
+		case ::ParsedType::Enum:
 			entryType = varTypeInfo.typeName;
 			break;
-		case ParsedType::MonoObject:
+		case ::ParsedType::MonoObject:
 			entryType = "MonoObject*";
 			break;
 		default: // Some object or struct type
@@ -3225,34 +3225,34 @@ std::string generateEventCallbackBodyBlockForParam(const std::string& name, cons
 
 		std::string arrayName = "array" + name;
 		preCallActions << "\t\tScriptArray " << arrayName;
-		preCallActions << " = " << "ScriptArray::create<" << entryType << ">(arraySize" << name << ");" << std::endl;
+		preCallActions << " = " << "ScriptArray::Create<" << entryType << ">(arraySize" << name << ");" << std::endl;
 		preCallActions << "\t\tfor(int i = 0; i < arraySize" << name << "; i++)" << std::endl;
 		preCallActions << "\t\t{" << std::endl;
 
 		switch (paramTypeInfo.type)
 		{
-		case ParsedType::Builtin:
-		case ParsedType::String:
-		case ParsedType::WString:
-		case ParsedType::Path:
-			preCallActions << "\t\t\t" << arrayName << ".set(i, " << name << "[i]);" << std::endl;
+		case ::ParsedType::Builtin:
+		case ::ParsedType::String:
+		case ::ParsedType::WString:
+		case ::ParsedType::Path:
+			preCallActions << "\t\t\t" << arrayName << ".Set(i, " << name << "[i]);" << std::endl;
 			break;
-		case ParsedType::Enum:
+		case ::ParsedType::Enum:
 		{
 			std::string enumType;
 			mapBuiltinTypeToCppType(paramTypeInfo.underlyingType, enumType);
 
 			if(isFlagsEnum(varTypeInfo.flags))
-				preCallActions << "\t\t\t" << arrayName << ".set(i, (" << enumType << ")(uint32_t)" << name << "[i]);" << std::endl;
+				preCallActions << "\t\t\t" << arrayName << ".Set(i, (" << enumType << ")(uint32_t)" << name << "[i]);" << std::endl;
 			else
-				preCallActions << "\t\t\t" << arrayName << ".set(i, (" << enumType << ")" << name << "[i]);" << std::endl;
+				preCallActions << "\t\t\t" << arrayName << ".Set(i, (" << enumType << ")" << name << "[i]);" << std::endl;
 			break;
 		}
-		case ParsedType::Struct:
-			preCallActions << "\t\t\t" << arrayName << ".set(i, ";
+		case ::ParsedType::Struct:
+			preCallActions << "\t\t\t" << arrayName << ".Set(i, ";
 
 			if (isComplexStruct(varTypeInfo.flags))
-				preCallActions << entryType << "::toInterop(";
+				preCallActions << entryType << "::ToInterop(";
 
 			preCallActions << name << "[i]";
 
@@ -3261,17 +3261,17 @@ std::string generateEventCallbackBodyBlockForParam(const std::string& name, cons
 
 			preCallActions << ");\n";
 			break;
-		case ParsedType::MonoObject:
-			preCallActions << "\t\t\t\t" << arrayName << ".set(i, " << name << "[i]);" << std::endl;
+		case ::ParsedType::MonoObject:
+			preCallActions << "\t\t\t\t" << arrayName << ".Set(i, " << name << "[i]);" << std::endl;
 			break;
-		case ParsedType::Class:
-		case ParsedType::ReflectableClass:
+		case ::ParsedType::Class:
+		case ::ParsedType::ReflectableClass:
 		{
 			std::string elemName = "arrayElem" + name;
 			preCallActions << "\t\t\tMonoObject* " << elemName << ";\n";
 			preCallActions << generateClassNativeToScriptObjectLine(varTypeInfo.flags, varTypeInfo.typeName, elemName,
 				entryType, name + "[i]", false, "\t\t\t");
-			preCallActions << "\t\t\t" << arrayName << ".set(i, " << elemName << ");" << std::endl;
+			preCallActions << "\t\t\t" << arrayName << ".Set(i, " << elemName << ");" << std::endl;
 		}
 		break;
 		default: // Some resource or game object type
@@ -3280,22 +3280,22 @@ std::string generateEventCallbackBodyBlockForParam(const std::string& name, cons
 
 			preCallActions << generateNativeToScriptObjectLine(paramTypeInfo.type, varTypeInfo.flags, scriptName, name + "[i]", "\t\t\t");
 			preCallActions << "\t\t\tif(" << scriptName << "[i] != nullptr)\n";
-			preCallActions << "\t\t\t" << arrayName << ".set(i, " << scriptName << "->getManagedInstance());" << std::endl;
+			preCallActions << "\t\t\t" << arrayName << ".Set(i, " << scriptName << "->GetManagedInstance());" << std::endl;
 			preCallActions << "\t\t\telse\n";
-			preCallActions << "\t\t\t\t" << arrayName << ".set(i, nullptr);" << std::endl;
+			preCallActions << "\t\t\t\t" << arrayName << ".Set(i, nullptr);" << std::endl;
 		}
 		break;
 		}
 
 		preCallActions << "\t\t}" << std::endl;
-		preCallActions << "\t\t" << argName << " = " << arrayName << ".getInternal();" << std::endl;
+		preCallActions << "\t\t" << argName << " = " << arrayName << ".GetInternal();" << std::endl;
 
 		return argName;
 	}
 }
 
 std::string generateCppMethodBody(const ClassInfo& classInfo, const MethodInfo& methodInfo, const std::string& sourceClassName,
-	const std::string& interopClassName, ParsedType classType, bool isModule)
+	const std::string& interopClassName, ::ParsedType classType, bool isModule)
 {
 	std::string returnAssignment;
 	std::string returnStmt;
@@ -3380,13 +3380,13 @@ std::string generateCppMethodBody(const ClassInfo& classInfo, const MethodInfo& 
 				output << "\t\tnew (bs_alloc<" << interopClassName << ">())" << interopClassName << "(managedInstance, instance);" << std::endl;
 				isValid = true;
 			}
-			else if (classType == ParsedType::Resource)
+			else if (classType == ::ParsedType::Resource)
 			{
 				output << "\t\tResourceHandle<" << sourceClassName << "> instance = " << fullMethodName << "(" << methodArgs.str() << ");" << std::endl;
-				output << "\t\tScriptResourceManager::instance().createBuiltinScriptResource(instance, managedInstance);" << std::endl;
+				output << "\t\tScriptResourceManager::Instance().CreateBuiltinScriptResource(instance, managedInstance);" << std::endl;
 				isValid = true;
 			}
-			else if (classType == ParsedType::GUIElement)
+			else if (classType == ::ParsedType::GUIElement)
 			{
 				output << "\t\t" << sourceClassName << "* instance = " << fullMethodName << "(" << methodArgs.str() << ");" << std::endl;
 				output << "\t\tnew (bs_alloc<" << interopClassName << ">())" << interopClassName << "(managedInstance, instance);" << std::endl;
@@ -3405,7 +3405,7 @@ std::string generateCppMethodBody(const ClassInfo& classInfo, const MethodInfo& 
 			if (isStatic)
 				methodCall << sourceClassName << "::" << methodInfo.sourceName << "(" << methodArgs.str() << ")"; 
 			else if(isModule)
-				methodCall << sourceClassName << "::instance()." << methodInfo.sourceName << "(" << methodArgs.str() << ")";
+				methodCall << sourceClassName << "::Instance()." << methodInfo.sourceName << "(" << methodArgs.str() << ")";
 			else
 			{
 				methodCall << generateGetInternalLine(sourceClassName, "thisPtr", classType, isBase ? (int)TypeFlags::ReferencesBase : 0);
@@ -3465,7 +3465,7 @@ std::string generateCppMethodBody(const ClassInfo& classInfo, const MethodInfo& 
 }
 
 std::string generateCppFieldGetterBody(const ClassInfo& classInfo, const FieldInfo& fieldInfo, const MethodInfo& methodInfo,	
-	ParsedType classType, bool isModule)
+	::ParsedType classType, bool isModule)
 {
 	std::string returnAssignment;
 	std::string returnStmt;
@@ -3506,7 +3506,7 @@ std::string generateCppFieldGetterBody(const ClassInfo& classInfo, const FieldIn
 	if (isStatic)
 		fieldAccess << classInfo.name << "::" << fieldInfo.name; 
 	else if(isModule)
-		fieldAccess << classInfo.name << "::instance()." << fieldInfo.name;
+		fieldAccess << classInfo.name << "::Instance()." << fieldInfo.name;
 	else
 	{
 		fieldAccess << generateGetInternalLine(classInfo.name, "thisPtr", classType, isBase ? (int)TypeFlags::ReferencesBase : 0);
@@ -3539,7 +3539,7 @@ std::string generateCppFieldGetterBody(const ClassInfo& classInfo, const FieldIn
 }
 
 std::string generateCppFieldSetterBody(const ClassInfo& classInfo, const FieldInfo& fieldInfo, const MethodInfo& methodInfo,
-	ParsedType classType, bool isModule)
+	::ParsedType classType, bool isModule)
 {
 	std::stringstream preCallActions;
 	std::stringstream argValue;
@@ -3566,7 +3566,7 @@ std::string generateCppFieldSetterBody(const ClassInfo& classInfo, const FieldIn
 	if (isStatic)
 		fieldAccess << classInfo.name << "::" << fieldInfo.name; 
 	else if(isModule)
-		fieldAccess << classInfo.name << "::instance()." << fieldInfo.name;
+		fieldAccess << classInfo.name << "::Instance()." << fieldInfo.name;
 	else
 	{
 		fieldAccess << generateGetInternalLine(classInfo.name, "thisPtr", classType, isBase ? (int)TypeFlags::ReferencesBase : 0);
@@ -3603,13 +3603,13 @@ std::string generateCppEventCallbackBody(const MethodInfo& eventInfo, bool isMod
 		{
 			UserTypeInfo paramTypeInfo = getTypeInfo(I->typeName, I->flags);
 
-			if(paramTypeInfo.type == ParsedType::Struct)
-				methodArgs << getAsCppToManagedArgument(argName, ParsedType::Class, I->flags, eventInfo.sourceName);
+			if(paramTypeInfo.type == ::ParsedType::Struct)
+				methodArgs << getAsCppToManagedArgument(argName, ::ParsedType::Class, I->flags, eventInfo.sourceName);
 			else
 				methodArgs << getAsCppToManagedArgument(argName, paramTypeInfo.type, I->flags, eventInfo.sourceName);
 		}
 		else
-			methodArgs << getAsCppToManagedArgument(argName, ParsedType::Class, I->flags, eventInfo.sourceName);
+			methodArgs << getAsCppToManagedArgument(argName, ::ParsedType::Class, I->flags, eventInfo.sourceName);
 
 		if (!isLast)
 			methodArgs << ", ";
@@ -3624,7 +3624,7 @@ std::string generateCppEventCallbackBody(const MethodInfo& eventInfo, bool isMod
 	output << "\t\tMonoUtil::invokeThunk(" << eventInfo.sourceName << "Thunk";
 
 	if (!isStatic && !isModule)
-		output << ", getManagedInstance()";
+		output << ", GetManagedInstance()";
 	
 	if (!eventInfo.paramInfos.empty())
 		output << ", " << methodArgs.str();
@@ -3670,7 +3670,7 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const UserTypeIn
 
 	// Generate a common base class if required
 	// (GUIElements already have one by default)
-	if(typeInfo.type != ParsedType::GUIElement)
+	if(typeInfo.type != ::ParsedType::GUIElement)
 	{
 		if (isBase)
 		{
@@ -3681,13 +3681,13 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const UserTypeIn
 
 			if (isRootBase)
 			{
-				if (typeInfo.type == ParsedType::Class)
+				if (typeInfo.type == ::ParsedType::Class)
 					output << "ScriptObjectBase";
-				if (typeInfo.type == ParsedType::ReflectableClass)
+				if (typeInfo.type == ::ParsedType::ReflectableClass)
 					output << "ScriptReflectableBase";
-				else if (typeInfo.type == ParsedType::Component)
+				else if (typeInfo.type == ::ParsedType::Component)
 					output << "ScriptComponentBase";
-				else if (typeInfo.type == ParsedType::Resource)
+				else if (typeInfo.type == ::ParsedType::Resource)
 					output << "ScriptResourceBase";
 			}
 			else
@@ -3704,15 +3704,15 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const UserTypeIn
 
 			if(!isModule)
 			{
-				if (typeInfo.type == ParsedType::ReflectableClass)
+				if (typeInfo.type == ::ParsedType::ReflectableClass)
 				{
 					output << std::endl;
-					output << "\t\t" << wrappedDataType << " getInternal() const;\n";
+					output << "\t\t" << wrappedDataType << " GetInternal() const;\n";
 				}
-				else if (typeInfo.type == ParsedType::Class)
+				else if (typeInfo.type == ::ParsedType::Class)
 				{
 					output << std::endl;
-					output << "\t\t" << wrappedDataType << " getInternal() const { return mInternal; }" << std::endl;
+					output << "\t\t" << wrappedDataType << " GetInternal() const { return mInternal; }" << std::endl;
 
 					// Data member only present in the top-most base class
 					if (isRootBase)
@@ -3738,13 +3738,13 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const UserTypeIn
 	std::string interopClassName = getScriptInteropType(classInfo.name);
 	output << interopClassName << " : public ";
 
-	if (typeInfo.type == ParsedType::Resource)
+	if (typeInfo.type == ::ParsedType::Resource)
 		output << "TScriptResource<" << interopClassName << ", " << classInfo.name;
-	else if (typeInfo.type == ParsedType::Component)
+	else if (typeInfo.type == ::ParsedType::Component)
 		output << "TScriptComponent<" << interopClassName << ", " << classInfo.name;
-	else if (typeInfo.type == ParsedType::GUIElement)
+	else if (typeInfo.type == ::ParsedType::GUIElement)
 		output << "TScriptGUIElement<" << interopClassName;
-	else if (typeInfo.type == ParsedType::ReflectableClass)
+	else if (typeInfo.type == ::ParsedType::ReflectableClass)
 		output << "TScriptReflectable<" << interopClassName << ", " << classInfo.name;
 	else // Class
 		output << "ScriptObject<" << interopClassName;
@@ -3770,7 +3770,7 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const UserTypeIn
 	{
 		output << "\t\t" << interopClassName << "(MonoObject* managedInstance, ";
 
-		if (typeInfo.type != ParsedType::GUIElement)
+		if (typeInfo.type != ::ParsedType::GUIElement)
 			output << "const " << wrappedDataType << "& value";
 		else
 			output << wrappedDataType << " value";
@@ -3782,38 +3782,38 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const UserTypeIn
 
 	output << std::endl;
 
-	if (typeInfo.type == ParsedType::Class && !isModule)
+	if (typeInfo.type == ::ParsedType::Class && !isModule)
 	{
 		// getInternal() method (handle types have getHandle() implemented by their base type)
 		if (isBase || !classInfo.baseClass.empty())
-			output << "\t\t" << wrappedDataType << " getInternal() const;\n";
+			output << "\t\t" << wrappedDataType << " GetInternal() const;\n";
 		else
-			output << "\t\t" << wrappedDataType << " getInternal() const { return mInternal; }" << std::endl;
+			output << "\t\t" << wrappedDataType << " GetInternal() const { return mInternal; }" << std::endl;
 	}
 
 	if(isClassType(typeInfo.type) && !isModule)
 	{
 		// getManagedInstance() method (needed for events)
 		if (!classInfo.eventInfos.empty())
-			output << "\t\tMonoObject* getManagedInstance() const;\n";
+			output << "\t\tMonoObject* GetManagedInstance() const;\n";
 
 		// create() method
-		output << "\t\tstatic MonoObject* create(const " << wrappedDataType << "& value);" << std::endl;
+		output << "\t\tstatic MonoObject* Create(const " << wrappedDataType << "& value);" << std::endl;
 		output << std::endl;
 	}
 
-	if (typeInfo.type == ParsedType::Resource)
+	if (typeInfo.type == ::ParsedType::Resource)
 	{
 		// createInstance() method required by script resource manager
-		output << "\t\tstatic MonoObject* createInstance();" << std::endl;
+		output << "\t\tstatic MonoObject* CreateInstance();" << std::endl;
 		output << std::endl;
 	}
 
 	// Static start-up and shut-down methods, if required
 	if(hasStaticEvents)
 	{
-		output << "\t\tstatic void startUp();" << std::endl;
-		output << "\t\tstatic void shutDown();" << std::endl;
+		output << "\t\tstatic void StartUp();" << std::endl;
+		output << "\t\tstatic void ShutDown();" << std::endl;
 		output << std::endl;
 	}
 
@@ -3838,7 +3838,7 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const UserTypeIn
 		output << std::endl;
 
 	// Data member
-	if (typeInfo.type == ParsedType::Class && !isModule && classInfo.baseClass.empty() && !isBase)
+	if (typeInfo.type == ::ParsedType::Class && !isModule && classInfo.baseClass.empty() && !isBase)
 	{
 		output << "\t\t" << wrappedDataType << " mInternal;" << std::endl;
 		output << std::endl;
@@ -3875,7 +3875,7 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const UserTypeIn
 	std::string interopClassThisPtrType;
 	if (isBase)
 	{
-		if(typeInfo.type == ParsedType::GUIElement)
+		if(typeInfo.type == ::ParsedType::GUIElement)
 			interopClassThisPtrType = "ScriptGUIElementBaseTBase";
 		else
 			interopClassThisPtrType = interopBaseClassName;
@@ -3884,8 +3884,8 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const UserTypeIn
 		interopClassThisPtrType = interopClassName;
 
 	// Internal_GetRef interop method
-	if (typeInfo.type == ParsedType::Resource)
-		output << "\t\tstatic MonoObject* Internal_getRef(" << interopClassThisPtrType << "* thisPtr);\n\n";
+	if (typeInfo.type == ::ParsedType::Resource)
+		output << "\t\tstatic MonoObject* InternalGetRef(" << interopClassThisPtrType << "* thisPtr);\n\n";
 
 	for (auto& methodInfo : classInfo.ctorInfos)
 	{
@@ -3934,7 +3934,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const UserTypeIn
 
 	std::string interopBaseClassName;
 
-	if(typeInfo.type != ParsedType::GUIElement)
+	if(typeInfo.type != ::ParsedType::GUIElement)
 	{
 		if (isBase)
 			interopBaseClassName = getScriptInteropType(classInfo.name) + "Base";
@@ -3945,7 +3945,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const UserTypeIn
 	std::stringstream output;
 	output << generateCppApiCheckBegin(classInfo.api);
 
-	if (isBase && typeInfo.type != ParsedType::GUIElement)
+	if (isBase && typeInfo.type != ::ParsedType::GUIElement)
 	{
 		// Base class constructor
 		output << "\t" << interopBaseClassName << "::" << interopBaseClassName << "(MonoObject* managedInstance)\n";
@@ -3954,13 +3954,13 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const UserTypeIn
 		bool isRootBase = classInfo.baseClass.empty();
 		if (isRootBase)
 		{
-			if (typeInfo.type == ParsedType::Class)
+			if (typeInfo.type == ::ParsedType::Class)
 				output << "ScriptObjectBase";
-			if (typeInfo.type == ParsedType::ReflectableClass)
+			if (typeInfo.type == ::ParsedType::ReflectableClass)
 				output << "ScriptReflectableBase";
-			else if (typeInfo.type == ParsedType::Component)
+			else if (typeInfo.type == ::ParsedType::Component)
 				output << "ScriptComponentBase";
-			else if (typeInfo.type == ParsedType::Resource)
+			else if (typeInfo.type == ::ParsedType::Resource)
 				output << "ScriptResourceBase";
 		}
 		else
@@ -3974,9 +3974,9 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const UserTypeIn
 		output << "\n";
 
 		// Base class getInternal() method
-		if(typeInfo.type == ParsedType::ReflectableClass)
+		if(typeInfo.type == ::ParsedType::ReflectableClass)
 		{
-			output << "\t" << wrappedDataType << " " << interopBaseClassName << "::" << "getInternal() const\n";
+			output << "\t" << wrappedDataType << " " << interopBaseClassName << "::" << "GetInternal() const\n";
 			output << "\t{\n";
 			output << "\t\treturn std::static_pointer_cast<" << classInfo.name << ">(mInternal);\n";
 			output << "\t}\n";
@@ -4018,7 +4018,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const UserTypeIn
 	{
 		output << "\t" << interopClassName << "::" << interopClassName << "(MonoObject* managedInstance, ";
 
-		if (typeInfo.type != ParsedType::GUIElement)
+		if (typeInfo.type != ::ParsedType::GUIElement)
 			output << "const " << wrappedDataType << "& value";
 		else
 			output << wrappedDataType << " value";
@@ -4030,13 +4030,13 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const UserTypeIn
 
 	output << "\t\t:";
 
-	if (typeInfo.type == ParsedType::Resource)
+	if (typeInfo.type == ::ParsedType::Resource)
 		output << "TScriptResource(managedInstance, value)";
-	else if (typeInfo.type == ParsedType::Component)
+	else if (typeInfo.type == ::ParsedType::Component)
 		output << "TScriptComponent(managedInstance, value)";
-	else if (typeInfo.type == ParsedType::GUIElement)
+	else if (typeInfo.type == ::ParsedType::GUIElement)
 		output << "TScriptGUIElement(managedInstance, value)";
-	else if (typeInfo.type == ParsedType::ReflectableClass)
+	else if (typeInfo.type == ::ParsedType::ReflectableClass)
 	{
 		if(!isModule)
 			output << "TScriptReflectable(managedInstance, value)";
@@ -4056,7 +4056,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const UserTypeIn
 	if (isClassType(typeInfo.type))
 	{
 		if (!classInfo.eventInfos.empty())
-			output << "\t\tmGCHandle = MonoUtil::newWeakGCHandle(managedInstance);\n";
+			output << "\t\tmGCHandle = MonoUtil::NewWeakGCHandle(managedInstance);\n";
 
 		if (!isModule && (isBase || !classInfo.baseClass.empty()))
 			output << "\t\tmInternal = value;\n";
@@ -4074,7 +4074,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const UserTypeIn
 				output << generateCppApiCheckBegin(eventInfo.api);
 
 				if (!isCallback)
-					output << "\t\tvalue->" << eventInfo.sourceName << ".connect(";
+					output << "\t\tvalue->" << eventInfo.sourceName << ".Connect(";
 				else
 					output << "\t\tvalue->" << eventInfo.sourceName << " = ";
 
@@ -4095,12 +4095,12 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const UserTypeIn
 	output << "\t}" << std::endl;
 	output << std::endl;
 
-	if (typeInfo.type == ParsedType::Class)
+	if (typeInfo.type == ::ParsedType::Class)
 	{
 		// getInternal method
 		if (isBase || !classInfo.baseClass.empty())
 		{
-			output << "\t" << wrappedDataType << " " << interopClassName << "::getInternal() const \n";
+			output << "\t" << wrappedDataType << " " << interopClassName << "::GetInternal() const \n";
 			output << "\t{\n";
 			output << "\t\treturn std::static_pointer_cast<" << classInfo.name << ">(mInternal);\n";
 			output << "\t}\n\n";
@@ -4112,22 +4112,22 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const UserTypeIn
 		// getManagedInstance() method (needed for events)
 		if (!classInfo.eventInfos.empty())
 		{
-			output << "\tMonoObject* " << interopClassName << "::getManagedInstance() const\n";
+			output << "\tMonoObject* " << interopClassName << "::GetManagedInstance() const\n";
 			output << "\t{\n";
-			output << "\t\treturn MonoUtil::getObjectFromGCHandle(mGCHandle);\n";
+			output << "\t\treturn MonoUtil::GetObjectFromGCHandle(mGCHandle);\n";
 			output << "\t}\n\n";
 		}
 	}
 
 	// CLR hook registration
-	output << "\tvoid " << interopClassName << "::initRuntimeData()" << std::endl;
+	output << "\tvoid " << interopClassName << "::InitRuntimeData()" << std::endl;
 	output << "\t{" << std::endl;
 
 	// Internal_GetRef interop method
-	if (typeInfo.type == ParsedType::Resource)
+	if (typeInfo.type == ::ParsedType::Resource)
 	{
-		output << "\t\tmetaData.scriptClass->addInternalCall(\"Internal_GetRef\", (void*)&" <<
-			interopClassName << "::Internal_getRef);\n";
+		output << "\t\tmetaData.scriptClass->AddInternalCall(\"Internal_GetRef\", (void*)&" <<
+			interopClassName << "::InternalGetRef);\n";
 	}
 
 	for (auto& methodInfo : classInfo.ctorInfos)
@@ -4136,8 +4136,8 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const UserTypeIn
 			continue;
 
 		output << generateCppApiCheckBegin(methodInfo.api);
-		output << "\t\tmetaData.scriptClass->addInternalCall(\"Internal_" << methodInfo.interopName << "\", (void*)&" <<
-			interopClassName << "::Internal_" << methodInfo.interopName << ");" << std::endl;
+		output << "\t\tmetaData.scriptClass->AddInternalCall(\"Internal_" << methodInfo.interopName << "\", (void*)&" <<
+			interopClassName << "::Internal" << methodInfo.interopName << ");" << std::endl;
 		output << generateApiCheckEnd(methodInfo.api);
 	}
 
@@ -4147,8 +4147,8 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const UserTypeIn
 			continue;
 
 		output << generateCppApiCheckBegin(methodInfo.api);
-		output << "\t\tmetaData.scriptClass->addInternalCall(\"Internal_" << methodInfo.interopName << "\", (void*)&" <<
-			interopClassName << "::Internal_" << methodInfo.interopName << ");" << std::endl;
+		output << "\t\tmetaData.scriptClass->AddInternalCall(\"Internal_" << methodInfo.interopName << "\", (void*)&" <<
+			interopClassName << "::Internal" << methodInfo.interopName << ");" << std::endl;
 		output << generateApiCheckEnd(methodInfo.api);
 	}
 
@@ -4158,8 +4158,8 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const UserTypeIn
 	{
 		output << generateCppApiCheckBegin(eventInfo.api);
 		output << "\t\t" << eventInfo.sourceName << "Thunk = ";
-		output << "(" << eventInfo.sourceName << "ThunkDef)metaData.scriptClass->getMethodExact(";
-		output << "\"Internal_" << eventInfo.interopName << "\", \"";
+		output << "(" << eventInfo.sourceName << "ThunkDef)metaData.scriptClass->GetMethodExact(";
+		output << "\"Internal" << eventInfo.interopName << "\", \"";
 
 		for (auto I = eventInfo.paramInfos.begin(); I != eventInfo.paramInfos.end(); ++I)
 		{
@@ -4212,7 +4212,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const UserTypeIn
 	output << std::endl;
 
 	// create() or createInstance() methods
-	if ((isClassType(typeInfo.type) && !isModule) || typeInfo.type == ParsedType::Resource)
+	if ((isClassType(typeInfo.type) && !isModule) || typeInfo.type == ::ParsedType::Resource)
 	{
 		std::stringstream ctorSignature;
 		std::stringstream ctorParamsInit;
@@ -4239,25 +4239,25 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const UserTypeIn
 
 		if (isClassType(typeInfo.type))
 		{
-			output << "\tMonoObject* " << interopClassName << "::create(const " << wrappedDataType << "& value)" << std::endl;
+			output << "\tMonoObject* " << interopClassName << "::Create(const " << wrappedDataType << "& value)" << std::endl;
 			output << "\t{" << std::endl;
 			output << "\t\tif(value == nullptr) return nullptr; " << std::endl;
 			output << std::endl;
 
 			output << ctorParamsInit.str();
-			output << "\t\tMonoObject* managedInstance = metaData.scriptClass->createInstance(\"" << ctorSignature.str() << "\", ctorParams);" << std::endl;
+			output << "\t\tMonoObject* managedInstance = metaData.scriptClass->CreateInstance(\"" << ctorSignature.str() << "\", ctorParams);" << std::endl;
 			output << "\t\tnew (bs_alloc<" << interopClassName << ">()) " << interopClassName << "(managedInstance, value);" << std::endl;
 			output << "\t\treturn managedInstance;" << std::endl;
 
 			output << "\t}" << std::endl;
 		}
-		else if (typeInfo.type == ParsedType::Resource)
+		else if (typeInfo.type == ::ParsedType::Resource)
 		{
-			output << "\t MonoObject*" << interopClassName << "::createInstance()" << std::endl;
+			output << "\t MonoObject*" << interopClassName << "::CreateInstance()" << std::endl;
 			output << "\t{" << std::endl;
 
 			output << ctorParamsInit.str();
-			output << "\t\treturn metaData.scriptClass->createInstance(\"" << ctorSignature.str() << "\", ctorParams);" << std::endl;
+			output << "\t\treturn metaData.scriptClass->CreateInstance(\"" << ctorSignature.str() << "\", ctorParams);" << std::endl;
 
 			output << "\t}" << std::endl;
 		}
@@ -4266,7 +4266,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const UserTypeIn
 	// Static start-up and shut-down methods, if required
 	if(hasStaticEvents)
 	{
-		output << "\tvoid " << interopClassName << "::startUp()" << std::endl;
+		output << "\tvoid " << interopClassName << "::StartUp()" << std::endl;
 		output << "\t{" << std::endl;
 
 		for(auto& eventInfo : classInfo.eventInfos)
@@ -4278,13 +4278,12 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const UserTypeIn
 				if (isStatic)
 				{
 					output << "\t\t" << eventInfo.sourceName << "Conn = ";
-					output << classInfo.name << "::" << eventInfo.sourceName << ".connect(&" << interopClassName << "::" << eventInfo.interopName << ");" << std::endl;
+					output << classInfo.name << "::" << eventInfo.sourceName << ".Connect(&" << interopClassName << "::" << eventInfo.interopName << ");" << std::endl;
 				}
 				else if (isModule)
 				{
-
 					output << "\t\t" << eventInfo.sourceName << "Conn = ";
-					output << classInfo.name << "::instance()." << eventInfo.sourceName << ".connect(&" << interopClassName << "::" << eventInfo.interopName << ");" << std::endl;
+					output << classInfo.name << "::Instance()." << eventInfo.sourceName << ".Connect(&" << interopClassName << "::" << eventInfo.interopName << ");" << std::endl;
 				}
 			}
 			else
@@ -4292,13 +4291,13 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const UserTypeIn
 				if (isStatic)
 					output << classInfo.name << "::" << eventInfo.sourceName << " = &" << interopClassName << "::" << eventInfo.interopName << ";" << std::endl;
 				else if (isModule)
-					output << classInfo.name << "::instance()." << eventInfo.sourceName << " = &" << interopClassName << "::" << eventInfo.interopName << ";" << std::endl;
+					output << classInfo.name << "::Instance()." << eventInfo.sourceName << " = &" << interopClassName << "::" << eventInfo.interopName << ";" << std::endl;
 			}
 		}
 
 		output << "\t}" << std::endl;
 
-		output << "\tvoid " << interopClassName << "::shutDown()" << std::endl;
+		output << "\tvoid " << interopClassName << "::ShutDown()" << std::endl;
 		output << "\t{" << std::endl;
 
 		for(auto& eventInfo : classInfo.eventInfos)
@@ -4306,7 +4305,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const UserTypeIn
 			bool isStatic = (eventInfo.flags & (int)MethodFlags::Static) != 0;
 			bool isCallback = (eventInfo.flags & (int)MethodFlags::Callback) != 0;
 			if(!isCallback && (isStatic || isModule))
-				output << "\t\t" << eventInfo.sourceName << "Conn.disconnect();" << std::endl;
+				output << "\t\t" << eventInfo.sourceName << "Conn.Disconnect();" << std::endl;
 		}
 
 		output << "\t}" << std::endl;
@@ -4331,7 +4330,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const UserTypeIn
 	std::string interopClassThisPtrType;
 	if (isBase)
 	{
-		if(typeInfo.type == ParsedType::GUIElement)
+		if(typeInfo.type == ::ParsedType::GUIElement)
 			interopClassThisPtrType = "ScriptGUIElementBaseTBase";
 		else
 			interopClassThisPtrType = interopBaseClassName;
@@ -4340,11 +4339,11 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const UserTypeIn
 		interopClassThisPtrType = interopClassName;
 
 	// Internal_GetRef interop method
-	if (typeInfo.type == ParsedType::Resource)
+	if (typeInfo.type == ::ParsedType::Resource)
 	{
-		output << "\tMonoObject* " << interopClassName << "::Internal_getRef(" << interopClassThisPtrType << "* thisPtr)\n";
+		output << "\tMonoObject* " << interopClassName << "::InternalGetRef(" << interopClassThisPtrType << "* thisPtr)\n";
 		output << "\t{\n";
-		output << "\t\treturn thisPtr->getRRef();\n";
+		output << "\t\treturn thisPtr->GetRRef();\n";
 		output << "\t}\n\n";
 	}
 
@@ -4391,8 +4390,8 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const UserTypeIn
 		const MethodInfo* setterInfo = nullptr;
 		const MethodInfo* getterInfo = nullptr;
 
-		std::string getterName = "get" + I->name;
-		std::string setterName = "set" + I->name;
+		std::string getterName = "Get" + I->name;
+		std::string setterName = "Set" + I->name;
 		for(auto& entry : classInfo.methodInfos)
 		{
 			if ((entry.flags & (int)MethodFlags::FieldWrapper) == 0)
@@ -4476,13 +4475,13 @@ std::string generateCppStructHeader(const StructInfo& structInfo)
 
 	output << std::endl;
 
-	output << "\t\tstatic MonoObject* box(const " << structInfo.interopName << "& value);" << std::endl;
-	output << "\t\tstatic " << structInfo.interopName << " unbox(MonoObject* value);" << std::endl;
+	output << "\t\tstatic MonoObject* Box(const " << structInfo.interopName << "& value);" << std::endl;
+	output << "\t\tstatic " << structInfo.interopName << " Unbox(MonoObject* value);" << std::endl;
 
 	if(structInfo.requiresInterop)
 	{
-		output << "\t\tstatic " << structInfo.name << " fromInterop(const " << structInfo.interopName << "& value);\n";
-		output << "\t\tstatic " << structInfo.interopName << " toInterop(const " << structInfo.name << "& value);\n";
+		output << "\t\tstatic " << structInfo.name << " FromInterop(const " << structInfo.interopName << "& value);\n";
+		output << "\t\tstatic " << structInfo.interopName << " ToInterop(const " << structInfo.name << "& value);\n";
 	}
 
 	output << std::endl;
@@ -4513,28 +4512,28 @@ std::string generateCppStructSource(const StructInfo& structInfo)
 	output << std::endl;
 
 	// Empty initRuntimeData
-	output << "\tvoid " << interopClassName << "::initRuntimeData()" << std::endl;
+	output << "\tvoid " << interopClassName << "::InitRuntimeData()" << std::endl;
 	output << "\t{ }" << std::endl;
 	output << std::endl;
 
 	// Box
-	output << "\tMonoObject*" << interopClassName << "::box(const " << structInfo.interopName << "& value)" << std::endl;
+	output << "\tMonoObject*" << interopClassName << "::Box(const " << structInfo.interopName << "& value)" << std::endl;
 	output << "\t{" << std::endl;
-	output << "\t\treturn MonoUtil::box(metaData.scriptClass->_getInternalClass(), (void*)&value);" << std::endl;
+	output << "\t\treturn MonoUtil::Box(metaData.scriptClass->GetInternalClassInternal(), (void*)&value);" << std::endl;
 	output << "\t}" << std::endl;
 	output << std::endl;
 
 	// Unbox
-	output << "\t" << structInfo.interopName << " " << interopClassName << "::unbox(MonoObject* value)" << std::endl;
+	output << "\t" << structInfo.interopName << " " << interopClassName << "::Unbox(MonoObject* value)" << std::endl;
 	output << "\t{" << std::endl;
-	output << "\t\treturn *(" << structInfo.interopName << "*)MonoUtil::unbox(value);" << std::endl;
+	output << "\t\treturn *(" << structInfo.interopName << "*)MonoUtil::Unbox(value);" << std::endl;
 	output << "\t}" << std::endl;
 	output << std::endl;
 
 	if(structInfo.requiresInterop)
 	{
 		// Convert from interop
-		output << "\t" << structInfo.name << " " << interopClassName << "::fromInterop(const " << structInfo.interopName << "& value)\n";
+		output << "\t" << structInfo.name << " " << interopClassName << "::FromInterop(const " << structInfo.interopName << "& value)\n";
 		output << "\t{\n";
 
 		output << "\t\t" << structInfo.name << " output;\n";
@@ -4562,7 +4561,7 @@ std::string generateCppStructSource(const StructInfo& structInfo)
 		output << "\t}\n\n";
 
 		// Convert to interop
-		output << "\t" << structInfo.interopName << " " << interopClassName << "::toInterop(const " << structInfo.name << "& value)\n";
+		output << "\t" << structInfo.interopName << " " << interopClassName << "::ToInterop(const " << structInfo.name << "& value)\n";
 		output << "\t{\n";
 
 		output << "\t\t" << structInfo.interopName << " output;\n";
@@ -4648,7 +4647,7 @@ std::string generateCSDefaultValueAssignment(const VarInfo& paramInfo)
 		// Constructor or cast, assuming constructor as cast implies a constructor accepting the type exists (and we don't export cast operators anyway)
 		UserTypeInfo defaultValTypeInfo = getTypeInfo(paramInfo.defaultValueType, 0);
 
-		if(defaultValTypeInfo.type == ParsedType::Struct && paramInfo.defaultValue.empty())
+		if(defaultValTypeInfo.type == ::ParsedType::Struct && paramInfo.defaultValue.empty())
 			return defaultValTypeInfo.scriptName + ".Default()";
 		else
 			return "new " + defaultValTypeInfo.scriptName + "(" + paramInfo.defaultValue + ")";
@@ -4899,7 +4898,7 @@ std::string generateCSClass(ClassInfo& input, UserTypeInfo& typeInfo)
 	}
 
 	// 'Ref' property & conversion operator to RRef<T>
-	if(typeInfo.type == ParsedType::Resource)
+	if(typeInfo.type == ::ParsedType::Resource)
 	{
 		interops << "\t\t[MethodImpl(MethodImplOptions.InternalCall)]\n";
 		interops << "\t\tprivate static extern RRef<" << typeInfo.scriptName << "> Internal_GetRef(IntPtr thisPtr);\n";
@@ -5224,11 +5223,11 @@ std::string generateCSClass(ClassInfo& input, UserTypeInfo& typeInfo)
 		UserTypeInfo baseTypeInfo = getTypeInfo(input.baseClass, 0);
 		baseType = baseTypeInfo.scriptName;
 	}
-	else if (typeInfo.type == ParsedType::Resource)
+	else if (typeInfo.type == ::ParsedType::Resource)
 		baseType = "Resource";
-	else if (typeInfo.type == ParsedType::Component)
+	else if (typeInfo.type == ::ParsedType::Component)
 		baseType = "Component";
-	else if (typeInfo.type == ParsedType::GUIElement)
+	else if (typeInfo.type == ::ParsedType::GUIElement)
 		baseType = "GUIElement";
 	else
 		baseType = "ScriptObject";
@@ -5768,7 +5767,7 @@ std::ofstream createFile(const std::string& filename, StringRef outputFolder)
 	sys::path::append(filepath, filenameRef);
 
 	std::ofstream output;
-	output.open(filepath.str(), std::ios::out);
+	output.open(filepath.str().str(), std::ios::out);
 
 	return output;
 }
@@ -5810,7 +5809,7 @@ void generateMappingXMLFile(bool editor, const std::string& outputFolder)
 	output.close();
 }
 
-void generateLookupFile(const std::string& tableName, ParsedType type, bool editor, 
+void generateLookupFile(const std::string& tableName, ::ParsedType type, bool editor,
 	const std::string& engineOutputFolder, const std::string& editorOutputFolder)
 {
 	StringRef cppOutputFolder = editor ? editorOutputFolder : engineOutputFolder;
@@ -6122,15 +6121,15 @@ void generateAll(StringRef cppEngineOutputFolder, StringRef cppEditorOutputFolde
 	}
 
 	// Generate builtin component lookup file
-	generateLookupFile("BuiltinComponent", ParsedType::Component, false, cppEngineOutputFolder, cppEditorOutputFolder);
+	generateLookupFile("BuiltinComponent", ::ParsedType::Component, false, cppEngineOutputFolder.str(), cppEditorOutputFolder.str());
 
 	// Generate C++ reflectable type lookup files
-	generateLookupFile("BuiltinReflectableTypes", ParsedType::ReflectableClass, false, cppEngineOutputFolder, cppEditorOutputFolder);
-	generateLookupFile("BuiltinReflectableTypes", ParsedType::ReflectableClass, true, cppEngineOutputFolder, cppEditorOutputFolder);
+	generateLookupFile("BuiltinReflectableTypes", ::ParsedType::ReflectableClass, false, cppEngineOutputFolder.str(), cppEditorOutputFolder.str());
+	generateLookupFile("BuiltinReflectableTypes", ::ParsedType::ReflectableClass, true, cppEngineOutputFolder.str(), cppEditorOutputFolder.str());
 
 	// Generate XML lookup
-	generateMappingXMLFile(false, csEngineOutputFolder);
+	generateMappingXMLFile(false, csEngineOutputFolder.str());
 
 	if(genEditor)
-		generateMappingXMLFile(true, csEditorOutputFolder);
+		generateMappingXMLFile(true, csEditorOutputFolder.str());
 }

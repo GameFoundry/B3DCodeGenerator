@@ -1,7 +1,6 @@
 #include "parser.h"
 #include <cctype>
-
-ParsedType getObjectType(const CXXRecordDecl* decl)
+::ParsedType getObjectType(const CXXRecordDecl* decl)
 {
 	std::stack<const CXXRecordDecl*> todo;
 	todo.push(decl);
@@ -19,18 +18,18 @@ ParsedType getObjectType(const CXXRecordDecl* decl)
 				const CXXBaseSpecifier* baseSpec = iter;
 				CXXRecordDecl* baseDecl = baseSpec->getType()->getAsCXXRecordDecl();
 
-				std::string className = baseDecl->getName();
+				std::string className = baseDecl->getName().str();
 
 				if (className == BUILTIN_COMPONENT_TYPE)
-					return ParsedType::Component;
+					return ::ParsedType::Component;
 				else if (className == BUILTIN_RESOURCE_TYPE)
-					return ParsedType::Resource;
+					return ::ParsedType::Resource;
 				else if (className == BUILTIN_SCENEOBJECT_TYPE)
-					return ParsedType::SceneObject;
+					return ::ParsedType::SceneObject;
 				else if (className == BUILTIN_GUIELEMENT_TYPE)
-					return ParsedType::GUIElement;
+					return ::ParsedType::GUIElement;
 				else if (className == BUILTIN_REFLECTABLE_TYPE)
-					return ParsedType::ReflectableClass;
+					return ::ParsedType::ReflectableClass;
 
 				todo.push(baseDecl);
 				iter++;
@@ -38,7 +37,7 @@ ParsedType getObjectType(const CXXRecordDecl* decl)
 		}
 	}
 
-	return ParsedType::Class;
+	return ::ParsedType::Class;
 }
 
 bool isGameObjectOrResource(QualType type)
@@ -52,8 +51,8 @@ bool isGameObjectOrResource(QualType type)
 	if (cxxDecl == nullptr)
 		return false;
 
-	ParsedType objType = getObjectType(cxxDecl);
-	return objType == ParsedType::Component || objType == ParsedType::SceneObject || objType == ParsedType::Resource;
+	::ParsedType objType = getObjectType(cxxDecl);
+	return objType == ::ParsedType::Component || objType == ::ParsedType::SceneObject || objType == ::ParsedType::Resource;
 }
 
 std::string getNamespace(const RecordDecl* decl)
@@ -65,7 +64,7 @@ std::string getNamespace(const RecordDecl* decl)
 		// Note: Not checking more than one level of namespaces
 		const NamespaceDecl* nsDecl = cast<NamespaceDecl>(nsContext);
 
-		nsName = nsDecl->getName();
+		nsName = nsDecl->getName().str();
 	}
 
 	return nsName;
@@ -191,7 +190,7 @@ std::string getFullName(NamedDecl* decl)
 }
 
 void registerUserTypeInfo(const SmallVector<std::string, 4>& classNs, const std::string& className, ApiFlags api, 
-	const std::string declFile, const std::string& exportName, const std::string& exportFile, ParsedType type)
+	const std::string declFile, const std::string& exportName, const std::string& exportFile, ::ParsedType type)
 {
 	std::string destFile = "BsScript" + exportFile + ".generated.h";
 	std::string destFileEditor = destFile;
@@ -273,7 +272,7 @@ bool ScriptExportParser::parseType(QualType type, VarTypeInfo& outType, bool ret
 			const RecordType* recordType = realType->getAs<RecordType>();
 			const RecordDecl* recordDecl = recordType->getDecl();
 
-			std::string sourceTypeName = recordDecl->getName();
+			std::string sourceTypeName = recordDecl->getName().str();
 
 			// Note: vector parsing code copied below
 			if (sourceTypeName == "vector" && recordDecl->isInStdNamespace())
@@ -347,7 +346,7 @@ bool ScriptExportParser::parseType(QualType type, VarTypeInfo& outType, bool ret
 				const TemplateDecl* templateDecl = specType->getTemplateName().getAsTemplateDecl();
 				if(templateDecl)
 				{
-					std::string templateDeclName = templateDecl->getName();
+					std::string templateDeclName = templateDecl->getName().str();
 					if((templateDeclName == "CoreVariantType" || templateDeclName == "CoreVariantHandleType") && specType->isTypeAlias())
 						realType = specType->getAliasedType();
 				}
@@ -382,7 +381,7 @@ bool ScriptExportParser::parseType(QualType type, VarTypeInfo& outType, bool ret
 			const RecordType* recordType = realType->getAs<RecordType>();
 			const RecordDecl* recordDecl = recordType->getDecl();
 
-			std::string sourceTypeName = recordDecl->getName();
+			std::string sourceTypeName = recordDecl->getName().str();
 
 			if (sourceTypeName == "vector" && recordDecl->isInStdNamespace())
 			{
@@ -516,7 +515,7 @@ bool ScriptExportParser::parseType(QualType type, VarTypeInfo& outType, bool ret
 		const RecordType* recordType = realType->getAs<RecordType>();
 		const RecordDecl* recordDecl = recordType->getDecl();
 
-		std::string sourceTypeName = recordDecl->getName();
+		std::string sourceTypeName = recordDecl->getName().str();
 
 		// Handle special templated types
 		const TemplateSpecializationType* specType = realType->getAs<TemplateSpecializationType>();
@@ -561,7 +560,7 @@ bool ScriptExportParser::parseType(QualType type, VarTypeInfo& outType, bool ret
 		const EnumType* enumType = realType->getAs<EnumType>();
 		const EnumDecl* enumDecl = enumType->getDecl();
 
-		std::string sourceTypeName = enumDecl->getName();
+		std::string sourceTypeName = enumDecl->getName().str();
 		outType.typeName = sourceTypeName;
 		return true;
 	}
@@ -594,7 +593,7 @@ bool ScriptExportParser::parseEventSignature(QualType type, FunctionTypeInfo& ty
 			const RecordType* recordType = type->getAs<RecordType>();
 			const RecordDecl* recordDecl = recordType->getDecl();
 
-			std::string sourceTypeName = recordDecl->getName();
+			std::string sourceTypeName = recordDecl->getName().str();
 			std::string nsName = getNamespace(recordDecl);
 
 			bool isEvent = false;
@@ -837,7 +836,7 @@ void parseAttributeToken(const std::string& name, const std::string& value, Stri
 				trimmedName = trimmedName.trim();
 
 				output.style.flags |= (int)StyleFlags::Category;
-				output.style.category = trimmedName;
+				output.style.category = trimmedName.str();
 			}
 		}
 	}
@@ -864,7 +863,7 @@ bool parseExportAttribute(AnnotateAttr* attr, StringRef sourceName, ParsedDeclIn
 
 	StringRef annotation = attr->getAnnotation();
 
-	output.exportName = sourceName;
+	output.exportName = sourceName.str();
 	
 	if (!output.exportName.empty())
 	{
@@ -908,7 +907,7 @@ bool parseExportAttribute(AnnotateAttr* attr, StringRef sourceName, ParsedDeclIn
 		}
 	}
 
-	output.exportFile = sourceName;
+	output.exportFile = sourceName.str();
 	output.visibility = CSVisibility::Public;
 	output.exportFlags = 0;
 
@@ -1016,7 +1015,7 @@ bool parseParamOrFieldAttribute(Decl* decl, bool isField, int& typeFlags)
 
 bool isBase(const CXXRecordDecl* decl)
 {
-	std::string className = decl->getName();
+	std::string className = decl->getName().str();
 
 	if (className == BUILTIN_COMPONENT_TYPE)
 		return true;
@@ -1036,7 +1035,7 @@ bool isBase(const CXXRecordDecl* decl)
 
 bool isExportable(const CXXRecordDecl* decl)
 {
-	std::string className = decl->getName();
+	std::string className = decl->getName().str();
 
 	AnnotateAttr* attr = decl->getAttr<AnnotateAttr>();
 	if (attr != nullptr)
@@ -1070,7 +1069,7 @@ std::string parseExportableBaseClass(const CXXRecordDecl* decl)
 			const CXXBaseSpecifier* baseSpec = iter;
 			CXXRecordDecl* baseDecl = baseSpec->getType()->getAsCXXRecordDecl();
 
-			std::string className = baseDecl->getName();
+			std::string className = baseDecl->getName().str();
 
 			if(isBase(baseDecl))
 			{
@@ -1085,7 +1084,7 @@ std::string parseExportableBaseClass(const CXXRecordDecl* decl)
 				ParsedDeclInfo parsedDeclInfo;
 
 				if (parseExportAttribute(attr, sourceClassName, parsedDeclInfo))
-					return sourceClassName;
+					return sourceClassName.str();
 			}
 
 			todo.push(baseDecl);
@@ -1107,7 +1106,7 @@ std::string parseExportableBaseStruct(const CXXRecordDecl* decl)
 		const CXXBaseSpecifier* baseSpec = iter;
 		CXXRecordDecl* baseDecl = baseSpec->getType()->getAsCXXRecordDecl();
 
-		std::string className = baseDecl->getName();
+		std::string className = baseDecl->getName().str();
 
 		AnnotateAttr* attr = baseDecl->getAttr<AnnotateAttr>();
 		if (attr != nullptr)
@@ -1118,7 +1117,7 @@ std::string parseExportableBaseStruct(const CXXRecordDecl* decl)
 			if (parseExportAttribute(attr, sourceClassName, parsedDeclInfo))
 			{
 				if((parsedDeclInfo.exportFlags & (int)ExportFlags::Plain) != 0)
-					return sourceClassName;
+					return sourceClassName.str();
 			}
 		}
 
@@ -1147,7 +1146,7 @@ bool isModule(const CXXRecordDecl* decl)
 			const CXXBaseSpecifier* baseSpec = iter;
 			CXXRecordDecl* baseDecl = baseSpec->getType()->getAsCXXRecordDecl();
 
-			std::string className = baseDecl->getName();
+			std::string className = baseDecl->getName().str();
 			if (className == BUILTIN_MODULE_TYPE)
 				return true;
 
@@ -1197,11 +1196,12 @@ bool ScriptExportParser::evaluateLiteral(Expr* expr, std::string& evalValue)
 		case BuiltinType::Char16:
 		case BuiltinType::Char32:
 		{
-			APSInt result;
+			Expr::EvalResult result;
 			expr->EvaluateAsInt(result, *astContext);
 
 			SmallString<5> valueStr;
-			result.toString(valueStr);
+
+			result.Val.getInt().toString(valueStr);
 			evalValue = valueStr.str().str();
 
 			return true;
@@ -1242,11 +1242,11 @@ bool ScriptExportParser::evaluateLiteral(Expr* expr, std::string& evalValue)
 		const EnumType* enumType = type->getAs<EnumType>();
 		const EnumDecl* enumDecl = enumType->getDecl();
 
-		APSInt result;
+		Expr::EvalResult result;
 		expr->EvaluateAsInt(result, *astContext);
 
 		SmallString<5> valueStr;
-		result.toString(valueStr);
+		result.Val.getInt().toString(valueStr);
 		evalValue = valueStr.str().str();
 
 		return true;
@@ -1269,7 +1269,7 @@ bool ScriptExportParser::evaluateExpression(Expr* expr, std::string& evalValue, 
 
 	// Skip through reference binding to temporary.
 	if (MaterializeTemporaryExpr* materialize = dyn_cast<MaterializeTemporaryExpr>(expr))
-		expr = materialize->GetTemporaryExpr();
+		expr = materialize->getSubExpr();
 
 	// Skip any temporary bindings; they're implicit.
 	if (CXXBindTemporaryExpr* binder = dyn_cast<CXXBindTemporaryExpr>(expr))
@@ -1500,7 +1500,7 @@ bool ScriptExportParser::parseJavadocComments(const Decl* decl, CommentEntry& ou
 				{
 					comments::InlineCommandComment* inlineCommand = cast<comments::InlineCommandComment>(childComment);
 
-					std::string name = inlineCommand->getCommandName(traits);
+					std::string name = inlineCommand->getCommandName(traits).str();
 					if (name == "copydoc")
 						isCopydoc = true;
 					else if (name == "native")
@@ -1526,7 +1526,7 @@ bool ScriptExportParser::parseJavadocComments(const Decl* decl, CommentEntry& ou
 								refArg = refArg.substr(0, refArg.size() - 1);
 							}
 
-							ref.name = refArg;
+							ref.name = refArg.str();
 
 							if (name == "p")
 								commentText.paramRefs.push_back(ref);
@@ -1565,7 +1565,7 @@ bool ScriptExportParser::parseJavadocComments(const Decl* decl, CommentEntry& ou
 
 				if (!trimmedText.empty() || !commentText.paramRefs.empty() || !commentText.genericRefs.empty())
 				{
-					commentText.text = trimmedText;
+					commentText.text = trimmedText.str();
 					output.push_back(commentText);
 				}
 			}
@@ -1601,7 +1601,7 @@ void ScriptExportParser::parseCommentInfo(const FunctionDecl* decl, CommentInfo&
 {
 	const FunctionProtoType* ft = nullptr;
 	if (decl->hasWrittenPrototype())
-		ft = dyn_cast<FunctionProtoType>(decl->getType()->castAs<FunctionType>());
+		ft = dyn_cast<FunctionProtoType>(decl->getType()->castAs<FunctionProtoType>());
 
 	CommentMethodInfo methodInfo;
 	if (ft)
@@ -1877,7 +1877,7 @@ bool ScriptExportParser::parseEvent(ValueDecl* decl, const std::string& classNam
 	if (isCallback)
 		eventFlags |= (int)MethodFlags::Callback;
 
-	eventInfo.sourceName = sourceFieldName;
+	eventInfo.sourceName = sourceFieldName.str();
 	eventInfo.scriptName = parsedEventInfo.exportName;
 	eventInfo.flags = eventFlags;
 	eventInfo.externalClass = className;
@@ -1941,7 +1941,7 @@ bool ScriptExportParser::VisitEnumDecl(EnumDecl* decl)
 
 	StringRef sourceClassName = decl->getName();
 	ParsedDeclInfo parsedEnumInfo;
-	parsedEnumInfo.exportName = sourceClassName;
+	parsedEnumInfo.exportName = sourceClassName.str();
 
 	if (!parseExportAttribute(attr, sourceClassName, parsedEnumInfo))
 		return true;
@@ -1964,7 +1964,7 @@ bool ScriptExportParser::VisitEnumDecl(EnumDecl* decl)
 	}
 
 	EnumInfo enumEntry;
-	enumEntry.name = sourceClassName;
+	enumEntry.name = sourceClassName.str();
 	enumEntry.scriptName = parsedEnumInfo.exportName;
 	enumEntry.visibility = parsedEnumInfo.visibility;
 	enumEntry.api = apiFromExportFlags(parsedEnumInfo.exportFlags);
@@ -1980,13 +1980,13 @@ bool ScriptExportParser::VisitEnumDecl(EnumDecl* decl)
 	if (builtinType->getKind() != BuiltinType::Kind::Int)
 		mapBuiltinTypeToCSType(builtinType->getKind(), enumEntry.explicitType);
 
-	std::string declFile = astContext->getSourceManager().getFilename(decl->getSourceRange().getBegin());
+	std::string declFile = astContext->getSourceManager().getFilename(decl->getSourceRange().getBegin()).str();
 	std::string destFile = "BsScript" + parsedEnumInfo.exportFile + ".generated.h";
 	std::string destFileEditor = "BsScript" + parsedEnumInfo.exportFile + ".editor.generated.h";
 
-	registerUserTypeInfo(enumEntry.ns, sourceClassName, enumEntry.api, declFile, parsedEnumInfo.exportName, 
-		parsedEnumInfo.exportFile, ParsedType::Enum);
-	cppToCsTypeMap[sourceClassName].underlyingType = builtinType->getKind();
+	registerUserTypeInfo(enumEntry.ns, sourceClassName.str(), enumEntry.api, declFile, parsedEnumInfo.exportName,
+		parsedEnumInfo.exportFile, ::ParsedType::Enum);
+	cppToCsTypeMap[sourceClassName.str()].underlyingType = builtinType->getKind();
 
 	auto iter = decl->enumerator_begin();
 	while (iter != decl->enumerator_end())
@@ -1997,7 +1997,7 @@ bool ScriptExportParser::VisitEnumDecl(EnumDecl* decl)
 		AnnotateAttr* enumAttr = constDecl->getAttr<AnnotateAttr>();
 
 		StringRef entryName = constDecl->getName();
-		parsedEnumEntryInfo.exportName = entryName;
+		parsedEnumEntryInfo.exportName = entryName.str();
 		parsedEnumEntryInfo.exportFlags = 0;
 
 		if (enumAttr != nullptr)
@@ -2019,7 +2019,7 @@ bool ScriptExportParser::VisitEnumDecl(EnumDecl* decl)
 
 		SmallString<5> valueStr;
 		entryVal.toString(valueStr);
-		entryInfo.value = valueStr.str();
+		entryInfo.value = valueStr.str().str();
 
 		enumEntry.entries[(int)entryVal.getExtValue()] = entryInfo;
 		++iter;
@@ -2094,12 +2094,12 @@ bool ScriptExportParser::VisitCXXRecordDecl(CXXRecordDecl* decl)
 	StringRef declName = decl->getName();
 
 	ParsedDeclInfo parsedClassInfo;
-	parsedClassInfo.exportName = declName;
+	parsedClassInfo.exportName = declName.str();
 
 	if (!parseExportAttribute(attr, declName, parsedClassInfo))
 		return true;
 
-	std::string srcClassName = declName;
+	std::string srcClassName = declName.str();
 
 	// If a template specialization append template params to its name
 	ClassTemplateSpecializationDecl* specDecl = dyn_cast<ClassTemplateSpecializationDecl>(decl);
@@ -2126,7 +2126,7 @@ bool ScriptExportParser::VisitCXXRecordDecl(CXXRecordDecl* decl)
 
 		StructInfo structInfo;
 		structInfo.name = srcClassName;
-		structInfo.cleanName = declName;
+		structInfo.cleanName = declName.str();
 		structInfo.baseClass = parseExportableBaseStruct(decl);
 		structInfo.visibility = parsedClassInfo.visibility;
 		structInfo.requiresInterop = decl->isPolymorphic();
@@ -2177,7 +2177,7 @@ bool ScriptExportParser::VisitCXXRecordDecl(CXXRecordDecl* decl)
 					ParmVarDecl* paramDecl = *I;
 
 					VarInfo paramInfo;
-					paramInfo.name = paramDecl->getName();
+					paramInfo.name = paramDecl->getName().str();
 
 					std::string typeName;
 					unsigned arraySize;
@@ -2281,7 +2281,7 @@ bool ScriptExportParser::VisitCXXRecordDecl(CXXRecordDecl* decl)
 									std::string fieldName;
 
 									if (field)
-										fieldName = field->getName();
+										fieldName = field->getName().str();
 
 									outs() << "Error: Unrecognized initializer format in struct \"" << srcClassName << "\" for field \"" << fieldName << "\".\n";
 								}
@@ -2377,7 +2377,7 @@ bool ScriptExportParser::VisitCXXRecordDecl(CXXRecordDecl* decl)
 			{
 				FieldDecl* fieldDecl = *I;
 				FieldInfo fieldInfo;
-				fieldInfo.name = fieldDecl->getName();
+				fieldInfo.name = fieldDecl->getName().str();
 
 				ParsedDeclInfo parsedFieldInfo;
 				if (parseExportAttribute(fieldDecl, srcClassName, parsedFieldInfo))
@@ -2459,9 +2459,9 @@ bool ScriptExportParser::VisitCXXRecordDecl(CXXRecordDecl* decl)
 		if (structInfo.ctors.empty() && hasDefaultValue)
 			structInfo.ctors.push_back(SimpleConstructorInfo());
 
-		std::string declFile = astContext->getSourceManager().getFilename(decl->getSourceRange().getBegin());
+		std::string declFile = astContext->getSourceManager().getFilename(decl->getSourceRange().getBegin()).str();
 		registerUserTypeInfo(structInfo.ns, srcClassName, structInfo.api, declFile, parsedClassInfo.exportName,
-			parsedClassInfo.exportFile, ParsedType::Struct);
+			parsedClassInfo.exportFile, ::ParsedType::Struct);
 
 		addEntryToFile<StructInfo>(fileInfo, structInfo, parsedClassInfo.exportFile,
 			[](FileInfo& fileInfo, const StructInfo& structInfo) { fileInfo.structInfos.push_back(structInfo); });
@@ -2479,7 +2479,7 @@ bool ScriptExportParser::VisitCXXRecordDecl(CXXRecordDecl* decl)
 
 		ClassInfo classInfo;
 		classInfo.name = srcClassName;
-		classInfo.cleanName = declName;
+		classInfo.cleanName = declName.str();
 		classInfo.visibility = parsedClassInfo.visibility;
 		classInfo.api = apiFromExportFlags(parsedClassInfo.exportFlags);
 		classInfo.flags = 0;
@@ -2504,9 +2504,9 @@ bool ScriptExportParser::VisitCXXRecordDecl(CXXRecordDecl* decl)
 		if (decl->isStruct())
 			classInfo.flags |= (int)ClassFlags::IsStruct;
 
-		ParsedType classType = getObjectType(decl);
+		::ParsedType classType = getObjectType(decl);
 
-		std::string declFile = astContext->getSourceManager().getFilename(decl->getSourceRange().getBegin());
+		std::string declFile = astContext->getSourceManager().getFilename(decl->getSourceRange().getBegin()).str();
 		registerUserTypeInfo(classInfo.ns, srcClassName, classInfo.api, declFile, parsedClassInfo.exportName,
 			parsedClassInfo.exportFile, classType);
 
@@ -2535,7 +2535,7 @@ bool ScriptExportParser::VisitCXXRecordDecl(CXXRecordDecl* decl)
 						continue;
 
 					MethodInfo methodInfo;
-					methodInfo.sourceName = declName;
+					methodInfo.sourceName = declName.str();
 					methodInfo.scriptName = parsedClassInfo.exportName;
 					methodInfo.flags = (int)MethodFlags::Constructor;
 					methodInfo.visibility = parsedMethodInfo.visibility;
@@ -2553,7 +2553,7 @@ bool ScriptExportParser::VisitCXXRecordDecl(CXXRecordDecl* decl)
 						QualType paramType = paramDecl->getType();
 
 						VarInfo paramInfo;
-						paramInfo.name = paramDecl->getName();
+						paramInfo.name = paramDecl->getName().str();
 
 						if (!parseType(paramType, paramInfo))
 						{
@@ -2641,7 +2641,7 @@ bool ScriptExportParser::VisitCXXRecordDecl(CXXRecordDecl* decl)
 					methodFlags |= (int)MethodFlags::PropertySetter;
 
 				MethodInfo methodInfo;
-				methodInfo.sourceName = sourceMethodName;
+				methodInfo.sourceName = sourceMethodName.str();
 				methodInfo.scriptName = parsedMethodInfo.exportName;
 				methodInfo.flags = methodFlags;
 				methodInfo.externalClass = srcClassName;
@@ -2716,7 +2716,7 @@ bool ScriptExportParser::VisitCXXRecordDecl(CXXRecordDecl* decl)
 						ParmVarDecl* paramDecl = methodDecl->getParamDecl(0);
 
 						VarInfo paramInfo;
-						paramInfo.name = paramDecl->getName();
+						paramInfo.name = paramDecl->getName().str();
 
 						if (!parseType(paramDecl->getType(), paramInfo))
 						{
@@ -2734,7 +2734,7 @@ bool ScriptExportParser::VisitCXXRecordDecl(CXXRecordDecl* decl)
 					QualType paramType = paramDecl->getType();
 
 					VarInfo paramInfo;
-					paramInfo.name = paramDecl->getName();
+					paramInfo.name = paramDecl->getName().str();
 
 					if (!parseType(paramType, paramInfo))
 					{
@@ -2791,7 +2791,7 @@ bool ScriptExportParser::VisitCXXRecordDecl(CXXRecordDecl* decl)
 				else
 				{
 					FieldInfo fieldInfo;
-					fieldInfo.name = fieldDecl->getName();
+					fieldInfo.name = fieldDecl->getName().str();
 
 					ParsedDeclInfo parsedFieldInfo;
 					bool foundExportAttrib = false;
@@ -2829,7 +2829,7 @@ bool ScriptExportParser::VisitCXXRecordDecl(CXXRecordDecl* decl)
 
 					// Register wrapper methods, this way we can re-use much of the same logic for method/property generation
 					MethodInfo getterInfo;
-					getterInfo.sourceName = "get" + fieldInfo.name;
+					getterInfo.sourceName = "Get" + fieldInfo.name;
 					getterInfo.scriptName = parsedFieldInfo.exportName;
 					getterInfo.visibility = parsedFieldInfo.visibility;
 					getterInfo.api = apiFromExportFlags(parsedFieldInfo.exportFlags);
@@ -2853,7 +2853,7 @@ bool ScriptExportParser::VisitCXXRecordDecl(CXXRecordDecl* decl)
 					parseParamOrFieldAttribute(fieldDecl, true, paramInfo.flags);
 
 					MethodInfo setterInfo;
-					setterInfo.sourceName = "set" + fieldInfo.name;
+					setterInfo.sourceName = "Set" + fieldInfo.name;
 					setterInfo.scriptName = parsedFieldInfo.exportName;
 					setterInfo.documentation = fieldInfo.documentation;
 					setterInfo.paramInfos.push_back(paramInfo);

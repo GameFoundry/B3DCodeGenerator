@@ -1,6 +1,11 @@
 #include "common.h"
 #include "parser.h"
 
+#define B3DCODEGEN_WAIT_FOR_DEBUGGER 1
+#if B3DCODEGEN_WAIT_FOR_DEBUGGER
+#include <windows.h>
+#endif
+
 const char* BUILTIN_COMPONENT_TYPE = "Component";
 const char* BUILTIN_SCENEOBJECT_TYPE = "SceneObject";
 const char* BUILTIN_RESOURCE_TYPE = "Resource";
@@ -132,6 +137,16 @@ public:
 
 int main(int argc, const char** argv)
 {
+#if B3DCODEGEN_WAIT_FOR_DEBUGGER
+	// Waits before starting the code-gen, to allow the debugger to attach (Windows only)
+	// Requires <windows.h> header
+	 while (!::IsDebuggerPresent())
+	{
+		::Sleep(100);
+	}
+	::DebugBreak();
+#endif
+
 	CommonOptionsParser op(argc, argv, OptCategory);
 	ClangTool Tool(op.getCompilations(), op.getSourcePathList());
 
@@ -162,28 +177,28 @@ int main(int argc, const char** argv)
 	// Note: I could auto-generate C++ wrappers for these types
 	SmallVector<std::string, 4> frameworkNs = { sFrameworkCppNs };
 	
-	cppToCsTypeMap["Vector2"] = UserTypeInfo(frameworkNs,"Vector2", ParsedType::Struct, "Math/BsVector2.h", "Wrappers/BsScriptVector.h");
-	cppToCsTypeMap["Vector3"] = UserTypeInfo(frameworkNs, "Vector3", ParsedType::Struct, "Math/BsVector3.h", "Wrappers/BsScriptVector.h");
-	cppToCsTypeMap["Vector4"] = UserTypeInfo(frameworkNs, "Vector4", ParsedType::Struct, "Math/BsVector4.h", "Wrappers/BsScriptVector.h");
-	cppToCsTypeMap["Matrix3"] = UserTypeInfo(frameworkNs, "Matrix3", ParsedType::Struct, "Math/BsMatrix3.h", "");
-	cppToCsTypeMap["Matrix4"] = UserTypeInfo(frameworkNs, "Matrix4", ParsedType::Struct, "Math/BsMatrix4.h", "");
-	cppToCsTypeMap["Quaternion"] = UserTypeInfo(frameworkNs, "Quaternion", ParsedType::Struct, "Math/BsQuaternion.h", "Wrappers/BsScriptQuaternion.h");
-	cppToCsTypeMap["Radian"] = UserTypeInfo(frameworkNs, "Radian", ParsedType::Struct, "Math/BsRadian.h", "");
-	cppToCsTypeMap["Degree"] = UserTypeInfo(frameworkNs, "Degree", ParsedType::Struct, "Math/BsDegree.h", "");
-	cppToCsTypeMap["Color"] = UserTypeInfo(frameworkNs, "Color", ParsedType::Struct, "Image/BsColor.h", "Wrappers/BsScriptColor.h");
-	cppToCsTypeMap["AABox"] = UserTypeInfo(frameworkNs, "AABox", ParsedType::Struct, "Math/BsAABox.h", "");
-	cppToCsTypeMap["Sphere"] = UserTypeInfo(frameworkNs, "Sphere", ParsedType::Struct, "Math/BsSphere.h", "");
-	cppToCsTypeMap["Capsule"] = UserTypeInfo(frameworkNs, "Capsule", ParsedType::Struct, "Math/BsCapsule.h", "");
-	cppToCsTypeMap["Ray"] = UserTypeInfo(frameworkNs, "Ray", ParsedType::Struct, "Math/BsRay.h", "");
-	cppToCsTypeMap["Vector2I"] = UserTypeInfo(frameworkNs, "Vector2I", ParsedType::Struct, "Math/BsVector2I.h", "Wrappers/BsScriptVector2I.h");
-	cppToCsTypeMap["Rect2"] = UserTypeInfo(frameworkNs, "Rect2", ParsedType::Struct, "Math/BsRect2.h", "");
-	cppToCsTypeMap["Rect2I"] = UserTypeInfo(frameworkNs, "Rect2I", ParsedType::Struct, "Math/BsRect2I.h", "");
-	cppToCsTypeMap["Bounds"] = UserTypeInfo(frameworkNs, "Bounds", ParsedType::Struct, "Math/BsBounds.h", "");
-	cppToCsTypeMap["Plane"] = UserTypeInfo(frameworkNs, "Plane", ParsedType::Struct, "Math/BsPlane.h", "Wrappers/BsScriptPlane.h");
-	cppToCsTypeMap["UUID"] = UserTypeInfo(frameworkNs, "UUID", ParsedType::Struct, "Utility/BsUUID.h", "");
-	cppToCsTypeMap["SceneObject"] = UserTypeInfo(frameworkNs, "SceneObject", ParsedType::SceneObject, "Scene/BsSceneObject.h", "Wrappers/BsScriptSceneObject.h");
-	cppToCsTypeMap["Resource"] = UserTypeInfo(frameworkNs, "Resource", ParsedType::Resource, "Resources/BsResource.h", "Wrappers/BsScriptResource.h");
-	cppToCsTypeMap["Any"] = UserTypeInfo(frameworkNs, "Any", ParsedType::Class, "Utility/BsAny.h", "");
+	cppToCsTypeMap["Vector2"] = UserTypeInfo(frameworkNs,"Vector2", ::ParsedType::Struct, "Math/BsVector2.h", "Wrappers/BsScriptVector.h");
+	cppToCsTypeMap["Vector3"] = UserTypeInfo(frameworkNs, "Vector3", ::ParsedType::Struct, "Math/BsVector3.h", "Wrappers/BsScriptVector.h");
+	cppToCsTypeMap["Vector4"] = UserTypeInfo(frameworkNs, "Vector4", ::ParsedType::Struct, "Math/BsVector4.h", "Wrappers/BsScriptVector.h");
+	cppToCsTypeMap["Matrix3"] = UserTypeInfo(frameworkNs, "Matrix3", ::ParsedType::Struct, "Math/BsMatrix3.h", "");
+	cppToCsTypeMap["Matrix4"] = UserTypeInfo(frameworkNs, "Matrix4", ::ParsedType::Struct, "Math/BsMatrix4.h", "");
+	cppToCsTypeMap["Quaternion"] = UserTypeInfo(frameworkNs, "Quaternion", ::ParsedType::Struct, "Math/BsQuaternion.h", "Wrappers/BsScriptQuaternion.h");
+	cppToCsTypeMap["Radian"] = UserTypeInfo(frameworkNs, "Radian", ::ParsedType::Struct, "Math/BsRadian.h", "");
+	cppToCsTypeMap["Degree"] = UserTypeInfo(frameworkNs, "Degree", ::ParsedType::Struct, "Math/BsDegree.h", "");
+	cppToCsTypeMap["Color"] = UserTypeInfo(frameworkNs, "Color", ::ParsedType::Struct, "Image/BsColor.h", "Wrappers/BsScriptColor.h");
+	cppToCsTypeMap["AABox"] = UserTypeInfo(frameworkNs, "AABox", ::ParsedType::Struct, "Math/BsAABox.h", "");
+	cppToCsTypeMap["Sphere"] = UserTypeInfo(frameworkNs, "Sphere", ::ParsedType::Struct, "Math/BsSphere.h", "");
+	cppToCsTypeMap["Capsule"] = UserTypeInfo(frameworkNs, "Capsule", ::ParsedType::Struct, "Math/BsCapsule.h", "");
+	cppToCsTypeMap["Ray"] = UserTypeInfo(frameworkNs, "Ray", ::ParsedType::Struct, "Math/BsRay.h", "");
+	cppToCsTypeMap["Vector2I"] = UserTypeInfo(frameworkNs, "Vector2I", ::ParsedType::Struct, "Math/BsVector2I.h", "Wrappers/BsScriptVector2I.h");
+	cppToCsTypeMap["Rect2"] = UserTypeInfo(frameworkNs, "Rect2", ::ParsedType::Struct, "Math/BsRect2.h", "");
+	cppToCsTypeMap["Rect2I"] = UserTypeInfo(frameworkNs, "Rect2I", ::ParsedType::Struct, "Math/BsRect2I.h", "");
+	cppToCsTypeMap["Bounds"] = UserTypeInfo(frameworkNs, "Bounds", ::ParsedType::Struct, "Math/BsBounds.h", "");
+	cppToCsTypeMap["Plane"] = UserTypeInfo(frameworkNs, "Plane", ::ParsedType::Struct, "Math/BsPlane.h", "Wrappers/BsScriptPlane.h");
+	cppToCsTypeMap["UUID"] = UserTypeInfo(frameworkNs, "UUID", ::ParsedType::Struct, "Utility/BsUUID.h", "");
+	cppToCsTypeMap["SceneObject"] = UserTypeInfo(frameworkNs, "SceneObject", ::ParsedType::SceneObject, "Scene/BsSceneObject.h", "Wrappers/BsScriptSceneObject.h");
+	cppToCsTypeMap["Resource"] = UserTypeInfo(frameworkNs, "Resource", ::ParsedType::Resource, "Resources/BsResource.h", "Wrappers/BsScriptResource.h");
+	cppToCsTypeMap["Any"] = UserTypeInfo(frameworkNs, "Any", ::ParsedType::Class, "Utility/BsAny.h", "");
 
 	// Parse C++ into an easy to read format
 	std::unique_ptr<FrontendActionFactory> factory = newFrontendActionFactory<ScriptExportFrontendAction>();

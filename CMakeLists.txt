@@ -1,5 +1,5 @@
 cmake_minimum_required (VERSION 3.6.1)
-project (BansheeSBGen)
+project (BansheeCodeGenerator)
 
 set(CMAKE_CXX_STANDARD 14)
 mark_as_advanced(CMAKE_CONFIGURATION_TYPES)
@@ -26,20 +26,20 @@ if(${CMAKE_CXX_COMPILER_ID} STREQUAL "Clang" OR ${CMAKE_CXX_COMPILER_ID} MATCHES
 	endif()
 endif()
 
-add_executable(BansheeSBGen Source/main.cpp Source/generator.cpp Source/parser.cpp Source/common.h Source/parser.h)
-target_link_libraries(BansheeSBGen PUBLIC ${clang_LIBRARIES})
+add_executable(BansheeCodeGenerator Source/main.cpp Source/generator.cpp Source/parser.cpp Source/common.h Source/parser.h)
+target_link_libraries(BansheeCodeGenerator PUBLIC ${clang_LIBRARIES})
 
 if(WIN32)
-	target_link_libraries(BansheeSBGen PUBLIC "version.lib")
+	target_link_libraries(BansheeCodeGenerator PUBLIC "version.lib")
 elseif(APPLE)
-	target_link_libraries(BansheeSBGen PUBLIC curses z m)
+	target_link_libraries(BansheeCodeGenerator PUBLIC curses z m)
 elseif(UNIX)
 	execute_process(COMMAND ${LLVM_CONFIG} --system-libs --link-static OUTPUT_VARIABLE LLVM_SYSTEM_LIBS)
 	string(STRIP ${LLVM_SYSTEM_LIBS} LLVM_SYSTEM_LIBS)
-	target_link_libraries(BansheeSBGen PUBLIC ${LLVM_SYSTEM_LIBS})
+	target_link_libraries(BansheeCodeGenerator PUBLIC ${LLVM_SYSTEM_LIBS})
 endif()
 
-install(TARGETS BansheeSBGen 
+install(TARGETS BansheeCodeGenerator
     RUNTIME DESTINATION bin
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib)
