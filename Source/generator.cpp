@@ -130,7 +130,7 @@ std::string generateGetInternalLine(const std::string& sourceClassName, const st
 	if (isClassType(classType))
 		output << obj << "->GetInternal()";
 	else if(classType == ::ParsedType::GUIElement)
-		output << "static_cast<" << sourceClassName << "*>(" << obj << "->GetGUIElement())";
+		output << "static_cast<" << sourceClassName << "*>(" << obj << "->GetGuiElement())";
 	else // Must be one of the handle types
 	{
 		assert(isHandleType(classType));
@@ -2137,7 +2137,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 					postCallActions << generateClassNativeToScriptObjectLine(varTypeInfo.flags, varTypeInfo.typeName, elemName,
 						scriptType, elemPtrName, false, "\t\t\t\t");
 
-					postCallActions << "\t\t\t\t" << arrayName << ".set(i, " << elemName << ");" << std::endl;
+					postCallActions << "\t\t\t\t" << arrayName << ".Set(i, " << elemName << ");" << std::endl;
 					break;
 				}
 				case ::ParsedType::Resource:
@@ -2224,7 +2224,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 					std::string scriptType = getScriptInteropType(varTypeInfo.typeName);
 
 					postCallActions << "\t\t" << getStructInteropType(varTypeInfo.typeName) << " interop" << name << ";\n";
-					postCallActions << "\t\tinterop" << name << " = " << scriptType << "::toInterop(" << argName << ");\n";
+					postCallActions << "\t\tinterop" << name << " = " << scriptType << "::ToInterop(" << argName << ");\n";
 
 					postCallActions << "\t\tMonoUtil::ValueCopy(" << name << ", ";
 					postCallActions << "&interop" << name << ", ";
@@ -3013,7 +3013,7 @@ std::string generateFieldConvertBlock(const std::string& name, const VarTypeInfo
 				break;
 			}
 			case ::ParsedType::Struct:
-				preActions << "\t\t\t" << arrayName << ".set(i, ";
+				preActions << "\t\t\t" << arrayName << ".Set(i, ";
 
 				if(isComplexStruct(varTypeInfo.flags))
 					preActions << entryType << "::ToInterop(";
@@ -3621,7 +3621,7 @@ std::string generateCppEventCallbackBody(const MethodInfo& eventInfo, bool isMod
 	output << "\t{" << std::endl;
 	output << preCallActions.str();
 
-	output << "\t\tMonoUtil::invokeThunk(" << eventInfo.sourceName << "Thunk";
+	output << "\t\tMonoUtil::InvokeThunk(" << eventInfo.sourceName << "Thunk";
 
 	if (!isStatic && !isModule)
 		output << ", GetManagedInstance()";
@@ -4056,7 +4056,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const UserTypeIn
 	if (isClassType(typeInfo.type))
 	{
 		if (!classInfo.eventInfos.empty())
-			output << "\t\tmGCHandle = MonoUtil::NewWeakGCHandle(managedInstance);\n";
+			output << "\t\tmGCHandle = MonoUtil::NewWeakGcHandle(managedInstance);\n";
 
 		if (!isModule && (isBase || !classInfo.baseClass.empty()))
 			output << "\t\tmInternal = value;\n";
@@ -4204,7 +4204,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const UserTypeIn
 				output << ",";
 		}
 
-		output << "\")->getThunk();" << std::endl;
+		output << "\")->GetThunk();" << std::endl;
 		output << generateApiCheckEnd(eventInfo.api);
 	}
 

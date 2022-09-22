@@ -1,7 +1,7 @@
 #include "common.h"
 #include "parser.h"
 
-#define B3DCODEGEN_WAIT_FOR_DEBUGGER 1
+#define B3DCODEGEN_WAIT_FOR_DEBUGGER 0
 #if B3DCODEGEN_WAIT_FOR_DEBUGGER
 #include <windows.h>
 #endif
