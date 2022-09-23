@@ -4159,7 +4159,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const UserTypeIn
 		output << generateCppApiCheckBegin(eventInfo.api);
 		output << "\t\t" << eventInfo.sourceName << "Thunk = ";
 		output << "(" << eventInfo.sourceName << "ThunkDef)metaData.scriptClass->GetMethodExact(";
-		output << "\"Internal" << eventInfo.interopName << "\", \"";
+		output << "\"Internal_" << eventInfo.interopName << "\", \"";
 
 		for (auto I = eventInfo.paramInfos.begin(); I != eventInfo.paramInfos.end(); ++I)
 		{

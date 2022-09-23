@@ -147,8 +147,15 @@ int main(int argc, const char** argv)
 	::DebugBreak();
 #endif
 
-	CommonOptionsParser op(argc, argv, OptCategory);
-	ClangTool Tool(op.getCompilations(), op.getSourcePathList());
+	Expected<CommonOptionsParser> op = CommonOptionsParser::create(argc, argv, OptCategory);
+	if(auto error = op.takeError())
+	{
+		errs() << "Error creating command line options parser: " << toString(std::move(error));
+		return 1;
+	}
+
+	CommonOptionsParser& optionsParser = *op;
+	ClangTool Tool(optionsParser.getCompilations(), optionsParser.getSourcePathList());
 
 	if (!CppFrameworkNamespaceOption.getValue().empty())
 		sFrameworkCppNs = std::string(CppFrameworkNamespaceOption.getValue().c_str());

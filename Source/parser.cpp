@@ -1465,11 +1465,9 @@ bool ScriptExportParser::parseJavadocComments(const Decl* decl, CommentEntry& ou
 			CommentText commentText;
 
 			std::stringstream paragraphText;
-			std::stringstream copydocArg;
 			auto childIter = paragraph->child_begin();
 
 			uint32_t refsTotalSize = 0;
-			bool isCopydoc = false;
 			while (childIter != paragraph->child_end())
 			{
 				comments::Comment* childComment = *childIter;
@@ -1488,11 +1486,7 @@ bool ScriptExportParser::parseJavadocComments(const Decl* decl, CommentEntry& ou
 							continue;
 						}
 
-						if (isCopydoc)
-							getTrimmedText(text, copydocArg);
-						else
-							getTrimmedText(text, paragraphText);
-
+						getTrimmedText(text, paragraphText);
 						hasAnyData = true;
 					}
 				}
@@ -1502,7 +1496,17 @@ bool ScriptExportParser::parseJavadocComments(const Decl* decl, CommentEntry& ou
 
 					std::string name = inlineCommand->getCommandName(traits).str();
 					if (name == "copydoc")
-						isCopydoc = true;
+					{
+						if(nativeDoc <= 0 && inlineCommand->getNumArgs() > 0)
+						{
+							const StringRef argument = inlineCommand->getArgText(0);
+							commentText.text = "@copydoc " + argument.str();
+
+							// Note: We don't support any other comment along with copydoc at the moment
+							output.push_back(commentText);
+							break;
+						}
+					}
 					else if (name == "native")
 						nativeDoc++;
 					else if (name == "endnative")
@@ -1541,33 +1545,25 @@ bool ScriptExportParser::parseJavadocComments(const Decl* decl, CommentEntry& ou
 				++childIter;
 			}
 
-			if (isCopydoc)
+			std::string paragraphStr = paragraphText.str();
+			StringRef trimmedText(paragraphStr.data(), paragraphStr.length());
+
+			size_t leftTrimmedCount = trimmedText.find_first_not_of(" \t\n\v\f\r");
+			if(leftTrimmedCount != StringRef::npos)
 			{
-				commentText.text = "@copydoc " + copydocArg.str();
-				output.push_back(commentText);
+				for (auto& entry : commentText.paramRefs)
+					entry.index -= leftTrimmedCount;
+
+				for (auto& entry : commentText.genericRefs)
+					entry.index -= leftTrimmedCount;
 			}
-			else
+			
+			trimmedText = trimmedText.trim();
+
+			if (!trimmedText.empty() || !commentText.paramRefs.empty() || !commentText.genericRefs.empty())
 			{
-				std::string paragraphStr = paragraphText.str();
-				StringRef trimmedText(paragraphStr.data(), paragraphStr.length());
-
-				size_t leftTrimmedCount = trimmedText.find_first_not_of(" \t\n\v\f\r");
-				if(leftTrimmedCount != StringRef::npos)
-				{
-					for (auto& entry : commentText.paramRefs)
-						entry.index -= leftTrimmedCount;
-
-					for (auto& entry : commentText.genericRefs)
-						entry.index -= leftTrimmedCount;
-				}
-				
-				trimmedText = trimmedText.trim();
-
-				if (!trimmedText.empty() || !commentText.paramRefs.empty() || !commentText.genericRefs.empty())
-				{
-					commentText.text = trimmedText.str();
-					output.push_back(commentText);
-				}
+				commentText.text = trimmedText.str();
+				output.push_back(commentText);
 			}
 		}
 	};

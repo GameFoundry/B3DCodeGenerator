@@ -16,7 +16,7 @@ Build Clang:
   - cd llvm-project
   - mkdir build
   - cd build
-  - cmake -DLLVM_ENABLE_PROJECTS=clang -DCMAKE_INSTALL_PREFIX="F:/ThirdParty/llvm-15-install" -DLLVM_ENABLE_EH=ON -DLLVM_ENABLE_RTTI=ON -T"v142,host=x64" ..\llvm
+  - cmake -DLLVM_ENABLE_PROJECTS=clang -DCMAKE_INSTALL_PREFIX="F:/ThirdParty/llvm-15-install" -DLLVM_ENABLE_EH=ON -DLLVM_ENABLE_RTTI=ON -Thost=x64 ..\llvm
   - For makefiles/ninja builds also specify -DCMAKE_BUILD_TYPE=Release (Not needed for VS/XCode)
   - Build Clang using the release configuration
   - Make sure to execute the 'install' target in your build tool
