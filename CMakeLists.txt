@@ -29,7 +29,12 @@ elseif(${CMAKE_CXX_COMPILER_ID} STREQUAL "MSVC")
 	add_compile_options(/EHsc /GR -D_CRT_SECURE_NO_DEPRECATE -D_CRT_SECURE_NO_WARNINGS -D_CRT_NONSTDC_NO_DEPRECATE -D_CRT_NONSTDC_NO_WARNINGS -D_SCL_SECURE_NO_DEPRECATE -D_SCL_SECURE_NO_WARNINGS -DUNICODE -D_UNICODE -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS)
 endif()
 
-add_executable(BansheeCodeGenerator Source/main.cpp Source/generator.cpp Source/parser.cpp Source/common.h Source/parser.h)
+file(GLOB_RECURSE INCLUDE_FILES "Source/*.h")
+file(GLOB_RECURSE SOURCE_FILES "Source/*.cpp")
+
+source_group("" FILES ${INCLUDE_FILES} ${SOURCE_FILES})
+
+add_executable(BansheeCodeGenerator ${SOURCE_FILES} ${INCLUDE_FILES})
 target_link_libraries(BansheeCodeGenerator PUBLIC ${clang_LIBRARIES})
 
 if(WIN32)
