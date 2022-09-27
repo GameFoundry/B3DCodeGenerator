@@ -1,12 +1,14 @@
 #pragma once
-#include "common.h"
+
+#include "B3DCommon.h"
+#include "B3DCommentParser.h"
 
 struct FunctionTypeInfo;
 
-class ScriptExportParser : public RecursiveASTVisitor<ScriptExportParser>
+class BansheeCodeGeneratorASTVisitor : public RecursiveASTVisitor<BansheeCodeGeneratorASTVisitor>
 {
 public:
-	explicit ScriptExportParser(CompilerInstance* CI);
+	explicit BansheeCodeGeneratorASTVisitor(CompilerInstance* CI, CommentParser& commentParser);
 
 	bool VisitEnumDecl(EnumDecl* decl);
 	bool VisitCXXRecordDecl(CXXRecordDecl* decl);
@@ -18,12 +20,8 @@ private:
 	bool parseEvent(ValueDecl* decl, const std::string& className, MethodInfo& eventInfo);
 	bool parseType(QualType type, VarTypeInfo& outType, bool returnValue = false);
 	std::string parseTemplArguments(const std::string& className, const TemplateArgument* tmplArgs, unsigned numArgs, SmallVector<TemplateParamInfo, 0>* templParams);
-	bool parseJavadocComments(const Decl* decl, CommentEntry& entry);
-	void parseCommentInfo(const NamedDecl* decl, CommentInfo& commentInfo);
-	void parseCommentInfo(const FunctionDecl* decl, CommentInfo& commentInfo);
-	void parseComments(const NamedDecl* decl, CommentInfo& commentInfo);
-	void parseComments(const CXXRecordDecl* decl);
 
 	ASTContext* astContext;
 	Preprocessor& preprocessor;
+	CommentParser& mCommentParser;
 };

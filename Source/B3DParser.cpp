@@ -1,5 +1,8 @@
-#include "parser.h"
+#include "B3DParser.h"
 #include <cctype>
+
+#include "B3DParserUtility.h"
+
 ::ParsedType getObjectType(const CXXRecordDecl* decl)
 {
 	std::stack<const CXXRecordDecl*> todo;
@@ -72,20 +75,20 @@ std::string getNamespace(const RecordDecl* decl)
 
 void updateParamRefComments(const std::vector<VarInfo>& paramInfos, CommentText& comment)
 {
-	for(auto iter = comment.paramRefs.begin(); iter != comment.paramRefs.end();)
+	for(auto iter = comment.ParameterReferences.begin(); iter != comment.ParameterReferences.end();)
 	{
-		const CommentRef& entry = *iter;
+		const CommentReference& entry = *iter;
 
 		auto iterFind = std::find_if(paramInfos.begin(), paramInfos.end(), 
 			[&entry](const VarInfo& varInfo)
 		{
-			return entry.name == varInfo.name;
+			return entry.Name == varInfo.name;
 		});
 
 		if (iterFind == paramInfos.end())
 		{
-			comment.genericRefs.push_back(entry);
-			iter = comment.paramRefs.erase(iter);
+			comment.TemplateParameterReferences.push_back(entry);
+			iter = comment.ParameterReferences.erase(iter);
 		}
 		else
 			++iter;
@@ -110,83 +113,6 @@ void updateParamRefComments(const std::vector<VarInfo>& paramInfos, CommentEntry
 void clearParamRefComments(CommentEntry& comment)
 {
 	updateParamRefComments({}, comment);
-}
-
-std::string getNamespace(const NamedDecl* decl)
-{
-	const DeclContext* context = decl->getDeclContext();
-
-	// Collect contexts.
-	SmallVector<const DeclContext *, 8> contexts;
-	while (context && isa<NamedDecl>(context))
-	{
-		contexts.push_back(context);
-		context = context->getParent();
-	}
-
-	std::string name;
-	raw_string_ostream ss(name);
-	for (const DeclContext* declContext : reverse(contexts))
-	{
-		if (const auto *ND = dyn_cast<NamespaceDecl>(declContext))
-		{
-			if (!ND->isAnonymousNamespace())
-				ss << *ND << "::";
-		}
-	}
-
-	return ss.str();
-}
-
-std::string getFullName(NamedDecl* decl)
-{
-	const DeclContext* context = decl->getDeclContext();
-
-	// Collect contexts.
-	SmallVector<const DeclContext *, 8> contexts;
-	while (context && isa<NamedDecl>(context)) 
-	{
-		contexts.push_back(context);
-		context = context->getParent();
-	}
-
-	std::string name;
-	raw_string_ostream ss(name);
-	for (const DeclContext* declContext : reverse(contexts))
-	{
-		if (const auto *ND = dyn_cast<NamespaceDecl>(declContext))
-		{
-			if (ND->isAnonymousNamespace())
-				ss << "(anonymous namespace)";
-			else
-				ss << *ND;
-		}
-		else if (const auto *RD = dyn_cast<RecordDecl>(declContext))
-		{
-			if (!RD->getIdentifier())
-				ss << "(anonymous " << RD->getKindName() << ')';
-			else
-				ss << *RD;
-		}
-		else if (const auto *ED = dyn_cast<EnumDecl>(declContext))
-		{
-			if (ED->isScoped() || ED->getIdentifier())
-				ss << *ED;
-			else
-				continue;
-		}
-		else
-			ss << *cast<NamedDecl>(declContext);
-
-		ss << "::";
-	}
-
-	if (decl->getDeclName() || isa<DecompositionDecl>(decl))
-		ss << *decl;
-	else
-		ss << "(anonymous)";
-
-	return ss.str();
 }
 
 void registerUserTypeInfo(const SmallVector<std::string, 4>& classNs, const std::string& className, ApiFlags api, 
@@ -231,7 +157,7 @@ void addEntryToFile(FileInfo& fileInfo, T& entry, const std::string& file, std::
 		addEntry(fileInfo, entry);
 }
 
-bool ScriptExportParser::parseType(QualType type, VarTypeInfo& outType, bool returnValue)
+bool BansheeCodeGeneratorASTVisitor::parseType(QualType type, VarTypeInfo& outType, bool returnValue)
 {
 	outType.flags = 0;
 	outType.arraySize = 0;
@@ -578,7 +504,7 @@ struct FunctionTypeInfo
 	VarTypeInfo returnType;
 };
 
-bool ScriptExportParser::parseEventSignature(QualType type, FunctionTypeInfo& typeInfo, bool& isCallback)
+bool BansheeCodeGeneratorASTVisitor::parseEventSignature(QualType type, FunctionTypeInfo& typeInfo, bool& isCallback)
 {
 	if (type->isStructureOrClassType())
 	{
@@ -1158,11 +1084,11 @@ bool isModule(const CXXRecordDecl* decl)
 	return false;
 }
 
-ScriptExportParser::ScriptExportParser(CompilerInstance* CI)
-	:astContext(&(CI->getASTContext())), preprocessor(CI->getPreprocessor())
+BansheeCodeGeneratorASTVisitor::BansheeCodeGeneratorASTVisitor(CompilerInstance* CI, CommentParser& commentParser)
+	:astContext(&(CI->getASTContext())), preprocessor(CI->getPreprocessor()), mCommentParser(commentParser)
 { }
 
-bool ScriptExportParser::evaluateLiteral(Expr* expr, std::string& evalValue)
+bool BansheeCodeGeneratorASTVisitor::evaluateLiteral(Expr* expr, std::string& evalValue)
 {
 	QualType type = expr->getType();
 	if (type->isBuiltinType())
@@ -1255,7 +1181,7 @@ bool ScriptExportParser::evaluateLiteral(Expr* expr, std::string& evalValue)
 	return false;
 }
 
-bool ScriptExportParser::evaluateExpression(Expr* expr, std::string& evalValue, std::string& valType)
+bool BansheeCodeGeneratorASTVisitor::evaluateExpression(Expr* expr, std::string& evalValue, std::string& valType)
 {
 	if (expr->isEvaluatable(*astContext))
 	{
@@ -1282,7 +1208,7 @@ bool ScriptExportParser::evaluateExpression(Expr* expr, std::string& evalValue, 
 	if(declRefExpr)
 	{
 		ValueDecl* decl = declRefExpr->getDecl();
-		std::string name = getFullName(decl);
+		const std::string name = ParserUtility::GetFullName(decl);
 
 		if(name == (sFrameworkCppNs + "::StringUtil::BLANK") || name == (sFrameworkCppNs + "::StringUtil::WBLANK"))
 		{
@@ -1367,479 +1293,7 @@ bool ScriptExportParser::evaluateExpression(Expr* expr, std::string& evalValue, 
 	return true;
 }
 
-bool ScriptExportParser::parseJavadocComments(const Decl* decl, CommentEntry& output)
-{
-	comments::FullComment* comment = astContext->getCommentForDecl(decl, nullptr);
-	if (comment == nullptr)
-		return false;
-
-	const comments::CommandTraits& traits = astContext->getCommentCommandTraits();
-
-	comments::BlockCommandComment* brief = nullptr;
-	comments::BlockCommandComment* returns = nullptr;
-	std::vector<comments::ParagraphComment*> headerParagraphs;
-	SmallVector<comments::ParamCommandComment*, 5> params;
-
-	auto commentIter = comment->child_begin();
-	while (commentIter != comment->child_end())
-	{
-		comments::Comment* childComment = *commentIter;
-		int kind = childComment->getCommentKind();
-
-		switch (kind)
-		{
-		case comments::Comment::CommentKind::NoCommentKind:
-			break;
-		case comments::Comment::CommentKind::BlockCommandCommentKind:
-		{
-			comments::BlockCommandComment* blockComment = cast<comments::BlockCommandComment>(childComment);
-			const comments::CommandInfo *commandInfo = traits.getCommandInfo(blockComment->getCommandID());
-
-			if (brief == nullptr && commandInfo->IsBriefCommand)
-				brief = blockComment;
-
-			if (returns == nullptr && commandInfo->IsReturnsCommand)
-				returns = blockComment;
-
-			break;
-		}
-		case comments::Comment::CommentKind::ParagraphCommentKind:
-		{
-			comments::ParagraphComment* paragraphComment = cast<comments::ParagraphComment>(childComment);
-
-			if (!paragraphComment->isWhitespace())
-				headerParagraphs.push_back(paragraphComment);
-
-			break;
-		}
-		case comments::Comment::CommentKind::ParamCommandCommentKind:
-		{
-			comments::ParamCommandComment* paramComment = cast<comments::ParamCommandComment>(childComment);
-
-			if (paramComment->hasParamName() && paramComment->hasNonWhitespaceParagraph())
-				params.push_back(paramComment);
-
-			break;
-		}
-		}
-
-		++commentIter;
-	}
-
-	bool hasAnyData = false;
-	auto parseParagraphComments = [&traits, &hasAnyData, this](const std::vector<comments::ParagraphComment*>& paragraphs, 
-		SmallVector<CommentText, 2>& output)
-	{
-		auto getTrimmedText = [](const StringRef& input, std::stringstream& output)
-		{
-			bool lastIsSpace = false;
-			for (auto& entry : input)
-			{
-				if (lastIsSpace)
-				{
-					if (entry == ' ' || entry == '\t')
-						continue;
-
-					output << entry;
-					lastIsSpace = false;
-				}
-				else
-				{
-					if (entry == ' ')
-						lastIsSpace = true;
-
-					if (entry == '\t')
-					{
-						output << " ";
-						lastIsSpace = true;
-					}
-					else
-						output << entry;
-				}
-			}
-		};
-
-		int nativeDoc = 0;
-		for (auto& paragraph : paragraphs)
-		{
-			CommentText commentText;
-
-			std::stringstream paragraphText;
-			auto childIter = paragraph->child_begin();
-
-			uint32_t refsTotalSize = 0;
-			while (childIter != paragraph->child_end())
-			{
-				comments::Comment* childComment = *childIter;
-				int kind = childComment->getCommentKind();
-
-				if (kind == comments::Comment::CommentKind::TextCommentKind)
-				{
-					if (nativeDoc <= 0)
-					{
-						comments::TextComment* textCommand = cast<comments::TextComment>(childComment);
-
-						StringRef text = textCommand->getText();
-						if (text.empty())
-						{
-							++childIter;
-							continue;
-						}
-
-						getTrimmedText(text, paragraphText);
-						hasAnyData = true;
-					}
-				}
-				else if (kind == comments::Comment::CommentKind::InlineCommandCommentKind)
-				{
-					comments::InlineCommandComment* inlineCommand = cast<comments::InlineCommandComment>(childComment);
-
-					std::string name = inlineCommand->getCommandName(traits).str();
-					if (name == "copydoc")
-					{
-						if(nativeDoc <= 0 && inlineCommand->getNumArgs() > 0)
-						{
-							const StringRef argument = inlineCommand->getArgText(0);
-							commentText.text = "@copydoc " + argument.str();
-
-							// Note: We don't support any other comment along with copydoc at the moment
-							output.push_back(commentText);
-							break;
-						}
-					}
-					else if (name == "native")
-						nativeDoc++;
-					else if (name == "endnative")
-						nativeDoc--;
-					else if(name == "p" || name == "see")
-					{
-						if(nativeDoc <= 0 && inlineCommand->getNumArgs() > 0)
-						{
-							int orgg = paragraphText.tellg();
-							paragraphText.seekg(0, std::ios::end);
-							int size = paragraphText.tellg();
-							paragraphText.seekg(orgg, std::ios::beg);
-
-							CommentRef ref;
-							ref.index = size + refsTotalSize;
-
-							StringRef refArg = inlineCommand->getArgText(0);
-							if (refArg.endswith(".") || refArg.endswith(","))
-							{
-								paragraphText << refArg[refArg.size() - 1];
-								refArg = refArg.substr(0, refArg.size() - 1);
-							}
-
-							ref.name = refArg.str();
-
-							if (name == "p")
-								commentText.paramRefs.push_back(ref);
-							else if (name == "see")
-								commentText.genericRefs.push_back(ref);
-
-							refsTotalSize += ref.name.size();
-						}
-					}
-				}
-
-				++childIter;
-			}
-
-			std::string paragraphStr = paragraphText.str();
-			StringRef trimmedText(paragraphStr.data(), paragraphStr.length());
-
-			size_t leftTrimmedCount = trimmedText.find_first_not_of(" \t\n\v\f\r");
-			if(leftTrimmedCount != StringRef::npos)
-			{
-				for (auto& entry : commentText.paramRefs)
-					entry.index -= leftTrimmedCount;
-
-				for (auto& entry : commentText.genericRefs)
-					entry.index -= leftTrimmedCount;
-			}
-			
-			trimmedText = trimmedText.trim();
-
-			if (!trimmedText.empty() || !commentText.paramRefs.empty() || !commentText.genericRefs.empty())
-			{
-				commentText.text = trimmedText.str();
-				output.push_back(commentText);
-			}
-		}
-	};
-
-	if (brief != nullptr)
-		parseParagraphComments({ brief->getParagraph() }, output.brief);
-
-	parseParagraphComments(headerParagraphs, output.brief);
-
-	for (auto& entry : params)
-	{
-		CommentParamEntry paramEntry;
-
-		if (entry->isParamIndexValid())
-			paramEntry.name = entry->getParamName(comment).str();
-		else
-			paramEntry.name = entry->getParamNameAsWritten().str();
-
-		parseParagraphComments({ entry->getParagraph() }, paramEntry.comments);
-
-		output.params.push_back(paramEntry);
-	}
-
-	if (returns != nullptr)
-		parseParagraphComments({ returns->getParagraph() }, output.returns);
-
-	return hasAnyData;
-}
-
-void ScriptExportParser::parseCommentInfo(const FunctionDecl* decl, CommentInfo& commentInfo)
-{
-	const FunctionProtoType* ft = nullptr;
-	if (decl->hasWrittenPrototype())
-		ft = dyn_cast<FunctionProtoType>(decl->getType()->castAs<FunctionProtoType>());
-
-	CommentMethodInfo methodInfo;
-	if (ft)
-	{
-		std::string currentNS = getNamespace(decl);
-		std::string constQualifier = "const ";
-
-		const unsigned numParams = decl->getNumParams();
-		for (unsigned i = 0; i < numParams; ++i)
-		{
-			QualType type = decl->getParamDecl(i)->getType();
-
-			std::stringstream typeStream;
-			std::string typeName = type.getAsString(astContext->getPrintingPolicy());
-
-			const std::string::size_type constPos = typeName.find(constQualifier);
-			bool hasConst = false;
-			if (constPos != std::string::npos)
-			{
-				typeName.erase(constPos, constQualifier.length());
-				hasConst = true;
-			}
-
-			typeName.erase(std::remove_if(typeName.begin(), typeName.end(), [](const char& val)
-			{
-				return isspace(val) || val == '&' || val == '*';
-			}), typeName.end());
-
-			const std::string::size_type nsPos = typeName.find(currentNS);
-			if (nsPos != std::string::npos)
-				typeName.erase(nsPos, currentNS.length());
-
-			if (hasConst)
-				typeStream << "const ";
-
-			typeStream << typeName;
-
-			if (type->isReferenceType())
-				typeStream << "&";
-			else if (type->isPointerType())
-				typeStream << "*";
-
-			methodInfo.params.push_back(typeStream.str());
-		}
-	}
-
-	commentInfo.overloads.push_back(methodInfo);
-}
-
-void ScriptExportParser::parseCommentInfo(const NamedDecl* decl, CommentInfo& commentInfo)
-{
-	commentInfo.isFunction = false;
-
-	const DeclContext* context = decl->getDeclContext();
-	SmallVector<const NamedDecl *, 8> contexts;
-
-	// Collect contexts
-	if(dyn_cast<NamedDecl>(context) != decl)
-		contexts.push_back(decl);
-
-	while (context && isa<NamedDecl>(context)) 
-	{
-		contexts.push_back(dyn_cast<NamedDecl>(context));
-		context = context->getParent();
-	}
-
-	SmallVector<std::string, 2> typeName;
-	for (const NamedDecl* dc : reverse(contexts))
-	{
-		if (const auto* nd = dyn_cast<NamespaceDecl>(dc)) 
-		{
-			if (!nd->isAnonymousNamespace())
-				commentInfo.namespaces.push_back(nd->getDeclName().getAsString());
-		}
-		else if (const auto* rd = dyn_cast<RecordDecl>(dc)) 
-		{
-			if (rd->getIdentifier())
-				typeName.push_back(rd->getDeclName().getAsString());
-		}
-		else if (const auto* fd = dyn_cast<FunctionDecl>(dc)) 
-		{
-			parseCommentInfo(fd, commentInfo);
-
-			typeName.push_back(fd->getDeclName().getAsString());
-			commentInfo.isFunction = true;
-		}
-		else if (const auto* ed = dyn_cast<EnumDecl>(dc)) {
-			if (ed->isScoped() || ed->getIdentifier())
-				typeName.push_back(ed->getDeclName().getAsString());
-		}
-		else 
-		{
-			typeName.push_back(cast<NamedDecl>(dc)->getDeclName().getAsString());
-		}
-	}
-
-	std::stringstream typeNameStream;
-	for(int i = 0; i < (int)typeName.size(); i++)
-	{
-		if (i > 0)
-			typeNameStream << "::";
-
-		typeNameStream << typeName[i];
-	}
-
-	commentInfo.name = typeNameStream.str();
-
-	std::stringstream fullTypeNameStream;
-	for(int i = 0; i < (int)commentInfo.namespaces.size(); i++)
-	{
-		if (i > 0)
-			fullTypeNameStream << "::";
-
-		fullTypeNameStream << commentInfo.namespaces[i];
-	}
-
-	fullTypeNameStream << "::" << commentInfo.name;
-	commentInfo.fullName = fullTypeNameStream.str();
-}
-
-void ScriptExportParser::parseComments(const NamedDecl* decl, CommentInfo& commentInfo)
-{
-	auto iterFind = commentFullLookup.find(commentInfo.fullName);
-	if (iterFind == commentFullLookup.end())
-	{
-		bool hasComment;
-		if (commentInfo.isFunction)
-			hasComment = parseJavadocComments(decl, commentInfo.overloads[0].comment);
-		else
-			hasComment = parseJavadocComments(decl, commentInfo.comment);
-
-		if (!hasComment)
-			return;
-
-		commentFullLookup[commentInfo.fullName] = (int)commentInfos.size();
-
-		SmallVector<int, 2>& entries = commentSimpleLookup[commentInfo.name];
-		entries.push_back((int)commentInfos.size());
-
-		commentInfos.push_back(commentInfo);
-	}
-	else if(commentInfo.isFunction) // Can be an overload
-	{
-		CommentInfo& existingInfo = commentInfos[iterFind->second];
-
-		bool foundExisting = false;
-		for(auto& paramInfo : existingInfo.overloads)
-		{
-			int numParams = paramInfo.params.size();
-			if (numParams != commentInfo.overloads[0].params.size())
-				continue;
-
-			bool paramsMatch = true;
-			for(int i = 0; i < numParams; i++)
-			{
-				if(paramInfo.params[i] != commentInfo.overloads[0].params[i])
-				{
-					paramsMatch = false;
-					break;
-				}
-			}
-
-			if(paramsMatch)
-			{
-				foundExisting = true;
-				break;
-			}
-		}
-
-		if(!foundExisting)
-		{
-			bool hasComment = parseJavadocComments(decl, commentInfo.overloads[0].comment);
-			if (hasComment)
-				existingInfo.overloads.push_back(commentInfo.overloads[0]);
-		}
-	}
-}
-
-void ScriptExportParser::parseComments(const CXXRecordDecl* decl)
-{
-	if (!decl->isCompleteDefinition())
-		return;
-
-	CommentInfo commentInfo;
-	parseCommentInfo(decl, commentInfo);
-	parseComments(decl, commentInfo);
-
-	std::stack<const CXXRecordDecl*> todo;
-	todo.push(decl);
-
-	while (!todo.empty())
-	{
-		const CXXRecordDecl* curDecl = todo.top();
-		todo.pop();
-
-		for (auto I = curDecl->method_begin(); I != curDecl->method_end(); ++I)
-		{
-			if (I->isImplicit())
-				continue;
-
-			if (const auto* fd = dyn_cast<FunctionDecl>(*I))
-			{
-				CommentInfo methodCommentInfo;
-				methodCommentInfo.isFunction = true;
-				methodCommentInfo.namespaces = commentInfo.namespaces;
-				methodCommentInfo.name = commentInfo.name + "::" + I->getDeclName().getAsString();
-				methodCommentInfo.fullName = commentInfo.fullName + "::" + I->getDeclName().getAsString();
-
-				parseCommentInfo(fd, methodCommentInfo);
-				parseComments(fd, methodCommentInfo);
-			}
-		}
-
-		for (auto I = curDecl->field_begin(); I != curDecl->field_end(); ++I)
-		{
-			if (const auto* fd = dyn_cast<FieldDecl>(*I))
-			{
-				CommentInfo fieldCommentInfo;
-				fieldCommentInfo.isFunction = false;
-				fieldCommentInfo.namespaces = commentInfo.namespaces;
-				fieldCommentInfo.name = commentInfo.name + "::" + I->getDeclName().getAsString();
-				fieldCommentInfo.fullName = commentInfo.fullName + "::" + I->getDeclName().getAsString();
-
-				parseComments(fd, fieldCommentInfo);
-			}
-		}
-
-		auto iter = curDecl->bases_begin();
-		while (iter != curDecl->bases_end())
-		{
-			const CXXBaseSpecifier* baseSpec = iter;
-			CXXRecordDecl* baseDecl = baseSpec->getType()->getAsCXXRecordDecl();
-
-			if(baseDecl != nullptr)
-				todo.push(baseDecl);
-
-			iter++;
-		}
-	}
-}
-
-bool ScriptExportParser::parseEvent(ValueDecl* decl, const std::string& className, MethodInfo& eventInfo)
+bool BansheeCodeGeneratorASTVisitor::parseEvent(ValueDecl* decl, const std::string& className, MethodInfo& eventInfo)
 {
 	AnnotateAttr* fieldAttr = decl->getAttr<AnnotateAttr>();
 	if (fieldAttr == nullptr)
@@ -1879,7 +1333,7 @@ bool ScriptExportParser::parseEvent(ValueDecl* decl, const std::string& classNam
 	eventInfo.externalClass = className;
 	eventInfo.visibility = parsedEventInfo.visibility;
 	eventInfo.api = apiFromExportFlags(parsedEventInfo.exportFlags);
-	parseJavadocComments(decl, eventInfo.documentation);
+	mCommentParser.ParseComments(decl, eventInfo.documentation);
 	clearParamRefComments(eventInfo.documentation);
 
 	if (!eventSignature.returnType.typeName.empty())
@@ -1925,11 +1379,9 @@ void parseNamespace(NamedDecl* decl, SmallVector<std::string, 4>& output)
 	}
 }
 
-bool ScriptExportParser::VisitEnumDecl(EnumDecl* decl)
+bool BansheeCodeGeneratorASTVisitor::VisitEnumDecl(EnumDecl* decl)
 {
-	CommentInfo commentInfo;
-	parseCommentInfo(decl, commentInfo);
-	parseComments(decl, commentInfo);
+	mCommentParser.ParseAndRegisterAllComments(decl);
 
 	AnnotateAttr* attr = decl->getAttr<AnnotateAttr>();
 	if (attr == nullptr)
@@ -1965,7 +1417,7 @@ bool ScriptExportParser::VisitEnumDecl(EnumDecl* decl)
 	enumEntry.visibility = parsedEnumInfo.visibility;
 	enumEntry.api = apiFromExportFlags(parsedEnumInfo.exportFlags);
 	enumEntry.module = parsedEnumInfo.moduleName;
-	parseJavadocComments(decl, enumEntry.documentation);
+	mCommentParser.ParseComments(decl, enumEntry.documentation);
 	clearParamRefComments(enumEntry.documentation);
 
 	parseNamespace(decl, enumEntry.ns);
@@ -2010,7 +1462,7 @@ bool ScriptExportParser::VisitEnumDecl(EnumDecl* decl)
 		EnumEntryInfo entryInfo;
 		entryInfo.name = entryName.str();
 		entryInfo.scriptName = parsedEnumEntryInfo.exportName;
-		parseJavadocComments(constDecl, entryInfo.documentation);
+		mCommentParser.ParseComments(constDecl, entryInfo.documentation);
 		clearParamRefComments(entryInfo.documentation);
 
 		SmallString<5> valueStr;
@@ -2028,7 +1480,7 @@ bool ScriptExportParser::VisitEnumDecl(EnumDecl* decl)
 }
 
 
-std::string ScriptExportParser::parseTemplArguments(const std::string& className, const TemplateArgument* tmplArgs, unsigned numArgs, SmallVector<TemplateParamInfo, 0>* templParams)
+std::string BansheeCodeGeneratorASTVisitor::parseTemplArguments(const std::string& className, const TemplateArgument* tmplArgs, unsigned numArgs, SmallVector<TemplateParamInfo, 0>* templParams)
 {
 	std::stringstream tmplArgsStream;
 	tmplArgsStream << "<";
@@ -2079,9 +1531,9 @@ std::string ScriptExportParser::parseTemplArguments(const std::string& className
 	return tmplArgsStream.str();
 }
 
-bool ScriptExportParser::VisitCXXRecordDecl(CXXRecordDecl* decl)
+bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 {
-	parseComments(decl);
+	mCommentParser.ParseAndRegisterAllComments(decl);
 
 	AnnotateAttr* attr = decl->getAttr<AnnotateAttr>();
 	if (attr == nullptr)
@@ -2131,7 +1583,7 @@ bool ScriptExportParser::VisitCXXRecordDecl(CXXRecordDecl* decl)
 		structInfo.templParams = templParams;
 		structInfo.api = apiFromExportFlags(parsedClassInfo.exportFlags);
 
-		parseJavadocComments(templatedDecl, structInfo.documentation);
+		mCommentParser.ParseComments(templatedDecl, structInfo.documentation);
 		parseNamespace(decl, structInfo.ns);
 		clearParamRefComments(structInfo.documentation);
 
@@ -2165,7 +1617,7 @@ bool ScriptExportParser::VisitCXXRecordDecl(CXXRecordDecl* decl)
 					}
 				}
 
-				parseJavadocComments(ctorDecl, ctorInfo.documentation);
+				mCommentParser.ParseComments(ctorDecl, ctorInfo.documentation);
 
 				bool skippedDefaultArgument = false;
 				for (auto I = ctorDecl->param_begin(); I != ctorDecl->param_end(); ++I)
@@ -2434,7 +1886,7 @@ bool ScriptExportParser::VisitCXXRecordDecl(CXXRecordDecl* decl)
 				if (!fieldInfo.defaultValue.empty())
 					hasDefaultValue = true;
 
-				parseJavadocComments(fieldDecl, fieldInfo.documentation);
+				mCommentParser.ParseComments(fieldDecl, fieldInfo.documentation);
 				clearParamRefComments(fieldInfo.documentation);
 
 				structInfo.fields.push_back(fieldInfo);
@@ -2482,7 +1934,7 @@ bool ScriptExportParser::VisitCXXRecordDecl(CXXRecordDecl* decl)
 		classInfo.baseClass = parseExportableBaseClass(decl);
 		classInfo.module = parsedClassInfo.moduleName;
 		classInfo.templParams = templParams;
-		parseJavadocComments(templatedDecl, classInfo.documentation);
+		mCommentParser.ParseComments(templatedDecl, classInfo.documentation);
 		clearParamRefComments(classInfo.documentation);
 
 		parseNamespace(decl, classInfo.ns);
@@ -2536,7 +1988,7 @@ bool ScriptExportParser::VisitCXXRecordDecl(CXXRecordDecl* decl)
 					methodInfo.flags = (int)MethodFlags::Constructor;
 					methodInfo.visibility = parsedMethodInfo.visibility;
 					methodInfo.api = apiFromExportFlags(parsedMethodInfo.exportFlags);
-					parseJavadocComments(ctorDecl, methodInfo.documentation);
+					mCommentParser.ParseComments(ctorDecl, methodInfo.documentation);
 
 					if ((parsedMethodInfo.exportFlags & (int)ExportFlags::InteropOnly))
 						methodInfo.flags |= (int)MethodFlags::InteropOnly;
@@ -2644,7 +2096,7 @@ bool ScriptExportParser::VisitCXXRecordDecl(CXXRecordDecl* decl)
 				methodInfo.visibility = parsedMethodInfo.visibility;
 				methodInfo.api = apiFromExportFlags(parsedMethodInfo.exportFlags);
 				methodInfo.style = parsedMethodInfo.style;
-				parseJavadocComments(methodDecl, methodInfo.documentation);
+				mCommentParser.ParseComments(methodDecl, methodInfo.documentation);
 
 				bool isProperty = (parsedMethodInfo.exportFlags & ((int)ExportFlags::PropertyGetter | (int)ExportFlags::PropertySetter));
 
@@ -2818,7 +2270,7 @@ bool ScriptExportParser::VisitCXXRecordDecl(CXXRecordDecl* decl)
 
 					fieldInfo.style = parsedFieldInfo.style;
 
-					parseJavadocComments(fieldDecl, fieldInfo.documentation);
+					mCommentParser.ParseComments(fieldDecl, fieldInfo.documentation);
 					clearParamRefComments(fieldInfo.documentation);
 
 					classInfo.fieldInfos.push_back(fieldInfo);

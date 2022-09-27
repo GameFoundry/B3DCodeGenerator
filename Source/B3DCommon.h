@@ -205,31 +205,35 @@ struct VarInfo : VarTypeInfo
 struct ReturnInfo : VarTypeInfo
 { };
 
-struct CommentRef
+/** Represents a reference to another type, method or parameter within a comment. */
+struct CommentReference
 {
-	uint32_t index;
-	std::string name;
+	uint32_t PositionInText; /**< Position in the corresponding text, at which to insert the reference. */
+	std::string Name; /**< Name of the type, method, field or parameter that's being referenced. */
 };
 
+/** Contains a single paragraph of comment text for a particular type, method, field or parameter. */
 struct CommentText
 {
-	std::string text;
-	SmallVector<CommentRef, 2> paramRefs;
-	SmallVector<CommentRef, 2> genericRefs;
+	std::string Text;
+	SmallVector<CommentReference, 2> ParameterReferences; /**< Locations within @p text at which parameters are referenced. */
+	SmallVector<CommentReference, 2> TemplateParameterReferences; /**< Locations within @p text at which template parameters are referenced. */
 };
 
-struct CommentParamEntry
+/** Contains zero or multiple paragraphs of comment text for a method parameter. */
+struct CommentParameterEntry
 {
-	std::string name;
-	SmallVector<CommentText, 2> comments;
+	std::string Name; /**< Name of the parameter that's being commented. */
+	SmallVector<CommentText, 2> comments; /**< Zero or multiple comment text paragraphs. */
 };
 
+/** Contains comment text for a particular type, method or field. */
 struct CommentEntry
 {
-	SmallVector<CommentText, 2> brief;
+	SmallVector<CommentText, 2> brief; /**< Summary comment describing the type, method or field. */
 
-	SmallVector<CommentParamEntry, 4> params;
-	SmallVector<CommentText, 2> returns;
+	SmallVector<CommentParameterEntry, 4> params; /**< Comments for method parameters, if this is a method comment. */
+	SmallVector<CommentText, 2> returns; /**< Zero or multiple comment paragraphs describing method return value, if this is a method comment. */
 };
 
 struct FieldInfo : VarInfo
@@ -428,22 +432,22 @@ struct IncludesInfo
 	std::unordered_map<std::string, ForwardDeclInfo> fwdDecls;
 };
 
-struct CommentMethodInfo
+struct CommentMethodInformation
 {
 	SmallVector<std::string, 3> params;
 	CommentEntry comment;
 };
 
-struct CommentInfo
+struct CommentInformation
 {
 	std::string name;
 	std::string fullName;
 
 	SmallVector<std::string, 2> namespaces;
-	SmallVector<CommentMethodInfo, 2> overloads;
+	SmallVector<CommentMethodInformation, 2> overloads;
 
 	CommentEntry comment;
-	bool isFunction;
+	bool isFunction = false;
 };
 
 struct BaseClassInfo
@@ -466,9 +470,20 @@ extern std::unordered_map<std::string, UserTypeInfo> cppToCsTypeMap;
 extern std::unordered_map<std::string, FileInfo> outputFileInfos;
 extern std::unordered_map<std::string, ExternalClassInfos> externalClassInfos;
 extern std::unordered_map<std::string, BaseClassInfo> baseClassLookup;
-extern std::vector<CommentInfo> commentInfos;
-extern std::unordered_map<std::string, int> commentFullLookup;
-extern std::unordered_map<std::string, SmallVector<int, 2>> commentSimpleLookup;
+
+inline StructInfo* findStructInfo(const std::string& name)
+{
+	for (auto& fileInfo : outputFileInfos)
+	{
+		for (auto& structInfo : fileInfo.second.structInfos)
+		{
+			if (structInfo.name == name)
+				return &structInfo;
+		}
+	}
+
+	return nullptr;
+};
 
 inline bool mapBuiltinTypeToCSType(BuiltinType::Kind kind, std::string& output)
 {

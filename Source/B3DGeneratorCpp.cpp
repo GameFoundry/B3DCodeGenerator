@@ -1,5 +1,7 @@
-#include "common.h"
+#include "B3DCommon.h"
 #include <chrono>
+
+#include "B3DCommentParser.h"
 
 std::string getInteropCppVarType(const std::string& typeName, ::ParsedType type, int flags, bool forStruct = false)
 {
@@ -495,1240 +497,6 @@ bool hasParameterlessConstructor(const ClassInfo& classInfo)
 	}
 
 	return false;
-}
-
-void gatherIncludes(const std::string& typeName, int flags, bool isEditor, IncludesInfo& output)
-{
-	UserTypeInfo typeInfo = getTypeInfo(typeName, flags);
-	if (typeInfo.type == ::ParsedType::Class || typeInfo.type == ::ParsedType::ReflectableClass ||
-		typeInfo.type == ::ParsedType::Struct || typeInfo.type == ::ParsedType::Component ||
-		typeInfo.type == ::ParsedType::SceneObject || typeInfo.type == ::ParsedType::Resource ||
-		typeInfo.type == ::ParsedType::Enum)
-	{
-		auto iterFind = output.includes.find(typeName);
-		if (iterFind == output.includes.end())
-		{
-			uint32_t sourceIncludeType = 0;
-			uint32_t interopIncludeType = typeInfo.type != ::ParsedType::Enum ? IT_IMPL : 0;
-			bool isStruct = false;
-
-			if(getPassAsResourceRef(flags))
-			{
-				sourceIncludeType = IT_IMPL;
-				interopIncludeType = 0;
-			}
-			
-			if(typeInfo.type == ::ParsedType::Struct && !isComplexStruct(flags))
-			{
-				sourceIncludeType = IT_HEADER;
-				isStruct = true;
-			}
-
-			// If enum or passed by value we need to include the header for the source type
-			if(typeInfo.type == ::ParsedType::Enum || isSrcValue(flags))
-				sourceIncludeType = IT_HEADER;
-
-			// If a class is being passed by reference or a raw pointer then we need the declaration because we perform
-			// assignment copy
-			if (isClassType(typeInfo.type) && !isSrcSPtr(flags))
-				sourceIncludeType = IT_HEADER;
-
-			output.includes[typeName] = IncludeInfo(typeName, typeInfo, sourceIncludeType, interopIncludeType, isStruct, isEditor);
-		}
-
-		if (isClassType(typeInfo.type))
-		{
-			bool isBase = isBaseParam(flags);
-			if (isBase)
-			{
-				std::vector<std::string> derivedClasses;
-				getDerivedClasses(typeName, derivedClasses);
-
-				for (auto& entry : derivedClasses)
-					output.includes[entry] = IncludeInfo(entry, getTypeInfo(entry, 0), IT_IMPL, IT_IMPL, false, isEditor);
-
-				output.requiresRTTI = true;
-			}
-		}
-	}
-
-	if (typeInfo.type == ::ParsedType::Struct && isComplexStruct(flags))
-		output.fwdDecls[typeName] = { typeInfo.ns, getStructInteropType(typeName), true };
-
-	if (typeInfo.type == ::ParsedType::Resource)
-	{
-		output.requiresResourceManager = true;
-
-		if (getPassAsResourceRef(flags))
-			output.requiresRRef = true;
-	}
-	else if (typeInfo.type == ::ParsedType::Component || typeInfo.type == ::ParsedType::SceneObject)
-		output.requiresGameObjectManager = true;
-
-   if(getIsAsyncOp(flags))
-	   output.requiresAsyncOp = true;
-}
-
-void gatherIncludes(const MethodInfo& methodInfo, bool isEditor, IncludesInfo& output)
-{
-	bool returnAsParameter = false;
-	if (!methodInfo.returnInfo.typeName.empty())
-		gatherIncludes(methodInfo.returnInfo.typeName, methodInfo.returnInfo.flags, isEditor, output);
-
-	for (auto I = methodInfo.paramInfos.begin(); I != methodInfo.paramInfos.end(); ++I)
-		gatherIncludes(I->typeName, I->flags, isEditor, output);
-
-	if((methodInfo.flags & (int)MethodFlags::External) != 0)
-	{
-		auto iterFind = output.includes.find(methodInfo.externalClass);
-		if (iterFind == output.includes.end())
-		{
-			UserTypeInfo typeInfo = getTypeInfo(methodInfo.externalClass, 0);
-			output.includes[methodInfo.externalClass] = IncludeInfo(methodInfo.externalClass, typeInfo, IT_FWD_AND_IMPL, 0, false, isEditor);
-		}
-	}
-}
-
-void gatherIncludes(const FieldInfo& fieldInfo, bool isEditor, IncludesInfo& output)
-{
-	UserTypeInfo fieldTypeInfo = getTypeInfo(fieldInfo.typeName, fieldInfo.flags);
-
-	// These types never require additional includes
-	if (fieldTypeInfo.type == ::ParsedType::Builtin || fieldTypeInfo.type == ::ParsedType::String ||
-		fieldTypeInfo.type == ::ParsedType::WString || fieldTypeInfo.type == ::ParsedType::Path)
-		return;
-
-	// If passed by value, we needs its header in our header
-	if (isSrcValue(fieldInfo.flags))
-	{
-		bool complexStruct = isComplexStruct(fieldInfo.flags);
-
-		output.includes[fieldInfo.typeName] = IncludeInfo(fieldInfo.typeName, fieldTypeInfo, IT_HEADER, complexStruct ? IT_HEADER : 0, false, isEditor);
-	}
-
-	if (fieldTypeInfo.type == ::ParsedType::Class || fieldTypeInfo.type == ::ParsedType::ReflectableClass ||
-		fieldTypeInfo.type == ::ParsedType::Struct || fieldTypeInfo.type == ::ParsedType::Component ||
-		fieldTypeInfo.type == ::ParsedType::SceneObject || fieldTypeInfo.type == ::ParsedType::Resource)
-	{
-		bool isRRef = getPassAsResourceRef(fieldInfo.flags);
-
-		if (!fieldTypeInfo.destFile.empty() || isRRef)
-		{
-			std::string name = "__" + fieldInfo.typeName;
-			output.includes[name] = IncludeInfo(fieldInfo.typeName, fieldTypeInfo, IT_IMPL, IT_IMPL, false, isEditor);
-		}
-
-		if (fieldTypeInfo.type == ::ParsedType::Resource)
-		{
-			output.requiresResourceManager = true;
-
-			if (getPassAsResourceRef(fieldInfo.flags))
-				output.requiresRRef = true;
-		}
-		else if (fieldTypeInfo.type == ::ParsedType::Component || fieldTypeInfo.type == ::ParsedType::SceneObject)
-			output.requiresGameObjectManager = true;
-		else if(fieldTypeInfo.type == ::ParsedType::Class || fieldTypeInfo.type == ::ParsedType::ReflectableClass)
-		{
-			bool isBase = isBaseParam(fieldInfo.flags);
-			if (isBase)
-			{
-				std::vector<std::string> derivedClasses;
-				getDerivedClasses(fieldInfo.typeName, derivedClasses);
-
-				for(auto& entry : derivedClasses)
-					output.includes[entry] = IncludeInfo(entry, getTypeInfo(entry, 0), IT_IMPL, IT_IMPL, false, isEditor);
-
-				output.requiresRTTI = true;
-			}
-		}
-
-		if (getIsAsyncOp(fieldInfo.flags))
-			output.requiresAsyncOp = true;
-	}
-}
-
-void gatherIncludes(const ClassInfo& classInfo, IncludesInfo& output)
-{
-	bool isEditor = hasAPIBED(classInfo.api);
-
-	for (auto& methodInfo : classInfo.ctorInfos)
-		gatherIncludes(methodInfo, isEditor, output);
-
-	for (auto& methodInfo : classInfo.methodInfos)
-		gatherIncludes(methodInfo, isEditor, output);
-
-	for (auto& eventInfo : classInfo.eventInfos)
-		gatherIncludes(eventInfo, isEditor, output);
-}
-
-void gatherIncludes(const StructInfo& structInfo, IncludesInfo& output)
-{
-	bool isEditor = hasAPIBED(structInfo.api);
-
-	if (structInfo.requiresInterop)
-	{
-		for (auto& fieldInfo : structInfo.fields)
-			gatherIncludes(fieldInfo, isEditor, output);
-	}
-}
-
-bool parseCopydocString(const std::string& str, const std::string& parentType, const SmallVector<std::string, 4>& curNS, CommentEntry& outputComment)
-{
-	StringRef inputStr(str.data(), str.length());
-	inputStr = inputStr.trim();
-
-	bool hasParamList = inputStr.find('(') != -1;
-
-	StringRef fullTypeName;
-	StringRef params;
-
-	if (hasParamList)
-	{
-		auto paramSplit = inputStr.split('(');
-
-		fullTypeName = paramSplit.first.trim();
-		params = paramSplit.second.trim(") \t\n\v\f\r");
-	}
-	else
-	{
-		fullTypeName = inputStr;
-	}
-
-	SmallVector<StringRef, 4> typeSplits;
-	fullTypeName.split(typeSplits, "::", -1, false);
-
-	if (typeSplits.empty())
-		typeSplits.push_back(fullTypeName);
-
-	// Find matching type (no namespace)
-	int namespaceStart = -1;
-	std::string simpleTypeName;
-	SmallVector<int, 2> lookup;
-
-	if (typeSplits.size() > 1)
-	{
-		simpleTypeName = typeSplits[typeSplits.size() - 2].str() + "::" + typeSplits[typeSplits.size() - 1].str();
-		namespaceStart = 2;
-
-		auto iterFind = commentSimpleLookup.find(simpleTypeName);
-		if (iterFind == commentSimpleLookup.end())
-		{
-			simpleTypeName = typeSplits[typeSplits.size() - 1].str();
-			iterFind = commentSimpleLookup.find(simpleTypeName);
-			namespaceStart = 1;
-		}
-
-		if (iterFind == commentSimpleLookup.end())
-		{
-			outs() << "Warning: Cannot find identifier referenced by the @copydoc command: \"" << str << "\".\n";
-			return false;
-		}
-		else
-			lookup = iterFind->second;
-	}
-	else
-	{
-		simpleTypeName = typeSplits[typeSplits.size() - 1].str();
-		namespaceStart = 1;
-
-		auto iterFind = commentSimpleLookup.find(simpleTypeName);
-		if (iterFind == commentSimpleLookup.end())
-		{
-			// Try appending the parent type
-			simpleTypeName = parentType + "::" + simpleTypeName;
-
-			iterFind = commentSimpleLookup.find(simpleTypeName);
-			if (iterFind == commentSimpleLookup.end())
-			{
-				outs() << "Warning: Cannot find identifier referenced by the @copydoc command: \"" << str << "\".\n";
-				return false;
-			}
-			else
-				lookup = iterFind->second;
-		}
-		else
-			lookup = iterFind->second;
-	}
-
-	// Confirm namespace matches
-	SmallVector<std::string, 4> copydocNS;
-	for (int i = 0; i < (int)(typeSplits.size() - namespaceStart); i++)
-		copydocNS.push_back(typeSplits[i].str());
-
-	SmallVector<std::string, 4> fullNS;
-	for (int i = 0; i < (int)curNS.size(); i++)
-		fullNS.push_back(curNS[i]);
-
-	for (int i = 0; i < (int)copydocNS.size(); i++)
-		fullNS.push_back(copydocNS[i]);
-
-	// First try to assume @copydoc specified namespace is relative to current NS
-	int entryMatch = -1;
-	for (int i = 0; i < (int)lookup.size(); i++)
-	{
-		CommentInfo& curCommentInfo = commentInfos[lookup[i]];
-
-		if (fullNS.size() != curCommentInfo.namespaces.size())
-			continue;
-
-		bool matches = true;
-		for (int j = 0; j < (int)curCommentInfo.namespaces.size(); j++)
-		{
-			if (fullNS[j] != curCommentInfo.namespaces[j])
-			{
-				matches = false;
-				break;
-			}
-		}
-
-		if (matches)
-		{
-			entryMatch = i;
-			break;
-		}
-	}
-
-	// If nothing is found, assume provided namespace is global
-	if (entryMatch == -1)
-	{
-		for (int i = 0; i < (int)lookup.size(); i++)
-		{
-			CommentInfo& curCommentInfo = commentInfos[lookup[i]];
-
-			if (copydocNS.size() != curCommentInfo.namespaces.size())
-				continue;
-
-			bool matches = true;
-			for (int j = 0; j < (int)curCommentInfo.namespaces.size(); j++)
-			{
-				if (copydocNS[j] != curCommentInfo.namespaces[j])
-				{
-					matches = false;
-					break;
-				}
-			}
-
-			if (matches)
-			{
-				entryMatch = i;
-				break;
-			}
-		}
-	}
-
-	if (entryMatch == -1)
-	{
-		outs() << "Warning: Cannot find identifier referenced by the @copydoc command: \"" << str << "\".\n";
-		return false;
-	}
-
-	CommentInfo& finalCommentInfo = commentInfos[lookup[entryMatch]];
-	if (hasParamList)
-	{
-		if (!finalCommentInfo.isFunction)
-		{
-			outs() << "Warning: Cannot find identifier referenced by the @copydoc command: \"" << str << "\".\n";
-			return false;
-		}
-
-		SmallVector<StringRef, 8> paramSplits;
-		params.split(paramSplits, ",", -1, false);
-
-		for (int i = 0; i < (int)paramSplits.size(); i++)
-			paramSplits[i] = paramSplits[i].trim();
-
-		int overloadMatch = -1;
-		for (int i = 0; i < (int)finalCommentInfo.overloads.size(); i++)
-		{
-			if (paramSplits.size() != finalCommentInfo.overloads[i].params.size())
-				continue;
-
-			bool matches = true;
-			for (int j = 0; j < (int)paramSplits.size(); j++)
-			{
-				if (paramSplits[j] != finalCommentInfo.overloads[i].params[j])
-				{
-					matches = false;
-					break;
-				}
-			}
-
-			if (matches)
-			{
-				overloadMatch = i;
-				break;
-			}
-		}
-
-		if (overloadMatch == -1)
-		{
-			// Assume the user doesn't care which overload is used
-			if (paramSplits.empty())
-				overloadMatch = 0;
-			else
-			{
-				outs() << "Warning: Cannot find identifier referenced by the @copydoc command: \"" << str << "\".\n";
-				return false;
-			}
-		}
-
-		outputComment = finalCommentInfo.overloads[overloadMatch].comment;
-		return true;
-	}
-
-	if (finalCommentInfo.isFunction)
-		outputComment = finalCommentInfo.overloads[0].comment;
-	else
-		outputComment = finalCommentInfo.comment;
-
-	return true;
-}
-
-void resolveCopydocComment(CommentEntry& comment, const std::string& parentType, const SmallVector<std::string, 4>& curNS)
-{
-	StringRef copydocArg;
-	for(auto& entry : comment.brief)
-	{
-		StringRef commentRef(entry.text.data(), entry.text.length());
-
-		if (commentRef.startswith("@copydoc"))
-		{
-			copydocArg = commentRef.split(' ').second;
-			break;
-		}
-	}
-
-	if (copydocArg.empty())
-		return;
-
-	CommentEntry outComment;
-	if (!parseCopydocString(copydocArg.str(), parentType, curNS, outComment))
-	{
-		comment = CommentEntry();
-		return;
-	}
-	else
-		comment = outComment;
-
-	resolveCopydocComment(comment, parentType, curNS);
-}
-
-std::string generateXMLCommentText(const CommentText& commentTextEntry)
-{
-	uint32_t idx = 0;
-	std::stringstream output;
-
-	for(auto& entry : commentTextEntry.text)
-	{
-		for (auto& refEntry : commentTextEntry.paramRefs)
-		{
-			if(refEntry.index == idx)
-			{
-				output << "<paramref name=\"" << escapeXML(refEntry.name) << "\"/>";
-				idx += refEntry.name.size();
-			}
-		}
-
-		for (auto& refEntry : commentTextEntry.genericRefs)
-		{
-			if (refEntry.index == idx)
-			{
-				output << "<see cref=\"" << escapeXML(refEntry.name) << "\"/>";
-				idx += refEntry.name.size();
-			}
-		}
-
-		switch (entry)
-		{
-		case '&':  output << "&amp;";         break;
-		case '\"': output << "&quot;";        break;
-		case '\'': output << "&apos;";        break;
-		case '<':  output << "&lt;";          break;
-		case '>':  output << "&gt;";          break;
-		default:   output << entry;           break;
-		}
-
-		idx++;
-	}
-
-	return output.str();
-}
- std::string generateXMLCommentText(const SmallVector<CommentText, 2>& input)
- {
-	 std::stringstream output;
-	 for (auto I = input.begin(); I != input.end(); ++I)
-	 {
-		 if (I != input.begin())
-			 output << "\n";
-
-		 std::string text = generateXMLCommentText(*I);
-		 output << text;
-	 }
-
-	return output.str();
- }
-
-std::string generateXMLComments(const CommentEntry& commentEntry, const std::string& indent)
-{
-	std::stringstream output;
-	
-	auto wordWrap = [](const std::string& input, const std::string& linePrefix, int columnLength = 124)
-	{
-		int prefixLength = (int)linePrefix.length();
-		int inputLength = (int)input.length();
-
-		if ((inputLength + prefixLength) <= columnLength)
-			return linePrefix + input + "\n";
-
-		StringRef inputRef(input.data(), input.length());
-		std::stringstream wordWrapped;
-
-		int lineLength = columnLength - prefixLength;
-		int curIdx = 0;
-		while(curIdx < inputLength)
-		{
-			int remainingLength = inputLength - curIdx;
-			if(remainingLength <= lineLength)
-			{
-				StringRef lineRef = inputRef.substr(curIdx, remainingLength);
-				wordWrapped << linePrefix << lineRef.str() << std::endl;
-				break;
-			}
-			else
-			{
-				int lastSpace = inputRef.find_last_of(' ', curIdx + lineLength);
-				if(lastSpace == -1 || lastSpace <= curIdx) // Need to break word
-				{
-					StringRef lineRef = inputRef.substr(curIdx, lineLength);
-
-					wordWrapped << linePrefix << lineRef.str() << std::endl;
-					curIdx += lineLength;
-				}
-				else
-				{
-					int length = lastSpace - curIdx + 1;
-					StringRef lineRef = inputRef.substr(curIdx, length);
-
-					wordWrapped << linePrefix << lineRef.str() << std::endl;
-					curIdx += length;
-				}
-			}
-		}
-		
-		return wordWrapped.str();
-	};
-
-	auto printParagraphs = [&output, &indent, &wordWrap](const std::string& head, const std::string& tail, const SmallVector<CommentText, 2>& input)
-	{
-		bool multiline = false;
-		if(input.size() > 1)
-			multiline = true;
-		else
-		{
-			int refLength = 0;
-			for (auto& entry : input[0].paramRefs)
-				refLength += sizeof("<paramref name=\"\"/>") + entry.name.size();
-
-			for (auto& entry : input[0].genericRefs)
-				refLength += sizeof("<see cref=\"\"/>") + entry.name.size();
-
-			int lineLength = head.length() + tail.length() + indent.size() + 4 + input[0].text.size() + refLength;
-			if (lineLength >= 124)
-				multiline = true;
-		}
-
-		if (multiline)
-		{
-			output << indent << "/// " << head << "\n";
-			for (auto I = input.begin(); I != input.end(); ++I)
-			{
-				if (I != input.begin())
-					output << indent << "///\n";
-
-				std::string text = generateXMLCommentText(*I);
-				output << wordWrap(text, indent + "/// ");
-			}
-			output << indent << "/// " << tail << "\n";
-		}
-		else
-		{
-			std::string text = generateXMLCommentText(input[0]);
-			output << indent << "/// " << head << text << tail << "\n";
-		}
-	};
-
-	if (!commentEntry.brief.empty())
-		printParagraphs("<summary>", "</summary>", commentEntry.brief);
-	else
-	{
-		if(!commentEntry.params.empty() || !commentEntry.returns.empty())
-			output << indent << "/// <summary></summary>" << std::endl;
-	}
-
-	for(auto& entry : commentEntry.params)
-	{
-		if (entry.comments.empty())
-			continue;
-
-		printParagraphs("<param name=\"" + entry.name + "\">", "</param>", entry.comments);
-	}
-
-	if(!commentEntry.returns.empty())
-		printParagraphs("<returns>", "</returns>", commentEntry.returns);
-
-	return output.str();
-}
-
-void handleDefaultParams(MethodInfo& methodInfo, std::vector<MethodInfo>& newMethodInfos)
-{
-	int firstDefaultParam = -1;
-	int lastInvalidParam = -1;
-	for (int i = 0; i < methodInfo.paramInfos.size(); i++)
-	{
-		const VarInfo& param = methodInfo.paramInfos[i];
-
-		if (!param.defaultValue.empty())
-		{
-			firstDefaultParam = i;
-			break;
-		}
-	}
-
-	for (int i = 0; i < methodInfo.paramInfos.size(); i++)
-	{
-		const VarInfo& param = methodInfo.paramInfos[i];
-
-		if (!param.defaultValueType.empty() && !isFlagsEnum(param.flags))
-			lastInvalidParam = i;
-	}
-
-	// Nothing to handle
-	if (lastInvalidParam == -1)
-		return;
-
-	// Mark any non-complex default params as complex, so the generator doesn't generate them (since default arguments
-	// must follow them, which they can't because at least one is complex)
-	for(int i = firstDefaultParam; i <= lastInvalidParam; i++)
-	{
-		VarInfo& param = methodInfo.paramInfos[i];
-
-		if (param.defaultValueType.empty())
-			param.defaultValueType = "null";
-	}
-
-	// Generate a method for each default param
-	for(int i = lastInvalidParam; i >= firstDefaultParam; i--)
-	{
-		MethodInfo copyMethodInfo = methodInfo;
-
-		// Clear all param default values
-		for(int j = firstDefaultParam; j < i; j++)
-		{
-			VarInfo& param = copyMethodInfo.paramInfos[j];
-			param.defaultValue = "";
-			param.defaultValueType = "";
-		}
-
-		// Erase docs for the params we'll skip during generation
-		CommentEntry& docs = copyMethodInfo.documentation;
-		for(int j = i; j <= lastInvalidParam; j++)
-		{
-			const std::string& paramName = copyMethodInfo.paramInfos[j].name;
-
-			for(auto iter = docs.params.begin(); iter != docs.params.end();)
-			{
-				if (iter->name == paramName)
-					iter = docs.params.erase(iter);
-				else
-					++iter;
-			}
-		}
-
-		copyMethodInfo.flags |= (int)MethodFlags::CSOnly;
-		newMethodInfos.push_back(copyMethodInfo);
-	}
-
-	// Clear default params from this method
-	for(int i = firstDefaultParam; i <= lastInvalidParam; i++)
-	{
-		VarInfo& param = methodInfo.paramInfos[i];
-		param.defaultValue = "";
-		param.defaultValueType = "";
-	}
-}
-
-StructInfo* findStructInfo(const std::string& name)
-{
-	for (auto& fileInfo : outputFileInfos)
-	{
-		for (auto& structInfo : fileInfo.second.structInfos)
-		{
-			if (structInfo.name == name)
-				return &structInfo;
-		}
-	}
-
-	return nullptr;
-};
-
-void postProcessFileInfos()
-{
-	// Inject external methods into their appropriate class infos
-	auto findClassInfo = [](const std::string& name, bool isEditor) -> ClassInfo*
-	{
-		for (auto& fileInfo : outputFileInfos)
-		{
-			for (auto& classInfo : fileInfo.second.classInfos)
-			{
-				if (classInfo.name != name)
-					continue;
-
-				// Two versions of editor and BSF class migth exist, make sure to pick the right one
-				if((isEditor && classInfo.api == ApiFlags::BSF) || (!isEditor &&  hasAPIBED(classInfo.api)))
-					continue;
-
-				return &classInfo;
-			}
-		}
-
-		return nullptr;
-	};
-
-	auto findEnumInfo = [](const std::string& name) -> EnumInfo*
-	{
-		for (auto& fileInfo : outputFileInfos)
-		{
-			for (auto& enumInfo : fileInfo.second.enumInfos)
-			{
-				if (enumInfo.name == name)
-					return &enumInfo;
-			}
-		}
-
-		return nullptr;
-	};
-
-	for (auto& entry : externalClassInfos)
-	{
-		for (auto& fileInfo : outputFileInfos)
-		{
-			for (auto& classInfo : fileInfo.second.classInfos)
-			{
-				if (classInfo.name != entry.first)
-					continue;
-
-				for (auto& method : entry.second.methods)
-				{
-					if (((int)method.flags & (int)MethodFlags::Constructor) != 0)
-					{
-						if (method.returnInfo.typeName.size() == 0)
-						{
-							outs() << "Error: Found an external constructor \"" << method.sourceName << "\" with no return value, skipping.\n";
-							continue;
-						}
-
-						if (method.returnInfo.typeName != entry.first)
-						{
-							outs() << "Error: Found an external constructor \"" << method.sourceName << "\" whose return value doesn't match the external class, skipping.\n";
-							continue;
-						}
-					}
-					else
-					{
-						if (method.paramInfos.size() == 0)
-						{
-							outs() << "Error: Found an external method \"" << method.sourceName << "\" with no parameters. This isn't supported, skipping.\n";
-							continue;
-						}
-
-						if (method.paramInfos[0].typeName != entry.first)
-						{
-							outs() << "Error: Found an external method \"" << method.sourceName << "\" whose first parameter doesn't "
-								" accept the class its operating on. This is not supported, skipping. \n";
-							continue;
-						}
-
-						method.paramInfos.erase(method.paramInfos.begin());
-					}
-
-					classInfo.methodInfos.push_back(method);
-				}
-			}
-		}
-	}
-
-	// Resolve copydoc comment commands
-	for (auto& fileInfo : outputFileInfos)
-	{
-		for (auto& classInfo : fileInfo.second.classInfos)
-		{
-			resolveCopydocComment(classInfo.documentation, classInfo.name, classInfo.ns);
-
-			for (auto& methodInfo : classInfo.methodInfos)
-				resolveCopydocComment(methodInfo.documentation, classInfo.name, classInfo.ns);
-
-			for (auto& ctorInfo : classInfo.ctorInfos)
-				resolveCopydocComment(ctorInfo.documentation, classInfo.name, classInfo.ns);
-
-			for (auto& eventInfo : classInfo.eventInfos)
-				resolveCopydocComment(eventInfo.documentation, classInfo.name, classInfo.ns);
-		}
-
-		for (auto& structInfo : fileInfo.second.structInfos)
-			resolveCopydocComment(structInfo.documentation, structInfo.name, structInfo.ns);
-
-		for(auto& enumInfo : fileInfo.second.enumInfos)
-		{
-			resolveCopydocComment(enumInfo.documentation, enumInfo.name, enumInfo.ns);
-
-			for (auto& enumEntryInfo : enumInfo.entries)
-				resolveCopydocComment(enumEntryInfo.second.documentation, enumInfo.name, enumInfo.ns);
-		}
-	}
-
-	// Generate unique interop method names
-	std::unordered_set<std::string> usedNames;
-	for (auto& fileInfo : outputFileInfos)
-	{
-		for (auto& classInfo : fileInfo.second.classInfos)
-		{
-			usedNames.clear();
-
-			auto generateInteropName = [&usedNames](MethodInfo& methodInfo)
-			{
-				std::string interopName = methodInfo.sourceName;
-				int counter = 0;
-				while (true)
-				{
-					auto iterFind = usedNames.find(interopName);
-					if (iterFind == usedNames.end())
-						break;
-
-					interopName = methodInfo.sourceName + std::to_string(counter);
-					counter++;
-				}
-
-				usedNames.insert(interopName);
-				methodInfo.interopName = interopName;
-			};
-
-			for (auto& methodInfo : classInfo.methodInfos)
-				generateInteropName(methodInfo);
-
-			for (auto& methodInfo : classInfo.ctorInfos)
-				generateInteropName(methodInfo);
-
-			for (auto& eventInfo : classInfo.eventInfos)
-				generateInteropName(eventInfo);
-		}
-	}
-
-	// Generate property infos
-	for (auto& fileInfo : outputFileInfos)
-	{
-		for (auto& classInfo : fileInfo.second.classInfos)
-		{
-			for (auto& methodInfo : classInfo.methodInfos)
-			{
-				bool isGetter = (methodInfo.flags & (int)MethodFlags::PropertyGetter) != 0;
-				bool isSetter = (methodInfo.flags & (int)MethodFlags::PropertySetter) != 0;
-
-				if (!isGetter && !isSetter)
-					continue;
-
-				PropertyInfo propertyInfo;
-				propertyInfo.name = methodInfo.scriptName;
-				propertyInfo.documentation = methodInfo.documentation;
-				propertyInfo.isStatic = (methodInfo.flags & (int)MethodFlags::Static);
-				propertyInfo.visibility = methodInfo.visibility;
-				propertyInfo.api = methodInfo.api;
-				propertyInfo.style = methodInfo.style;
-
-				if (isGetter)
-				{
-					propertyInfo.getter = methodInfo.interopName;
-					propertyInfo.type = methodInfo.returnInfo.typeName;
-					propertyInfo.typeFlags = methodInfo.returnInfo.flags;
-				}
-				else // Setter
-				{
-					propertyInfo.setter = methodInfo.interopName;
-					propertyInfo.type = methodInfo.paramInfos[0].typeName;
-					propertyInfo.typeFlags = methodInfo.paramInfos[0].flags;
-				}
-
-				auto iterFind = std::find_if(classInfo.propertyInfos.begin(), classInfo.propertyInfos.end(),
-					[&propertyInfo](const PropertyInfo& info)
-				{
-					return propertyInfo.name == info.name;
-				});
-
-				if (iterFind == classInfo.propertyInfos.end())
-					classInfo.propertyInfos.push_back(propertyInfo);
-				else
-				{
-					PropertyInfo& existingInfo = *iterFind;
-					if (existingInfo.type != propertyInfo.type || existingInfo.isStatic != propertyInfo.isStatic)
-					{
-						outs() << "Error: Getter and setter types for the property \"" << propertyInfo.name << "\" don't match. Skipping property.\n";
-						continue;
-					}
-
-					if (!propertyInfo.getter.empty())
-					{
-						existingInfo.getter = propertyInfo.getter;
-
-						// Prefer documentation from setter, but use getter if no other available
-						if (existingInfo.documentation.brief.empty())
-							existingInfo.documentation = propertyInfo.documentation;
-					}
-					else
-					{
-						existingInfo.setter = propertyInfo.setter;
-						existingInfo.style = propertyInfo.style; // Always prefer style flags from the setter
-
-						if (!propertyInfo.documentation.brief.empty())
-							existingInfo.documentation = propertyInfo.documentation;
-					}
-				}
-			}
-		}
-	}
-
-	// Generate meta-data about base classes
-	for (auto& fileInfo : outputFileInfos)
-	{
-		for (auto& classInfo : fileInfo.second.classInfos)
-		{
-			if (classInfo.baseClass.empty())
-				continue;
-
-			bool isEditor = hasAPIBED(classInfo.api);
-			ClassInfo* baseClassInfo = findClassInfo(classInfo.baseClass, isEditor);
-			if (baseClassInfo == nullptr)
-			{
-				assert(false);
-				continue;
-			}
-
-			baseClassInfo->flags |= (int)ClassFlags::IsBase;
-			baseClassLookup[baseClassInfo->name].childClasses.push_back(classInfo.name);
-		}
-	}
-
-	// Properly generate enum default values
-	auto parseDefaultValue = [&](VarInfo& paramInfo)
-	{
-		if (paramInfo.defaultValue.empty())
-			return;
-
-		UserTypeInfo typeInfo = getTypeInfo(paramInfo.typeName, paramInfo.flags);
-
-		if (typeInfo.type != ::ParsedType::Enum)
-			return;
-
-		int enumIdx = atoi(paramInfo.defaultValue.c_str());
-		EnumInfo* enumInfo = findEnumInfo(paramInfo.typeName);
-		if(enumInfo == nullptr)
-		{
-			outs() << "Error: Cannot map default value of \"" + paramInfo.name + 
-				"\" to enum entry for enum type \"" + paramInfo.typeName + "\". Ignoring.";
-			paramInfo.defaultValue = "";
-			return;
-		}
-
-		auto iterFind = enumInfo->entries.find(enumIdx);
-		if(iterFind == enumInfo->entries.end())
-		{
-			outs() << "Error: Cannot map default value of \"" + paramInfo.name + 
-				"\" to enum entry for enum type \"" + paramInfo.typeName + "\". Ignoring.";
-			paramInfo.defaultValue = "";
-			return;
-		}
-
-		paramInfo.defaultValue = enumInfo->scriptName + "." + iterFind->second.scriptName;
-	};
-
-	for (auto& fileInfo : outputFileInfos)
-	{
-		for (auto& classInfo : fileInfo.second.classInfos)
-		{
-			for(auto& methodInfo : classInfo.methodInfos)
-			{
-				for (auto& paramInfo : methodInfo.paramInfos)
-					parseDefaultValue(paramInfo);
-			}
-
-			for (auto& ctorInfo : classInfo.ctorInfos)
-			{
-				for (auto& paramInfo : ctorInfo.paramInfos)
-					parseDefaultValue(paramInfo);
-			}
-		}
-
-		for(auto& structInfo : fileInfo.second.structInfos)
-		{
-			for(auto& fieldInfo : structInfo.fields)
-				parseDefaultValue(fieldInfo);
-
-			for (auto& ctorInfo : structInfo.ctors)
-			{
-				for (auto& paramInfo : ctorInfo.params)
-					parseDefaultValue(paramInfo);
-			}
-		}
-	}
-
-	// Find structs requiring special conversion
-	for (auto& fileInfo : outputFileInfos)
-	{
-		for (auto& structInfo : fileInfo.second.structInfos)
-		{
-			for(auto& fieldInfo : structInfo.fields)
-			{
-				UserTypeInfo typeInfo = getTypeInfo(fieldInfo.typeName, fieldInfo.flags);
-
-				if(isArrayOrVector(fieldInfo.flags) || !(typeInfo.type == ::ParsedType::Builtin || typeInfo.type == ::ParsedType::Enum))
-				{
-					structInfo.requiresInterop = true;
-					break;
-				}
-			}
-
-			if (structInfo.requiresInterop)
-				structInfo.interopName = getStructInteropType(structInfo.name);
-			else
-				structInfo.interopName = structInfo.name;
-		}
-	}
-
-	// Mark parameters referencing complex structs and base types
-	for (auto& fileInfo : outputFileInfos)
-	{
-		auto markComplexType = [](const std::string& type, int& flags)
-		{
-			UserTypeInfo typeInfo = getTypeInfo(type, flags);
-			if (typeInfo.type != ::ParsedType::Struct)
-				return;
-
-			StructInfo* structInfo = findStructInfo(type);
-			if (structInfo != nullptr && structInfo->requiresInterop)
-				flags |= (int)TypeFlags::ComplexStruct;
-		};
-
-		auto markBaseType = [&findClassInfo](const std::string& type, int& flags)
-		{
-			UserTypeInfo typeInfo = getTypeInfo(type, flags);
-			if (typeInfo.type != ::ParsedType::Class && typeInfo.type != ::ParsedType::ReflectableClass &&
-				typeInfo.type != ::ParsedType::GUIElement && !isHandleType(typeInfo.type))
-				return;
-
-			ClassInfo* classInfo = findClassInfo(type, false);
-			if (classInfo != nullptr)
-			{
-				bool isBase = (classInfo->flags & (int)ClassFlags::IsBase) != 0;
-				if (isBase)
-					flags |= (int)TypeFlags::ReferencesBase;
-			}
-		};
-
-		auto markParam = [&markComplexType,&markBaseType](VarInfo& paramInfo)
-		{
-			markComplexType(paramInfo.typeName, paramInfo.flags);
-			markBaseType(paramInfo.typeName, paramInfo.flags);
-		};
-
-		for (auto& classInfo : fileInfo.second.classInfos)
-		{
-			for(auto& methodInfo : classInfo.methodInfos)
-			{
-				for (auto& paramInfo : methodInfo.paramInfos)
-					markParam(paramInfo);
-
-				if (methodInfo.returnInfo.typeName.size() != 0)
-				{
-					markComplexType(methodInfo.returnInfo.typeName, methodInfo.returnInfo.flags);
-					markBaseType(methodInfo.returnInfo.typeName, methodInfo.returnInfo.flags);
-				}
-			}
-
-			for (auto& eventInfo : classInfo.eventInfos)
-			{
-				for (auto& paramInfo : eventInfo.paramInfos)
-					markParam(paramInfo);
-			}
-
-			for (auto& ctorInfo : classInfo.ctorInfos)
-			{
-				for (auto& paramInfo : ctorInfo.paramInfos)
-					markParam(paramInfo);
-			}
-		}
-
-		for(auto& structInfo : fileInfo.second.structInfos)
-		{
-			for(auto& fieldInfo : structInfo.fields)
-			{
-				markComplexType(fieldInfo.typeName, fieldInfo.flags);
-				markParam(fieldInfo);
-			}
-		}
-	}
-
-	// Generate referenced includes
-	{
-		for (auto& fileInfo : outputFileInfos)
-		{
-			IncludesInfo includesInfo;
-			for (auto& classInfo : fileInfo.second.classInfos)
-				gatherIncludes(classInfo, includesInfo);
-
-			for (auto& structInfo : fileInfo.second.structInfos)
-				gatherIncludes(structInfo, includesInfo);
-
-			// Needed for all .h files
-			if (!fileInfo.second.inEditor)
-				fileInfo.second.referencedHeaderIncludes.push_back("BsScriptEnginePrerequisites.h");
-			else
-				fileInfo.second.referencedHeaderIncludes.push_back("BsScriptEditorPrerequisites.h");
-
-			// Needed for all .cpp files
-			fileInfo.second.referencedSourceIncludes.push_back("BsScript" + fileInfo.first + ".generated.h");
-			fileInfo.second.referencedSourceIncludes.push_back("BsMonoMethod.h");
-			fileInfo.second.referencedSourceIncludes.push_back("BsMonoClass.h");
-			fileInfo.second.referencedSourceIncludes.push_back("BsMonoUtil.h");
-
-			for (auto& classInfo : fileInfo.second.classInfos)
-			{
-				UserTypeInfo& typeInfo = cppToCsTypeMap[classInfo.name];
-
-				fileInfo.second.forwardDeclarations.insert({ classInfo.ns, classInfo.cleanName, isStruct(classInfo.flags), classInfo.templParams });
-
-				if (typeInfo.type == ::ParsedType::Resource)
-					fileInfo.second.referencedHeaderIncludes.push_back("Wrappers/BsScriptResource.h");
-				else if (typeInfo.type == ::ParsedType::Component)
-					fileInfo.second.referencedHeaderIncludes.push_back("Wrappers/BsScriptComponent.h");
-				else if (typeInfo.type == ::ParsedType::SceneObject)
-					fileInfo.second.referencedHeaderIncludes.push_back("Wrappers/BsScriptSceneObject.h");
-				else if (typeInfo.type == ::ParsedType::GUIElement)
-					fileInfo.second.referencedHeaderIncludes.push_back("Wrappers/GUI/BsScriptGUIElement.h");
-				else if (typeInfo.type == ::ParsedType::ReflectableClass)
-					fileInfo.second.referencedHeaderIncludes.push_back("Wrappers/BsScriptReflectable.h");
-				else // Class
-					fileInfo.second.referencedHeaderIncludes.push_back("BsScriptObject.h");
-
-				if (!classInfo.baseClass.empty())
-				{
-					UserTypeInfo& baseTypeInfo = cppToCsTypeMap[classInfo.baseClass];
-
-					if(hasAPIBED(classInfo.api))
-						fileInfo.second.referencedHeaderIncludes.push_back(baseTypeInfo.destFileEditor);
-					else
-						fileInfo.second.referencedHeaderIncludes.push_back(baseTypeInfo.destFile);
-				}
-
-				if (typeInfo.type != ::ParsedType::ReflectableClass && classInfo.templParams.empty())
-					fileInfo.second.referencedSourceIncludes.push_back(typeInfo.declFile);
-				else
-				{
-					// Templated classes need to be included in header, so the linker doesn't instantiate them multiple times for different libraries
-					// (in case template is exported).
-					// Reflectable classes need to be included in the header because they provide a getInternal<T>() method
-					// which requires information about T.
-					fileInfo.second.referencedHeaderIncludes.push_back(typeInfo.declFile);
-				}
-			}
-
-			for(auto& structInfo : fileInfo.second.structInfos)
-			{
-				UserTypeInfo& typeInfo = cppToCsTypeMap[structInfo.name];
-
-				fileInfo.second.referencedHeaderIncludes.push_back("BsScriptObject.h");
-				fileInfo.second.referencedHeaderIncludes.push_back(typeInfo.declFile);
-			}
-
-			if(includesInfo.requiresResourceManager)
-				fileInfo.second.referencedSourceIncludes.push_back("BsScriptResourceManager.h");
-
-			if (includesInfo.requiresRRef)
-				fileInfo.second.referencedSourceIncludes.push_back("Wrappers/BsScriptRRefBase.h");
-
-			if (includesInfo.requiresAsyncOp)
-				fileInfo.second.referencedSourceIncludes.push_back("Wrappers/BsScriptAsyncOp.h");
-
-			if(includesInfo.requiresGameObjectManager)
-				fileInfo.second.referencedSourceIncludes.push_back("BsScriptGameObjectManager.h");
-
-			if(includesInfo.requiresRTTI)
-				fileInfo.second.referencedSourceIncludes.push_back("Reflection/BsRTTIType.h");
-
-			for (auto& entry : includesInfo.includes)
-			{
-				uint32_t originFlags = entry.second.originIncludeFlags;
-				uint32_t interopFlags = entry.second.interopIncludeFlags;
-
-				if (originFlags != 0)
-				{
-					std::string include = entry.second.typeInfo.declFile;
-
-					if ((originFlags & IT_FWD) != 0)
-						fileInfo.second.forwardDeclarations.insert({ entry.second.typeInfo.ns, entry.second.typeName, entry.second.isStruct });
-
-					if((originFlags & IT_IMPL) != 0)
-						fileInfo.second.referencedSourceIncludes.push_back(include);
-					else
-						fileInfo.second.referencedHeaderIncludes.push_back(include);
-				}
-
-				if (interopFlags != 0)
-				{
-					std::string include;
-					if(entry.second.isEditor)
-						include = entry.second.typeInfo.destFileEditor;
-					else
-						include = entry.second.typeInfo.destFile;
-
-					if ((interopFlags & IT_FWD) != 0)
-					{
-						if(entry.second.isEditor)
-							fileInfo.second.forwardDeclarations.insert({ entry.second.typeInfo.ns, entry.second.typeName, false });
-					}
-
-					if(!include.empty())
-					{
-						if ((interopFlags & IT_IMPL) != 0)
-							fileInfo.second.referencedSourceIncludes.push_back(include);
-						else
-							fileInfo.second.referencedHeaderIncludes.push_back(include);
-					}
-				}
-			}
-
-			for (auto& entry : includesInfo.fwdDecls)
-				fileInfo.second.forwardDeclarations.insert(entry.second);
-		}
-	}
-
-	// Generate overloads for unsupported default parameters
-	for (auto& fileInfo : outputFileInfos)
-	{
-		for (auto& classInfo : fileInfo.second.classInfos)
-		{
-			std::vector<MethodInfo> newMethodInfos;
-			for (auto& methodInfo : classInfo.methodInfos)
-				handleDefaultParams(methodInfo, newMethodInfos);
-
-			for (auto& methodInfo : newMethodInfos)
-				classInfo.methodInfos.push_back(methodInfo);
-
-			std::vector<MethodInfo> newCtorInfos;
-			for (auto& ctorInfo : classInfo.ctorInfos)
-				handleDefaultParams(ctorInfo, newCtorInfos);
-
-			for (auto& ctorInfo : newCtorInfos)
-				classInfo.ctorInfos.push_back(ctorInfo);
-		}
-	}
 }
 
 std::string generateFileHeader(bool isBanshee)
@@ -4874,7 +3642,7 @@ std::string generateCSClass(ClassInfo& input, UserTypeInfo& typeInfo)
 			continue;
 
 		ctors << generateCsApiCheckBegin(entry.api);
-		ctors << generateXMLComments(entry.documentation, "\t\t");
+		ctors << CommentParser::GenerateXMLComments(entry.documentation, "\t\t");
 
 		if (entry.visibility == CSVisibility::Internal)
 			ctors << "\t\tinternal ";
@@ -4943,7 +3711,7 @@ std::string generateCSClass(ClassInfo& input, UserTypeInfo& typeInfo)
 		if (isConstructor)
 		{
 			ctors << generateCsApiCheckBegin(entry.api);
-			ctors << generateXMLComments(entry.documentation, "\t\t");
+			ctors << CommentParser::GenerateXMLComments(entry.documentation, "\t\t");
 
 			if (entry.visibility == CSVisibility::Internal)
 				ctors << "\t\tinternal ";
@@ -4981,7 +3749,7 @@ std::string generateCSClass(ClassInfo& input, UserTypeInfo& typeInfo)
 				}
 
 				methods << generateCsApiCheckBegin(entry.api);
-				methods << generateXMLComments(entry.documentation, "\t\t");
+				methods << CommentParser::GenerateXMLComments(entry.documentation, "\t\t");
 
 				if (entry.visibility == CSVisibility::Internal)
 					methods << "\t\tinternal ";
@@ -5049,7 +3817,7 @@ std::string generateCSClass(ClassInfo& input, UserTypeInfo& typeInfo)
 		std::string propTypeName = getCSVarType(propTypeInfo.scriptName, propTypeInfo.type, entry.typeFlags, false, true, false);
 
 		properties << generateCsApiCheckBegin(entry.api);
-		properties << generateXMLComments(entry.documentation, "\t\t");
+		properties << CommentParser::GenerateXMLComments(entry.documentation, "\t\t");
 
 		bool defaultVisible = entry.visibility != CSVisibility::Internal && entry.visibility != CSVisibility::Private &&
 			!entry.setter.empty();
@@ -5136,7 +3904,7 @@ std::string generateCSClass(ClassInfo& input, UserTypeInfo& typeInfo)
 		bool isInternal = (entry.flags & (int)MethodFlags::InteropOnly) != 0;
 
 		events << generateCsApiCheckBegin(entry.api);
-		events << generateXMLComments(entry.documentation, "\t\t");
+		events << CommentParser::GenerateXMLComments(entry.documentation, "\t\t");
 		events << "\t\t";
 
 		if (!isCallback && !isInternal)
@@ -5202,7 +3970,7 @@ std::string generateCSClass(ClassInfo& input, UserTypeInfo& typeInfo)
 		output << "\n";
 	}
 
-	output << generateXMLComments(input.documentation, "\t");
+	output << CommentParser::GenerateXMLComments(input.documentation, "\t");
 
 	// Force non-resource and non-component types to show in inspector, except explicitly hidden
 	if (isClassType(typeInfo.type) || (input.flags & (int)ClassFlags::HideInInspector) == 0)
@@ -5269,7 +4037,7 @@ std::string generateCSStruct(StructInfo& input)
 		output << "\n";
 	}
 
-	output << generateXMLComments(input.documentation, "\t");
+	output << CommentParser::GenerateXMLComments(input.documentation, "\t");
 
 	output << "\t[StructLayout(LayoutKind.Sequential), SerializeObject]\n";
 
@@ -5298,7 +4066,7 @@ std::string generateCSStruct(StructInfo& input)
 		}
 		else
 		{
-			output << generateXMLComments(entry.documentation, "\t\t");
+			output << CommentParser::GenerateXMLComments(entry.documentation, "\t\t");
 			output << "\t\tpublic " << scriptName << "(";
 		}
 
@@ -5441,7 +4209,7 @@ std::string generateCSStruct(StructInfo& input)
 			continue;
 		}
 
-		output << generateXMLComments(fieldInfo.documentation, "\t\t");
+		output << CommentParser::GenerateXMLComments(fieldInfo.documentation, "\t\t");
 		output << generateCSStyleAttributes(fieldInfo.style, typeInfo, fieldInfo.flags, true);
 
 		if ((fieldInfo.style.flags & (int)StyleFlags::ForceHide) != 0)
@@ -5484,7 +4252,7 @@ std::string generateCSEnum(EnumInfo& input)
 		output << "\n";
 	}
 
-	output << generateXMLComments(input.documentation, "\t");
+	output << CommentParser::GenerateXMLComments(input.documentation, "\t");
 	if (input.visibility == CSVisibility::Internal)
 		output << "\tinternal ";
 	else if (input.visibility == CSVisibility::Public)
@@ -5507,7 +4275,7 @@ std::string generateCSEnum(EnumInfo& input)
 
 		const EnumEntryInfo& entryInfo = I->second;
 
-		output << generateXMLComments(entryInfo.documentation, "\t\t");
+		output << CommentParser::GenerateXMLComments(entryInfo.documentation, "\t\t");
 		output << "\t\t" << entryInfo.scriptName;
 		output << " = ";
 		output << entryInfo.value;
@@ -5533,9 +4301,9 @@ std::string generateXMLParamInfo(const VarInfo& varInfo, const CommentEntry& met
 		escapeXML(getTypeInfo(varInfo.typeName, varInfo.flags).scriptName) << "\">\n";
 
 	auto iterFind = std::find_if(methodDoc.params.begin(), methodDoc.params.end(), 
-		[&varName = varInfo.name](const CommentParamEntry& entry) { return varName == entry.name; });
+		[&varName = varInfo.name](const CommentParameterEntry& entry) { return varName == entry.Name; });
 	if (iterFind != methodDoc.params.end() && !iterFind->comments.empty())
-		output << indent << "\t<doc>" << generateXMLCommentText(iterFind->comments) << "</doc>\n";
+		output << indent << "\t<doc>" << CommentParser::GenerateXMLCommentText(iterFind->comments) << "</doc>\n";
 
 	output << indent << "</param>\n";
 	return output.str();
@@ -5549,7 +4317,7 @@ std::string generateXMLFieldInfo(const FieldInfo& fieldInfo, const std::string& 
 
 	// TODO - Generate inspector visibility
 	if(!fieldInfo.documentation.brief.empty())
-		output << indent << "\t<doc>" << generateXMLCommentText(fieldInfo.documentation.brief) << "</doc>\n";
+		output << indent << "\t<doc>" << CommentParser::GenerateXMLCommentText(fieldInfo.documentation.brief) << "</doc>\n";
 
 	output << indent << "</field>\n";
 	return output.str();
@@ -5573,7 +4341,7 @@ std::string generateXMLMethodInfo(const MethodInfo& methodInfo, const std::strin
 		output << indent << "<ctor>\n";
 
 	if(!methodInfo.documentation.brief.empty())
-		output << indent << "\t<doc>" << generateXMLCommentText(methodInfo.documentation.brief) << "</doc>\n";
+		output << indent << "\t<doc>" << CommentParser::GenerateXMLCommentText(methodInfo.documentation.brief) << "</doc>\n";
 
 	for(auto& param : methodInfo.paramInfos)
 		output << generateXMLParamInfo(param, methodInfo.documentation, indent + "\t");
@@ -5583,7 +4351,7 @@ std::string generateXMLMethodInfo(const MethodInfo& methodInfo, const std::strin
 		output << indent << "\t<returns type=\"" << escapeXML(getTypeInfo(methodInfo.returnInfo.typeName, methodInfo.returnInfo.flags).scriptName) << "\">\n";
 
 		if (!methodInfo.documentation.returns.empty())
-			output << indent << "\t\t<doc>" << generateXMLCommentText(methodInfo.documentation.returns) << "</doc>\n";
+			output << indent << "\t\t<doc>" << CommentParser::GenerateXMLCommentText(methodInfo.documentation.returns) << "</doc>\n";
 
 		output << indent << "\t</returns>\n";
 	}
@@ -5601,7 +4369,7 @@ std::string generateXMLMethodInfo(const SimpleConstructorInfo& methodInfo, const
 	std::stringstream output;
 	output << indent << "<ctor>\n";
 	if(!methodInfo.documentation.brief.empty())
-		output << indent << "\t<doc>" << generateXMLCommentText(methodInfo.documentation.brief) << "</doc>\n";
+		output << indent << "\t<doc>" << CommentParser::GenerateXMLCommentText(methodInfo.documentation.brief) << "</doc>\n";
 
 	for(auto& param : methodInfo.params)
 		output << generateXMLParamInfo(param, methodInfo.documentation, indent + "\t");
@@ -5622,7 +4390,7 @@ std::string generateXMLPropertyInfo(const PropertyInfo& propertyInfo, const std:
 
 	// TODO - Generate inspector visibility
 	if(!propertyInfo.documentation.brief.empty())
-		output << indent << "\t<doc>" << generateXMLCommentText(propertyInfo.documentation.brief) << "</doc>\n";
+		output << indent << "\t<doc>" << CommentParser::GenerateXMLCommentText(propertyInfo.documentation.brief) << "</doc>\n";
 
 	output << indent << "</property>\n";
 	return output.str();
@@ -5639,7 +4407,7 @@ std::string generateXMLEventInfo(const MethodInfo& eventInfo, const std::string&
 
 	// TODO - Generate inspector visibility
 	if (!eventInfo.documentation.brief.empty())
-		output << indent << "\t<doc>" << generateXMLCommentText(eventInfo.documentation.brief) << "</doc>\n";
+		output << indent << "\t<doc>" << CommentParser::GenerateXMLCommentText(eventInfo.documentation.brief) << "</doc>\n";
 
 	for(auto& param : eventInfo.paramInfos)
 		output << generateXMLParamInfo(param, eventInfo.documentation, indent + "\t");
@@ -5649,7 +4417,7 @@ std::string generateXMLEventInfo(const MethodInfo& eventInfo, const std::string&
 		output << indent << "\t<returns type=\"" << escapeXML(getTypeInfo(eventInfo.returnInfo.typeName, eventInfo.returnInfo.flags).scriptName) << "\">\n";
 
 		if (!eventInfo.documentation.returns.empty())
-			output << indent << "\t\t<doc>" << generateXMLCommentText(eventInfo.documentation.returns) << "</doc>\n";
+			output << indent << "\t\t<doc>" << CommentParser::GenerateXMLCommentText(eventInfo.documentation.returns) << "</doc>\n";
 
 		output << indent << "\t</returns>\n";
 	}
@@ -5664,7 +4432,7 @@ std::string generateXMLEnum(EnumInfo& input, const std::string& indent)
 
 	output << indent << "<enum native=\"" << escapeXML(input.name) << "\" script=\"" << escapeXML(input.scriptName) << "\">\n";
 	if (!input.documentation.brief.empty())
-		output << indent << "\t<doc>" << generateXMLCommentText(input.documentation.brief) << "</doc>\n";
+		output << indent << "\t<doc>" << CommentParser::GenerateXMLCommentText(input.documentation.brief) << "</doc>\n";
 	
 	for (auto I = input.entries.begin(); I != input.entries.end(); ++I)
 	{
@@ -5672,7 +4440,7 @@ std::string generateXMLEnum(EnumInfo& input, const std::string& indent)
 
 	   output << indent << "\t<enumentry native=\"" << escapeXML(entryInfo.name) << "\" script=\"" << escapeXML(entryInfo.scriptName) << "\">\n";
 	   if (!entryInfo.documentation.brief.empty())
-		   output << indent << "\t\t<doc>" << generateXMLCommentText(entryInfo.documentation.brief) << "</doc>\n";
+		   output << indent << "\t\t<doc>" << CommentParser::GenerateXMLCommentText(entryInfo.documentation.brief) << "</doc>\n";
 	   output << indent << "\t</enumentry>\n";
 	}
 	
@@ -5688,7 +4456,7 @@ std::string generateXMLStruct(StructInfo& input, const std::string& indent)
 
 	output << indent << "<struct native=\"" << escapeXML(input.name) << "\" script=\"" << escapeXML(typeInfo.scriptName) << "\">\n";
 	if (!input.documentation.brief.empty())
-		output << indent << "\t<doc>" << generateXMLCommentText(input.documentation.brief) << "</doc>\n";
+		output << indent << "\t<doc>" << CommentParser::GenerateXMLCommentText(input.documentation.brief) << "</doc>\n";
 
 	for (auto& entry : input.ctors)
 		output << generateXMLMethodInfo(entry, indent + "\t");
@@ -5708,7 +4476,7 @@ std::string generateXMLClass(ClassInfo& input, bool editor, const std::string& i
 
 	output << indent << "<class native=\"" << escapeXML(input.name) << "\" script=\"" << escapeXML(typeInfo.scriptName) << "\">\n";
 	if (!input.documentation.brief.empty())
-		output << indent << "\t<doc>" << generateXMLCommentText(input.documentation.brief) << "</doc>\n";
+		output << indent << "\t<doc>" << CommentParser::GenerateXMLCommentText(input.documentation.brief) << "</doc>\n";
 
 	for (auto& entry : input.ctorInfos)
 	{
@@ -5882,8 +4650,6 @@ void generateLookupFile(const std::string& tableName, ::ParsedType type, bool ed
 void generateAll(StringRef cppEngineOutputFolder, StringRef cppEditorOutputFolder, StringRef csEngineOutputFolder, 
 	StringRef csEditorOutputFolder, bool genEditor)
 {
-	postProcessFileInfos();
-
 	cleanAndPrepareFolder(cppEngineOutputFolder);
 	cleanAndPrepareFolder(csEngineOutputFolder);
 

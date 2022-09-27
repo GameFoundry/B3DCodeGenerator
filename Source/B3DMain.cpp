@@ -1,5 +1,6 @@
-#include "common.h"
-#include "parser.h"
+#include "B3DCommon.h"
+#include "B3DParser.h"
+#include "B3DParserUtility.h"
 
 #define B3DCODEGEN_WAIT_FOR_DEBUGGER 0
 #if B3DCODEGEN_WAIT_FOR_DEBUGGER
@@ -31,7 +32,7 @@ std::unordered_map<std::string, FileInfo> outputFileInfos;
 std::unordered_map<std::string, ExternalClassInfos> externalClassInfos;
 std::unordered_map<std::string, BaseClassInfo> baseClassLookup;
 
-std::vector<CommentInfo> commentInfos;
+std::vector<CommentInformation> commentInfos;
 std::unordered_map<std::string, int> commentFullLookup;
 std::unordered_map<std::string, SmallVector<int, 2>> commentSimpleLookup;
 
@@ -105,14 +106,16 @@ static cl::opt<std::string> CppEditorCopyrightNoticeOption(
 	cl::desc("Specify copyright notice to add to the header of all generated editor files.\n"),
 	cl::cat(OptCategory));
 
-class ScriptExportConsumer : public ASTConsumer 
+class BansheeCodeGeneratorASTConsumer : public ASTConsumer 
 {
 public:
-	explicit ScriptExportConsumer(CompilerInstance* CI)
-		: visitor(new ScriptExportParser(CI))
-	{ }
+	explicit BansheeCodeGeneratorASTConsumer(CompilerInstance* CI, CommentParser& commentParser)
+		: visitor(new BansheeCodeGeneratorASTVisitor(CI, commentParser))
+	{
+		
+	}
 
-	~ScriptExportConsumer()
+	~BansheeCodeGeneratorASTConsumer()
 	{
 		delete visitor;
 	}
@@ -123,16 +126,39 @@ public:
 	}
 
 private:
-	ScriptExportParser *visitor;
+	BansheeCodeGeneratorASTVisitor *visitor;
 };
 
-class ScriptExportFrontendAction : public ASTFrontendAction 
+class BansheeCodeGeneratorFrontendAction : public ASTFrontendAction 
 {
 public:
+	BansheeCodeGeneratorFrontendAction(CommentParser& commentParser)
+		:mCommentParser(commentParser)
+	{ }
+
 	std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance& CI, StringRef file) override
 	{
-		return std::make_unique<ScriptExportConsumer>(&CI);
+		mCommentParser.SetASTContext(CI.getASTContext());
+		return std::make_unique<BansheeCodeGeneratorASTConsumer>(&CI, mCommentParser);
 	}
+
+private:
+	CommentParser mCommentParser;
+};
+
+class BansheeCodeGeneratorFrontendActionFactory : public FrontendActionFactory
+{
+public:
+	/** Returns a helper class that can be used for parsing comments. */
+	CommentParser& GetCommentParser() { return mCommentParser; }
+
+	std::unique_ptr<FrontendAction> create() override
+	{
+		return std::make_unique<BansheeCodeGeneratorFrontendAction>(mCommentParser);
+	}
+
+private:
+	CommentParser mCommentParser;
 };
 
 int main(int argc, const char** argv)
@@ -208,8 +234,11 @@ int main(int argc, const char** argv)
 	cppToCsTypeMap["Any"] = UserTypeInfo(frameworkNs, "Any", ::ParsedType::Class, "Utility/BsAny.h", "");
 
 	// Parse C++ into an easy to read format
-	std::unique_ptr<FrontendActionFactory> factory = newFrontendActionFactory<ScriptExportFrontendAction>();
+	const std::unique_ptr<BansheeCodeGeneratorFrontendActionFactory> factory = std::unique_ptr<BansheeCodeGeneratorFrontendActionFactory>(new BansheeCodeGeneratorFrontendActionFactory);
 	int output = Tool.run(factory.get());
+
+	CommentParser& commentParser = factory->GetCommentParser();
+	ParserUtility::PostProcessFileInfos(commentParser);
 
 	bool genEditor = GenerateEditorOption.getValue();
 
