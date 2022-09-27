@@ -834,7 +834,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 			std::string scriptType = getScriptInteropType(varTypeInfo.typeName,
 				paramTypeInfo.type == ::ParsedType::Resource && getPassAsResourceRef(varTypeInfo.flags));
 
-			monoType = scriptType + "::GetMetaData()->scriptClass";
+			monoType = scriptType + "::GetMetaData()->ScriptClass";
 
 			postCallActions << "\t\tauto convertCallback = [](const Any& returnVal)\n";
 			postCallActions << "\t\t{\n";
@@ -972,7 +972,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 
 						postCallActions << "\t\tMonoUtil::ValueCopy(" << name << ", ";
 						postCallActions << "&interop" << name << ", ";
-						postCallActions << scriptType << "::GetMetaData()->scriptClass->GetInternalClassInternal());\n";
+						postCallActions << scriptType << "::GetMetaData()->ScriptClass->GetInternalClassInternal());\n";
 					}
 					else
 						postCallActions << "\t\t*" << name << " = " << argName << ";" << std::endl;
@@ -996,7 +996,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 
 					postCallActions << "\t\tMonoUtil::ValueCopy(" << name << ", ";
 					postCallActions << "&interop" << name << ", ";
-					postCallActions << scriptType << "::GetMetaData()->scriptClass->GetInternalClassInternal());\n";
+					postCallActions << scriptType << "::GetMetaData()->ScriptClass->GetInternalClassInternal());\n";
 				}
 				else if (isFlagsEnum(varTypeInfo.flags))
 				{
@@ -2894,7 +2894,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const UserTypeIn
 	// Internal_GetRef interop method
 	if (typeInfo.type == ::ParsedType::Resource)
 	{
-		output << "\t\tmetaData.scriptClass->AddInternalCall(\"Internal_GetRef\", (void*)&" <<
+		output << "\t\tmetaData.ScriptClass->AddInternalCall(\"Internal_GetRef\", (void*)&" <<
 			interopClassName << "::InternalGetRef);\n";
 	}
 
@@ -2904,7 +2904,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const UserTypeIn
 			continue;
 
 		output << generateCppApiCheckBegin(methodInfo.api);
-		output << "\t\tmetaData.scriptClass->AddInternalCall(\"Internal_" << methodInfo.interopName << "\", (void*)&" <<
+		output << "\t\tmetaData.ScriptClass->AddInternalCall(\"Internal_" << methodInfo.interopName << "\", (void*)&" <<
 			interopClassName << "::Internal" << methodInfo.interopName << ");" << std::endl;
 		output << generateApiCheckEnd(methodInfo.api);
 	}
@@ -2915,7 +2915,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const UserTypeIn
 			continue;
 
 		output << generateCppApiCheckBegin(methodInfo.api);
-		output << "\t\tmetaData.scriptClass->AddInternalCall(\"Internal_" << methodInfo.interopName << "\", (void*)&" <<
+		output << "\t\tmetaData.ScriptClass->AddInternalCall(\"Internal_" << methodInfo.interopName << "\", (void*)&" <<
 			interopClassName << "::Internal" << methodInfo.interopName << ");" << std::endl;
 		output << generateApiCheckEnd(methodInfo.api);
 	}
@@ -2926,7 +2926,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const UserTypeIn
 	{
 		output << generateCppApiCheckBegin(eventInfo.api);
 		output << "\t\t" << eventInfo.sourceName << "Thunk = ";
-		output << "(" << eventInfo.sourceName << "ThunkDef)metaData.scriptClass->GetMethodExact(";
+		output << "(" << eventInfo.sourceName << "ThunkDef)metaData.ScriptClass->GetMethodExact(";
 		output << "\"Internal_" << eventInfo.interopName << "\", \"";
 
 		for (auto I = eventInfo.paramInfos.begin(); I != eventInfo.paramInfos.end(); ++I)
@@ -3013,7 +3013,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const UserTypeIn
 			output << std::endl;
 
 			output << ctorParamsInit.str();
-			output << "\t\tMonoObject* managedInstance = metaData.scriptClass->CreateInstance(\"" << ctorSignature.str() << "\", ctorParams);" << std::endl;
+			output << "\t\tMonoObject* managedInstance = metaData.ScriptClass->CreateInstance(\"" << ctorSignature.str() << "\", ctorParams);" << std::endl;
 			output << "\t\tnew (bs_alloc<" << interopClassName << ">()) " << interopClassName << "(managedInstance, value);" << std::endl;
 			output << "\t\treturn managedInstance;" << std::endl;
 
@@ -3025,7 +3025,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const UserTypeIn
 			output << "\t{" << std::endl;
 
 			output << ctorParamsInit.str();
-			output << "\t\treturn metaData.scriptClass->CreateInstance(\"" << ctorSignature.str() << "\", ctorParams);" << std::endl;
+			output << "\t\treturn metaData.ScriptClass->CreateInstance(\"" << ctorSignature.str() << "\", ctorParams);" << std::endl;
 
 			output << "\t}" << std::endl;
 		}
@@ -3287,7 +3287,7 @@ std::string generateCppStructSource(const StructInfo& structInfo)
 	// Box
 	output << "\tMonoObject*" << interopClassName << "::Box(const " << structInfo.interopName << "& value)" << std::endl;
 	output << "\t{" << std::endl;
-	output << "\t\treturn MonoUtil::Box(metaData.scriptClass->GetInternalClassInternal(), (void*)&value);" << std::endl;
+	output << "\t\treturn MonoUtil::Box(metaData.ScriptClass->GetInternalClassInternal(), (void*)&value);" << std::endl;
 	output << "\t}" << std::endl;
 	output << std::endl;
 
