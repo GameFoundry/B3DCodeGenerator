@@ -3349,7 +3349,7 @@ std::string generateCppStructSource(const StructInfo& structInfo)
 	return output.str();
 }
 
-std::string generateCSStyleAttributes(const Style& style, const UserTypeInfo& typeInfo, int typeFlags, bool isStruct)
+std::string generateCSStyleAttributes(const ExportStyle& style, const UserTypeInfo& typeInfo, int typeFlags, bool isStruct)
 {
 	std::stringstream output;
 	

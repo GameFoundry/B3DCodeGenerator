@@ -896,3 +896,483 @@ void ParserUtility::GatherIncludes(const StructInfo& structInfo, IncludesInfo& o
 			GatherIncludes(fieldInfo, isEditor, output);
 	}
 }
+
+bool ParserUtility::CheckIsBuiltinModuleType(const CXXRecordDecl* decl)
+{
+	if (!decl->hasDefinition())
+		return false;
+
+	std::stack<const CXXRecordDecl*> todo;
+	todo.push(decl);
+
+	while (!todo.empty())
+	{
+		const CXXRecordDecl* curDecl = todo.top();
+		todo.pop();
+
+		auto iter = curDecl->bases_begin();
+		while (iter != curDecl->bases_end())
+		{
+			const CXXBaseSpecifier* baseSpec = iter;
+			CXXRecordDecl* baseDecl = baseSpec->getType()->getAsCXXRecordDecl();
+
+			std::string className = baseDecl->getName().str();
+			if (className == kBuiltinModuleType)
+				return true;
+
+			todo.push(baseDecl);
+			iter++;
+		}
+	}
+
+	return false;
+}
+
+bool ParserUtility::IsBuiltinBaseType(const CXXRecordDecl* decl)
+{
+	std::string className = decl->getName().str();
+
+	if (className == kBuiltinComponentType)
+		return true;
+	else if (className == kBuiltinResourceType)
+		return true;
+	else if (className == kBuiltinSceneObjectType)
+		return true;
+	else if (className == kBuiltinModuleType)
+		return true;
+	else if (className == kBuiltinGUIElementType)
+		return true;
+	else if (className == kBuiltinReflectableType)
+		return true;
+
+	return false;
+}
+
+bool ScriptExportUtility::IsExportAttribute(AnnotateAttr* attr)
+{
+	StringRef annotation = attr->getAnnotation();
+
+	return annotation.startswith("se,");
+}
+
+bool ScriptExportUtility::IsExportable(const CXXRecordDecl* decl)
+{
+	std::string className = decl->getName().str();
+
+	AnnotateAttr *const attr = decl->getAttr<AnnotateAttr>();
+	if (attr != nullptr)
+		return IsExportAttribute(attr);
+
+	return false;
+}
+
+std::string ScriptExportUtility::FindExportableBaseClassName(const CXXRecordDecl* decl)
+{
+	if (!decl->hasDefinition())
+		return "";
+
+	std::stack<const CXXRecordDecl*> todo;
+	todo.push(decl);
+
+	while (!todo.empty())
+	{
+		const CXXRecordDecl* curDecl = todo.top();
+		todo.pop();
+
+		auto iter = curDecl->bases_begin();
+		while (iter != curDecl->bases_end())
+		{
+			const CXXBaseSpecifier* baseSpec = iter;
+			CXXRecordDecl* baseDecl = baseSpec->getType()->getAsCXXRecordDecl();
+
+			std::string className = baseDecl->getName().str();
+
+			if(ParserUtility::IsBuiltinBaseType(baseDecl))
+			{
+				iter++;
+				continue;
+			}
+
+			if (IsExportable(baseDecl))
+			{
+				StringRef sourceClassName = baseDecl->getName();
+				return sourceClassName.str();
+			}
+
+			todo.push(baseDecl);
+			iter++;
+		}
+	}
+
+	return "";
+}
+
+std::string ScriptExportUtility::FindExportableBasePlainClassName(const CXXRecordDecl* decl)
+{
+	if (!decl->hasDefinition())
+		return "";
+
+	auto iter = decl->bases_begin();
+	while (iter != decl->bases_end())
+	{
+		const CXXBaseSpecifier* baseSpec = iter;
+		CXXRecordDecl* baseDecl = baseSpec->getType()->getAsCXXRecordDecl();
+
+		std::string className = baseDecl->getName().str();
+
+		AnnotateAttr* attr = baseDecl->getAttr<AnnotateAttr>();
+		if (attr != nullptr)
+		{
+			StringRef sourceClassName = baseDecl->getName();
+			ScriptExportInformation parsedDeclInfo;
+
+			if (ParseExportAttribute(attr, sourceClassName, parsedDeclInfo))
+			{
+				if((parsedDeclInfo.ExportFlags & (int)ExportFlags::Plain) != 0)
+					return sourceClassName.str();
+			}
+		}
+
+		iter++;
+	}
+
+	return "";
+}
+
+void ScriptExportUtility::ParseScriptExportAttributeCommand(const std::string& name, const std::string& value, StringRef sourceName, ScriptExportInformation& output)
+{
+	if (name == "n" || name == "name")
+		output.ExportedTypeName = value;
+	else if (name == "v" || name == "visibility")
+	{
+		if (value == "public")
+			output.Visibility = CSVisibility::Public;
+		else if (value == "internal")
+			output.Visibility = CSVisibility::Internal;
+		else if (value == "private")
+			output.Visibility = CSVisibility::Private;
+		else
+			outs() << "Warning: Unrecognized value for \"v\" option: \"" + value + "\" for type \"" <<
+			sourceName << "\".\n";
+	}
+	else if (name == "f" || name == "file")
+	{
+		output.ExportedFileName = value;
+	}
+	else if (name == "pl" || name == "plain")
+	{
+		output.ExportFlags |= (int)ExportFlags::Plain;
+	}
+	else if (name == "pr" || name == "property")
+	{
+		if (value == "getter")
+			output.ExportFlags |= (int)ExportFlags::PropertyGetter;
+		else if (value == "setter")
+			output.ExportFlags |= (int)ExportFlags::PropertySetter;
+		else
+		{
+			outs() << "Warning: Unrecognized value for \"pr\" option: \"" + value + "\" for type \"" <<
+				sourceName << "\".\n";
+		}
+	}
+	else if (name == "api")
+	{
+		if (value == "bsf")
+			output.ExportFlags |= (int)ExportFlags::ApiBSF;
+		else if (value == "b3d")
+			output.ExportFlags |= (int)ExportFlags::ApiB3D;
+		else if (value == "bed")
+			output.ExportFlags |= (int)ExportFlags::ApiBED;
+		else
+		{
+			outs() << "Warning: Unrecognized value for \"pr\" option: \"" + value + "\" for type \"" <<
+				sourceName << "\".\n";
+		}
+	}
+	else if (name == "e")
+	{
+		output.ExportFlags |= (int)ExportFlags::External;
+
+		output.ExtensionOfType = value;
+	}
+	else if (name == "ec")
+	{
+		output.ExportFlags |= (int)ExportFlags::ExternalConstructor;
+
+		output.ExtensionOfType = value;
+	}
+	else if (name == "ex")
+	{
+		if (value == "true")
+			output.ExportFlags |= (int)ExportFlags::Exclude;
+		else if (value != "false")
+		{
+			outs() << "Warning: Unrecognized value for \"ex\" option: \"" + value + "\" for type \"" <<
+				sourceName << "\".\n";
+		}
+	}
+	else if (name == "in")
+	{
+		if (value == "true")
+			output.ExportFlags |= (int)ExportFlags::InteropOnly;
+		else if (value != "false")
+		{
+			outs() << "Warning: Unrecognized value for \"in\" option: \"" + value + "\" for type \"" <<
+				sourceName << "\".\n";
+		}
+	}
+	else if (name == "m")
+		output.DocumentationGroup = value;
+	else if (name == "hide")
+	{
+		output.style.flags |= (int)StyleFlags::ForceHide;
+	}
+	else if (name == "show")
+	{
+		output.style.flags |= (int)StyleFlags::ForceShow;
+	}
+	else if (name == "layerMask")
+	{
+		output.style.flags |= (int)StyleFlags::AsLayerMask;
+	}
+	else if (name == "slider")
+	{
+		output.style.flags |= (int)StyleFlags::AsSlider;
+	}
+	else if (name == "notNull")
+	{
+		output.style.flags |= (int)StyleFlags::NotNull;
+	}
+	else if (name == "passByCopy")
+	{
+		output.style.flags |= (int)StyleFlags::PassByCopy;
+	}
+	else if (name == "applyOnDirty")
+	{
+		output.style.flags |= (int)StyleFlags::ApplyOnDirty;
+	}
+	else if (name == "asQuaternion")
+	{
+		output.style.flags |= (int)StyleFlags::AsQuaternion;
+	}
+	else if (name == "loadOnAssign")
+	{
+		output.style.flags |= (int)StyleFlags::LoadOnAssign;
+	}
+	else if (name == "hdr")
+	{
+		output.style.flags |= (int)StyleFlags::HDR;
+	}
+	else if (name == "step")
+	{
+		if(value.empty())
+			outs() << "Warning: Empty value for \"step\" option for type \"" << sourceName << "\".\n";
+		else
+		{
+			output.style.flags |= (int)StyleFlags::Step;
+			output.style.step = atof(value.c_str());
+		}
+	}
+	else if (name == "range")
+	{
+		if(value.empty())
+			outs() << "Warning: Empty value for \"range\" option for type \"" << sourceName << "\".\n";
+		else
+		{
+			std::vector<float> args;
+
+			std::istringstream toParse(value);
+			std::string arg;
+			while(std::getline(toParse, arg, ','))
+				args.push_back(atof(arg.c_str()));
+
+			if(args.size() != 2)
+				outs() << "Warning: Invalid number of arguments for \"range\" option for type \"" << sourceName << "\".\n";
+			else
+			{
+				output.style.flags |= (int)StyleFlags::Range;
+				output.style.rangeMin = args[0];
+				output.style.rangeMax = args[1];
+			}
+		}
+	}
+	else if (name == "order")
+	{
+		if(value.empty())
+			outs() << "Warning: Empty value for \"order\" option for type \"" << sourceName << "\".\n";
+		else
+		{
+			output.style.flags |= (int)StyleFlags::Order;
+			output.style.order = atoi(value.c_str());
+		}
+	}
+	else if (name == "category")
+	{
+		if(value.empty())
+			outs() << "Warning: Empty value for \"category\" option for type \"" << sourceName << "\".\n";
+		else
+		{
+			std::vector<std::string> args;
+
+			std::istringstream toParse(value);
+			std::string arg;
+			while(std::getline(toParse, arg, ','))
+				args.push_back(arg);
+
+			if(args.size() != 1)
+				outs() << "Warning: Invalid number of arguments for \"category\" option for type \"" << sourceName << "\".\n";
+			else
+			{
+				StringRef trimmedName = args[0];
+				trimmedName = trimmedName.trim();
+
+				output.style.flags |= (int)StyleFlags::Category;
+				output.style.category = trimmedName.str();
+			}
+		}
+	}
+	else if (name == "inline")
+	{
+		output.style.flags |= (int)StyleFlags::Inline;
+	}
+	else
+		outs() << "Warning: Unrecognized annotation attribute option: \"" + name + "\" for type \"" <<
+		sourceName << "\".\n";
+}
+
+bool ScriptExportUtility::ParseExportAttribute(AnnotateAttr* attr, StringRef sourceName, ScriptExportInformation& output)
+{
+	if(!IsExportAttribute(attr))
+		return false;
+
+	StringRef annotation = attr->getAnnotation();
+
+	output.ExportedTypeName = sourceName.str();
+	
+	if (!output.ExportedTypeName.empty())
+	{
+		// Camel case to pascal case
+		if(islower(output.ExportedTypeName[0]))
+			output.ExportedTypeName[0] = toupper(output.ExportedTypeName[0]);
+		else
+		{
+			// Screaming snake case to pascal case
+			bool isScreamingSnakeCase = true;
+			std::stringstream caseOutput;
+			bool nextUpper = true;
+			for(size_t i = 0; i < output.ExportedTypeName.size(); i++)
+			{
+				if (isalpha(output.ExportedTypeName[i]))
+				{
+					if(islower(output.ExportedTypeName[i]))
+					{
+						isScreamingSnakeCase = false;
+						break;
+					}
+					else
+					{
+						if(!nextUpper)
+							caseOutput << (char)tolower(output.ExportedTypeName[i]);
+						else
+						{
+							caseOutput << output.ExportedTypeName[i];
+							nextUpper = false;
+						}
+					}
+				}
+				else if(output.ExportedTypeName[i] == '_')
+					nextUpper = true;
+				else
+					caseOutput << output.ExportedTypeName[i];
+			}
+
+			if(isScreamingSnakeCase)
+				output.ExportedTypeName = caseOutput.str();
+		}
+	}
+
+	output.ExportedFileName = sourceName.str();
+	output.Visibility = CSVisibility::Public;
+	output.ExportFlags = 0;
+
+	std::stringstream ssParamName;
+	std::stringstream ssParamValue;
+
+	bool isInScope = false;
+	bool gotParamName = false;
+
+	for (auto iter = annotation.begin() + 3; iter != annotation.end(); ++iter)
+	{
+		if(*iter == ' ' || *iter == '\t')
+			continue;
+
+		if(*iter == '[')
+		{
+			if(isInScope)
+				outs() << "Error: Attribute parameter parsing error. Nested scopes not allowed.";
+			else if(!gotParamName)
+				outs() << "Error: Attribute parameter parsing error. Scopes not allowed for parameter names.";
+			else
+				isInScope = true;
+
+			continue;
+		}
+
+		if(*iter == ']')
+		{
+			isInScope = false;
+			continue;
+		}
+
+		if(*iter == ',')
+		{
+			if(isInScope)
+				ssParamValue << ",";
+			else
+			{
+				ParseScriptExportAttributeCommand(ssParamName.str(), ssParamValue.str(), sourceName, output);
+				
+				ssParamName.str("");
+				ssParamName.clear();
+
+				ssParamValue.str("");
+				ssParamValue.clear();
+
+				gotParamName = false;
+			}
+
+			continue;
+		}
+
+		if(*iter == ':')
+		{
+			if(gotParamName)
+				outs() << "Error: Attribute parameter parsing error. Found value separator while parsing value.";
+			else
+				gotParamName = true;
+
+			continue;
+		}
+
+		if(!gotParamName)
+			ssParamName << *iter;
+		else
+			ssParamValue << *iter;
+	}
+
+	if(!ssParamName.str().empty())
+		ParseScriptExportAttributeCommand(ssParamName.str(), ssParamValue.str(), sourceName, output);
+
+	return true;
+}
+
+bool ScriptExportUtility::ParseExportAttribute(Decl* decl, StringRef sourceName, ScriptExportInformation& output)
+{
+	for (const auto& entry : decl->specific_attrs<AnnotateAttr>())
+	{
+		if (ParseExportAttribute(entry, sourceName, output))
+			return true;
+	}
+
+	return false;
+}

@@ -23,15 +23,15 @@
 
 				std::string className = baseDecl->getName().str();
 
-				if (className == BUILTIN_COMPONENT_TYPE)
+				if (className == kBuiltinComponentType)
 					return ::ParsedType::Component;
-				else if (className == BUILTIN_RESOURCE_TYPE)
+				else if (className == kBuiltinResourceType)
 					return ::ParsedType::Resource;
-				else if (className == BUILTIN_SCENEOBJECT_TYPE)
+				else if (className == kBuiltinSceneObjectType)
 					return ::ParsedType::SceneObject;
-				else if (className == BUILTIN_GUIELEMENT_TYPE)
+				else if (className == kBuiltinGUIElementType)
 					return ::ParsedType::GUIElement;
-				else if (className == BUILTIN_REFLECTABLE_TYPE)
+				else if (className == kBuiltinReflectableType)
 					return ::ParsedType::ReflectableClass;
 
 				todo.push(baseDecl);
@@ -156,6 +156,55 @@ void addEntryToFile(FileInfo& fileInfo, T& entry, const std::string& file, std::
 	else // Non-editor, bsf and/or b3d
 		addEntry(fileInfo, entry);
 }
+
+bool parseParamOrFieldAttribute(Decl* decl, bool isField, int& typeFlags)
+{
+	for(const auto& entry : decl->specific_attrs<AnnotateAttr>())
+	{
+		if (!isField && entry->getAnnotation() == "params")
+		{
+			typeFlags |= (int)TypeFlags::VarParams;
+			return true;
+		}
+
+		if (entry->getAnnotation() == "norref")
+		{
+			typeFlags &= ~(int)TypeFlags::AsResourceRef;
+			return true;
+		}
+	}
+
+	return false;
+}
+
+void parseNamespace(NamedDecl* decl, SmallVector<std::string, 4>& output)
+{
+	const DeclContext* context = decl->getDeclContext();
+	SmallVector<const DeclContext *, 8> contexts;
+
+	// Collect contexts.
+	while (context && isa<NamedDecl>(context))
+	{
+		contexts.push_back(context);
+		context = context->getParent();
+	}
+
+	for (const DeclContext* dc : reverse(contexts))
+	{
+		if (const auto* nd = dyn_cast<NamespaceDecl>(dc))
+		{
+			if (!nd->isAnonymousNamespace())
+				output.push_back(nd->getDeclName().getAsString());
+		}
+	}
+}
+
+struct FunctionTypeInfo
+{
+	// Only relevant for function types
+	std::vector<VarTypeInfo> paramTypes;
+	VarTypeInfo returnType;
+};
 
 bool BansheeCodeGeneratorASTVisitor::parseType(QualType type, VarTypeInfo& outType, bool returnValue)
 {
@@ -497,13 +546,6 @@ bool BansheeCodeGeneratorASTVisitor::parseType(QualType type, VarTypeInfo& outTy
 	}
 }
 
-struct FunctionTypeInfo
-{
-	// Only relevant for function types
-	std::vector<VarTypeInfo> paramTypes;
-	VarTypeInfo returnType;
-};
-
 bool BansheeCodeGeneratorASTVisitor::parseEventSignature(QualType type, FunctionTypeInfo& typeInfo, bool& isCallback)
 {
 	if (type->isStructureOrClassType())
@@ -556,528 +598,6 @@ bool BansheeCodeGeneratorASTVisitor::parseEventSignature(QualType type, Function
 
 				return true;
 			}
-		}
-	}
-
-	return false;
-}
-
-struct ParsedDeclInfo
-{
-	std::string exportName;
-	std::string exportFile;
-	std::string externalClass;
-	CSVisibility visibility;
-	int exportFlags;
-	std::string moduleName;
-
-	Style style;
-};
-
-void parseAttributeToken(const std::string& name, const std::string& value, StringRef sourceName, ParsedDeclInfo& output)
-{
-	if (name == "n" || name == "name")
-		output.exportName = value;
-	else if (name == "v" || name == "visibility")
-	{
-		if (value == "public")
-			output.visibility = CSVisibility::Public;
-		else if (value == "internal")
-			output.visibility = CSVisibility::Internal;
-		else if (value == "private")
-			output.visibility = CSVisibility::Private;
-		else
-			outs() << "Warning: Unrecognized value for \"v\" option: \"" + value + "\" for type \"" <<
-			sourceName << "\".\n";
-	}
-	else if (name == "f" || name == "file")
-	{
-		output.exportFile = value;
-	}
-	else if (name == "pl" || name == "plain")
-	{
-		output.exportFlags |= (int)ExportFlags::Plain;
-	}
-	else if (name == "pr" || name == "property")
-	{
-		if (value == "getter")
-			output.exportFlags |= (int)ExportFlags::PropertyGetter;
-		else if (value == "setter")
-			output.exportFlags |= (int)ExportFlags::PropertySetter;
-		else
-		{
-			outs() << "Warning: Unrecognized value for \"pr\" option: \"" + value + "\" for type \"" <<
-				sourceName << "\".\n";
-		}
-	}
-	else if (name == "api")
-	{
-		if (value == "bsf")
-			output.exportFlags |= (int)ExportFlags::ApiBSF;
-		else if (value == "b3d")
-			output.exportFlags |= (int)ExportFlags::ApiB3D;
-		else if (value == "bed")
-			output.exportFlags |= (int)ExportFlags::ApiBED;
-		else
-		{
-			outs() << "Warning: Unrecognized value for \"pr\" option: \"" + value + "\" for type \"" <<
-				sourceName << "\".\n";
-		}
-	}
-	else if (name == "e")
-	{
-		output.exportFlags |= (int)ExportFlags::External;
-
-		output.externalClass = value;
-	}
-	else if (name == "ec")
-	{
-		output.exportFlags |= (int)ExportFlags::ExternalConstructor;
-
-		output.externalClass = value;
-	}
-	else if (name == "ex")
-	{
-		if (value == "true")
-			output.exportFlags |= (int)ExportFlags::Exclude;
-		else if (value != "false")
-		{
-			outs() << "Warning: Unrecognized value for \"ex\" option: \"" + value + "\" for type \"" <<
-				sourceName << "\".\n";
-		}
-	}
-	else if (name == "in")
-	{
-		if (value == "true")
-			output.exportFlags |= (int)ExportFlags::InteropOnly;
-		else if (value != "false")
-		{
-			outs() << "Warning: Unrecognized value for \"in\" option: \"" + value + "\" for type \"" <<
-				sourceName << "\".\n";
-		}
-	}
-	else if (name == "m")
-		output.moduleName = value;
-	else if (name == "hide")
-	{
-		output.style.flags |= (int)StyleFlags::ForceHide;
-	}
-	else if (name == "show")
-	{
-		output.style.flags |= (int)StyleFlags::ForceShow;
-	}
-	else if (name == "layerMask")
-	{
-		output.style.flags |= (int)StyleFlags::AsLayerMask;
-	}
-	else if (name == "slider")
-	{
-		output.style.flags |= (int)StyleFlags::AsSlider;
-	}
-	else if (name == "notNull")
-	{
-		output.style.flags |= (int)StyleFlags::NotNull;
-	}
-	else if (name == "passByCopy")
-	{
-		output.style.flags |= (int)StyleFlags::PassByCopy;
-	}
-	else if (name == "applyOnDirty")
-	{
-		output.style.flags |= (int)StyleFlags::ApplyOnDirty;
-	}
-	else if (name == "asQuaternion")
-	{
-		output.style.flags |= (int)StyleFlags::AsQuaternion;
-	}
-	else if (name == "loadOnAssign")
-	{
-		output.style.flags |= (int)StyleFlags::LoadOnAssign;
-	}
-	else if (name == "hdr")
-	{
-		output.style.flags |= (int)StyleFlags::HDR;
-	}
-	else if (name == "step")
-	{
-		if(value.empty())
-			outs() << "Warning: Empty value for \"step\" option for type \"" << sourceName << "\".\n";
-		else
-		{
-			output.style.flags |= (int)StyleFlags::Step;
-			output.style.step = atof(value.c_str());
-		}
-	}
-	else if (name == "range")
-	{
-		if(value.empty())
-			outs() << "Warning: Empty value for \"range\" option for type \"" << sourceName << "\".\n";
-		else
-		{
-			std::vector<float> args;
-
-			std::istringstream toParse(value);
-			std::string arg;
-			while(std::getline(toParse, arg, ','))
-				args.push_back(atof(arg.c_str()));
-
-			if(args.size() != 2)
-				outs() << "Warning: Invalid number of arguments for \"range\" option for type \"" << sourceName << "\".\n";
-			else
-			{
-				output.style.flags |= (int)StyleFlags::Range;
-				output.style.rangeMin = args[0];
-				output.style.rangeMax = args[1];
-			}
-		}
-	}
-	else if (name == "order")
-	{
-		if(value.empty())
-			outs() << "Warning: Empty value for \"order\" option for type \"" << sourceName << "\".\n";
-		else
-		{
-			output.style.flags |= (int)StyleFlags::Order;
-			output.style.order = atoi(value.c_str());
-		}
-	}
-	else if (name == "category")
-	{
-		if(value.empty())
-			outs() << "Warning: Empty value for \"category\" option for type \"" << sourceName << "\".\n";
-		else
-		{
-			std::vector<std::string> args;
-
-			std::istringstream toParse(value);
-			std::string arg;
-			while(std::getline(toParse, arg, ','))
-				args.push_back(arg);
-
-			if(args.size() != 1)
-				outs() << "Warning: Invalid number of arguments for \"category\" option for type \"" << sourceName << "\".\n";
-			else
-			{
-				StringRef trimmedName = args[0];
-				trimmedName = trimmedName.trim();
-
-				output.style.flags |= (int)StyleFlags::Category;
-				output.style.category = trimmedName.str();
-			}
-		}
-	}
-	else if (name == "inline")
-	{
-		output.style.flags |= (int)StyleFlags::Inline;
-	}
-	else
-		outs() << "Warning: Unrecognized annotation attribute option: \"" + name + "\" for type \"" <<
-		sourceName << "\".\n";
-}
-
-bool isExportAttribute(AnnotateAttr* attr)
-{
-	StringRef annotation = attr->getAnnotation();
-
-	return annotation.startswith("se,");
-}
-
-bool parseExportAttribute(AnnotateAttr* attr, StringRef sourceName, ParsedDeclInfo& output)
-{
-	if(!isExportAttribute(attr))
-		return false;
-
-	StringRef annotation = attr->getAnnotation();
-
-	output.exportName = sourceName.str();
-	
-	if (!output.exportName.empty())
-	{
-		// Camel case to pascal case
-		if(islower(output.exportName[0]))
-			output.exportName[0] = toupper(output.exportName[0]);
-		else
-		{
-			// Screaming snake case to pascal case
-			bool isScreamingSnakeCase = true;
-			std::stringstream caseOutput;
-			bool nextUpper = true;
-			for(size_t i = 0; i < output.exportName.size(); i++)
-			{
-				if (isalpha(output.exportName[i]))
-				{
-					if(islower(output.exportName[i]))
-					{
-						isScreamingSnakeCase = false;
-						break;
-					}
-					else
-					{
-						if(!nextUpper)
-							caseOutput << (char)tolower(output.exportName[i]);
-						else
-						{
-							caseOutput << output.exportName[i];
-							nextUpper = false;
-						}
-					}
-				}
-				else if(output.exportName[i] == '_')
-					nextUpper = true;
-				else
-					caseOutput << output.exportName[i];
-			}
-
-			if(isScreamingSnakeCase)
-				output.exportName = caseOutput.str();
-		}
-	}
-
-	output.exportFile = sourceName.str();
-	output.visibility = CSVisibility::Public;
-	output.exportFlags = 0;
-
-	std::stringstream ssParamName;
-	std::stringstream ssParamValue;
-
-	bool isInScope = false;
-	bool gotParamName = false;
-
-	for (auto iter = annotation.begin() + 3; iter != annotation.end(); ++iter)
-	{
-		if(*iter == ' ' || *iter == '\t')
-			continue;
-
-		if(*iter == '[')
-		{
-			if(isInScope)
-				outs() << "Error: Attribute parameter parsing error. Nested scopes not allowed.";
-			else if(!gotParamName)
-				outs() << "Error: Attribute parameter parsing error. Scopes not allowed for parameter names.";
-			else
-				isInScope = true;
-
-			continue;
-		}
-
-		if(*iter == ']')
-		{
-			isInScope = false;
-			continue;
-		}
-
-		if(*iter == ',')
-		{
-			if(isInScope)
-				ssParamValue << ",";
-			else
-			{
-				parseAttributeToken(ssParamName.str(), ssParamValue.str(), sourceName, output);
-				
-				ssParamName.str("");
-				ssParamName.clear();
-
-				ssParamValue.str("");
-				ssParamValue.clear();
-
-				gotParamName = false;
-			}
-
-			continue;
-		}
-
-		if(*iter == ':')
-		{
-			if(gotParamName)
-				outs() << "Error: Attribute parameter parsing error. Found value separator while parsing value.";
-			else
-				gotParamName = true;
-
-			continue;
-		}
-
-		if(!gotParamName)
-			ssParamName << *iter;
-		else
-			ssParamValue << *iter;
-	}
-
-	if(!ssParamName.str().empty())
-		parseAttributeToken(ssParamName.str(), ssParamValue.str(), sourceName, output);
-
-	return true;
-}
-
-bool parseExportAttribute(Decl* decl, StringRef sourceName, ParsedDeclInfo& output)
-{
-	for (const auto& entry : decl->specific_attrs<AnnotateAttr>())
-	{
-		if (parseExportAttribute(entry, sourceName, output))
-			return true;
-	}
-
-	return false;
-}
-
-bool parseParamOrFieldAttribute(Decl* decl, bool isField, int& typeFlags)
-{
-	for(const auto& entry : decl->specific_attrs<AnnotateAttr>())
-	{
-		if (!isField && entry->getAnnotation() == "params")
-		{
-			typeFlags |= (int)TypeFlags::VarParams;
-			return true;
-		}
-
-		if (entry->getAnnotation() == "norref")
-		{
-			typeFlags &= ~(int)TypeFlags::AsResourceRef;
-			return true;
-		}
-	}
-
-	return false;
-}
-
-bool isBase(const CXXRecordDecl* decl)
-{
-	std::string className = decl->getName().str();
-
-	if (className == BUILTIN_COMPONENT_TYPE)
-		return true;
-	else if (className == BUILTIN_RESOURCE_TYPE)
-		return true;
-	else if (className == BUILTIN_SCENEOBJECT_TYPE)
-		return true;
-	else if (className == BUILTIN_MODULE_TYPE)
-		return true;
-	else if (className == BUILTIN_GUIELEMENT_TYPE)
-		return true;
-	else if (className == BUILTIN_REFLECTABLE_TYPE)
-		return true;
-
-	return false;
-}
-
-bool isExportable(const CXXRecordDecl* decl)
-{
-	std::string className = decl->getName().str();
-
-	AnnotateAttr* attr = decl->getAttr<AnnotateAttr>();
-	if (attr != nullptr)
-	{
-		StringRef sourceClassName = decl->getName();
-		ParsedDeclInfo parsedDeclInfo;
-
-		if (parseExportAttribute(attr, sourceClassName, parsedDeclInfo))
-			return true;
-	}
-
-	return false;
-}
-
-std::string parseExportableBaseClass(const CXXRecordDecl* decl)
-{
-	if (!decl->hasDefinition())
-		return "";
-
-	std::stack<const CXXRecordDecl*> todo;
-	todo.push(decl);
-
-	while (!todo.empty())
-	{
-		const CXXRecordDecl* curDecl = todo.top();
-		todo.pop();
-
-		auto iter = curDecl->bases_begin();
-		while (iter != curDecl->bases_end())
-		{
-			const CXXBaseSpecifier* baseSpec = iter;
-			CXXRecordDecl* baseDecl = baseSpec->getType()->getAsCXXRecordDecl();
-
-			std::string className = baseDecl->getName().str();
-
-			if(isBase(baseDecl))
-			{
-				iter++;
-				continue;
-			}
-
-			AnnotateAttr* attr = baseDecl->getAttr<AnnotateAttr>();
-			if (attr != nullptr)
-			{
-				StringRef sourceClassName = baseDecl->getName();
-				ParsedDeclInfo parsedDeclInfo;
-
-				if (parseExportAttribute(attr, sourceClassName, parsedDeclInfo))
-					return sourceClassName.str();
-			}
-
-			todo.push(baseDecl);
-			iter++;
-		}
-	}
-
-	return "";
-}
-
-std::string parseExportableBaseStruct(const CXXRecordDecl* decl)
-{
-	if (!decl->hasDefinition())
-		return "";
-
-	auto iter = decl->bases_begin();
-	while (iter != decl->bases_end())
-	{
-		const CXXBaseSpecifier* baseSpec = iter;
-		CXXRecordDecl* baseDecl = baseSpec->getType()->getAsCXXRecordDecl();
-
-		std::string className = baseDecl->getName().str();
-
-		AnnotateAttr* attr = baseDecl->getAttr<AnnotateAttr>();
-		if (attr != nullptr)
-		{
-			StringRef sourceClassName = baseDecl->getName();
-			ParsedDeclInfo parsedDeclInfo;
-
-			if (parseExportAttribute(attr, sourceClassName, parsedDeclInfo))
-			{
-				if((parsedDeclInfo.exportFlags & (int)ExportFlags::Plain) != 0)
-					return sourceClassName.str();
-			}
-		}
-
-		iter++;
-	}
-
-	return "";
-}
-
-bool isModule(const CXXRecordDecl* decl)
-{
-	if (!decl->hasDefinition())
-		return false;
-
-	std::stack<const CXXRecordDecl*> todo;
-	todo.push(decl);
-
-	while (!todo.empty())
-	{
-		const CXXRecordDecl* curDecl = todo.top();
-		todo.pop();
-
-		auto iter = curDecl->bases_begin();
-		while (iter != curDecl->bases_end())
-		{
-			const CXXBaseSpecifier* baseSpec = iter;
-			CXXRecordDecl* baseDecl = baseSpec->getType()->getAsCXXRecordDecl();
-
-			std::string className = baseDecl->getName().str();
-			if (className == BUILTIN_MODULE_TYPE)
-				return true;
-
-			todo.push(baseDecl);
-			iter++;
 		}
 	}
 
@@ -1301,8 +821,8 @@ bool BansheeCodeGeneratorASTVisitor::parseEvent(ValueDecl* decl, const std::stri
 
 	StringRef sourceFieldName = decl->getName();
 
-	ParsedDeclInfo parsedEventInfo;
-	if (!parseExportAttribute(fieldAttr, sourceFieldName, parsedEventInfo))
+	ScriptExportInformation parsedEventInfo;
+	if (!ScriptExportUtility::ParseExportAttribute(fieldAttr, sourceFieldName, parsedEventInfo))
 		return false;
 
 	FunctionTypeInfo eventSignature;
@@ -1315,24 +835,24 @@ bool BansheeCodeGeneratorASTVisitor::parseEvent(ValueDecl* decl, const std::stri
 
 	int eventFlags = 0;
 
-	if ((parsedEventInfo.exportFlags & (int)ExportFlags::External) != 0)
+	if ((parsedEventInfo.ExportFlags & (int)ExportFlags::External) != 0)
 	{
 		outs() << "Error: External events currently not supported. Skipping export for event \"" + sourceFieldName + "\".";
 		return false;
 	}
 
-	if ((parsedEventInfo.exportFlags & (int)ExportFlags::InteropOnly))
+	if ((parsedEventInfo.ExportFlags & (int)ExportFlags::InteropOnly))
 		eventFlags |= (int)MethodFlags::InteropOnly;
 
 	if (isCallback)
 		eventFlags |= (int)MethodFlags::Callback;
 
 	eventInfo.sourceName = sourceFieldName.str();
-	eventInfo.scriptName = parsedEventInfo.exportName;
+	eventInfo.scriptName = parsedEventInfo.ExportedTypeName;
 	eventInfo.flags = eventFlags;
 	eventInfo.externalClass = className;
-	eventInfo.visibility = parsedEventInfo.visibility;
-	eventInfo.api = apiFromExportFlags(parsedEventInfo.exportFlags);
+	eventInfo.visibility = parsedEventInfo.Visibility;
+	eventInfo.api = apiFromExportFlags(parsedEventInfo.ExportFlags);
 	mCommentParser.ParseComments(decl, eventInfo.documentation);
 	clearParamRefComments(eventInfo.documentation);
 
@@ -1357,28 +877,6 @@ bool BansheeCodeGeneratorASTVisitor::parseEvent(ValueDecl* decl, const std::stri
 	return true;
 }
 
-void parseNamespace(NamedDecl* decl, SmallVector<std::string, 4>& output)
-{
-	const DeclContext* context = decl->getDeclContext();
-	SmallVector<const DeclContext *, 8> contexts;
-
-	// Collect contexts.
-	while (context && isa<NamedDecl>(context))
-	{
-		contexts.push_back(context);
-		context = context->getParent();
-	}
-
-	for (const DeclContext* dc : reverse(contexts))
-	{
-		if (const auto* nd = dyn_cast<NamespaceDecl>(dc))
-		{
-			if (!nd->isAnonymousNamespace())
-				output.push_back(nd->getDeclName().getAsString());
-		}
-	}
-}
-
 bool BansheeCodeGeneratorASTVisitor::VisitEnumDecl(EnumDecl* decl)
 {
 	mCommentParser.ParseAndRegisterAllComments(decl);
@@ -1388,13 +886,13 @@ bool BansheeCodeGeneratorASTVisitor::VisitEnumDecl(EnumDecl* decl)
 		return true;
 
 	StringRef sourceClassName = decl->getName();
-	ParsedDeclInfo parsedEnumInfo;
-	parsedEnumInfo.exportName = sourceClassName.str();
+	ScriptExportInformation parsedEnumInfo;
+	parsedEnumInfo.ExportedTypeName = sourceClassName.str();
 
-	if (!parseExportAttribute(attr, sourceClassName, parsedEnumInfo))
+	if (!ScriptExportUtility::ParseExportAttribute(attr, sourceClassName, parsedEnumInfo))
 		return true;
 
-	FileInfo& fileInfo = outputFileInfos[parsedEnumInfo.exportFile];
+	FileInfo& fileInfo = outputFileInfos[parsedEnumInfo.ExportedFileName];
 	auto iterFind = std::find_if(fileInfo.enumInfos.begin(), fileInfo.enumInfos.end(), 
 		[&sourceClassName](const EnumInfo& ei)
 	{
@@ -1413,10 +911,10 @@ bool BansheeCodeGeneratorASTVisitor::VisitEnumDecl(EnumDecl* decl)
 
 	EnumInfo enumEntry;
 	enumEntry.name = sourceClassName.str();
-	enumEntry.scriptName = parsedEnumInfo.exportName;
-	enumEntry.visibility = parsedEnumInfo.visibility;
-	enumEntry.api = apiFromExportFlags(parsedEnumInfo.exportFlags);
-	enumEntry.module = parsedEnumInfo.moduleName;
+	enumEntry.scriptName = parsedEnumInfo.ExportedTypeName;
+	enumEntry.visibility = parsedEnumInfo.Visibility;
+	enumEntry.api = apiFromExportFlags(parsedEnumInfo.ExportFlags);
+	enumEntry.module = parsedEnumInfo.DocumentationGroup;
 	mCommentParser.ParseComments(decl, enumEntry.documentation);
 	clearParamRefComments(enumEntry.documentation);
 
@@ -1429,11 +927,11 @@ bool BansheeCodeGeneratorASTVisitor::VisitEnumDecl(EnumDecl* decl)
 		mapBuiltinTypeToCSType(builtinType->getKind(), enumEntry.explicitType);
 
 	std::string declFile = astContext->getSourceManager().getFilename(decl->getSourceRange().getBegin()).str();
-	std::string destFile = "BsScript" + parsedEnumInfo.exportFile + ".generated.h";
-	std::string destFileEditor = "BsScript" + parsedEnumInfo.exportFile + ".editor.generated.h";
+	std::string destFile = "BsScript" + parsedEnumInfo.ExportedFileName + ".generated.h";
+	std::string destFileEditor = "BsScript" + parsedEnumInfo.ExportedFileName + ".editor.generated.h";
 
-	registerUserTypeInfo(enumEntry.ns, sourceClassName.str(), enumEntry.api, declFile, parsedEnumInfo.exportName,
-		parsedEnumInfo.exportFile, ::ParsedType::Enum);
+	registerUserTypeInfo(enumEntry.ns, sourceClassName.str(), enumEntry.api, declFile, parsedEnumInfo.ExportedTypeName,
+		parsedEnumInfo.ExportedFileName, ::ParsedType::Enum);
 	cppToCsTypeMap[sourceClassName.str()].underlyingType = builtinType->getKind();
 
 	auto iter = decl->enumerator_begin();
@@ -1441,17 +939,17 @@ bool BansheeCodeGeneratorASTVisitor::VisitEnumDecl(EnumDecl* decl)
 	{
 		EnumConstantDecl* constDecl = *iter;
 
-		ParsedDeclInfo parsedEnumEntryInfo;
+		ScriptExportInformation parsedEnumEntryInfo;
 		AnnotateAttr* enumAttr = constDecl->getAttr<AnnotateAttr>();
 
 		StringRef entryName = constDecl->getName();
-		parsedEnumEntryInfo.exportName = entryName.str();
-		parsedEnumEntryInfo.exportFlags = 0;
+		parsedEnumEntryInfo.ExportedTypeName = entryName.str();
+		parsedEnumEntryInfo.ExportFlags = 0;
 
 		if (enumAttr != nullptr)
-			parseExportAttribute(enumAttr, entryName, parsedEnumEntryInfo);
+			ScriptExportUtility::ParseExportAttribute(enumAttr, entryName, parsedEnumEntryInfo);
 
-		if ((parsedEnumEntryInfo.exportFlags & (int)ExportFlags::Exclude) != 0)
+		if ((parsedEnumEntryInfo.ExportFlags & (int)ExportFlags::Exclude) != 0)
 		{
 			++iter;
 			continue;
@@ -1461,7 +959,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitEnumDecl(EnumDecl* decl)
 
 		EnumEntryInfo entryInfo;
 		entryInfo.name = entryName.str();
-		entryInfo.scriptName = parsedEnumEntryInfo.exportName;
+		entryInfo.scriptName = parsedEnumEntryInfo.ExportedTypeName;
 		mCommentParser.ParseComments(constDecl, entryInfo.documentation);
 		clearParamRefComments(entryInfo.documentation);
 
@@ -1473,7 +971,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitEnumDecl(EnumDecl* decl)
 		++iter;
 	}
 
-	addEntryToFile<EnumInfo>(fileInfo, enumEntry, parsedEnumInfo.exportFile, 
+	addEntryToFile<EnumInfo>(fileInfo, enumEntry, parsedEnumInfo.ExportedFileName, 
 		[](FileInfo& fileInfo, const EnumInfo& enumInfo) { fileInfo.enumInfos.push_back(enumInfo); });
 
 	return true;
@@ -1541,10 +1039,10 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 
 	StringRef declName = decl->getName();
 
-	ParsedDeclInfo parsedClassInfo;
-	parsedClassInfo.exportName = declName.str();
+	ScriptExportInformation parsedClassInfo;
+	parsedClassInfo.ExportedTypeName = declName.str();
 
-	if (!parseExportAttribute(attr, declName, parsedClassInfo))
+	if (!ScriptExportUtility::ParseExportAttribute(attr, declName, parsedClassInfo))
 		return true;
 
 	std::string srcClassName = declName.str();
@@ -1560,8 +1058,8 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 		templatedDecl = specDecl->getSpecializedTemplate()->getTemplatedDecl();
 	}
 
-	FileInfo& fileInfo = outputFileInfos[parsedClassInfo.exportFile];
-	if ((parsedClassInfo.exportFlags & (int)ExportFlags::Plain) != 0)
+	FileInfo& fileInfo = outputFileInfos[parsedClassInfo.ExportedFileName];
+	if ((parsedClassInfo.ExportFlags & (int)ExportFlags::Plain) != 0)
 	{
 		auto iterFind = std::find_if(fileInfo.structInfos.begin(), fileInfo.structInfos.end(), 
 			[&srcClassName](const StructInfo& si)
@@ -1575,13 +1073,13 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 		StructInfo structInfo;
 		structInfo.name = srcClassName;
 		structInfo.cleanName = declName.str();
-		structInfo.baseClass = parseExportableBaseStruct(decl);
-		structInfo.visibility = parsedClassInfo.visibility;
+		structInfo.baseClass = ScriptExportUtility::FindExportableBasePlainClassName(decl);
+		structInfo.visibility = parsedClassInfo.Visibility;
 		structInfo.requiresInterop = decl->isPolymorphic();
-		structInfo.module = parsedClassInfo.moduleName;
+		structInfo.module = parsedClassInfo.DocumentationGroup;
 		structInfo.isTemplateInst = specDecl != nullptr;
 		structInfo.templParams = templParams;
-		structInfo.api = apiFromExportFlags(parsedClassInfo.exportFlags);
+		structInfo.api = apiFromExportFlags(parsedClassInfo.ExportFlags);
 
 		mCommentParser.ParseComments(templatedDecl, structInfo.documentation);
 		parseNamespace(decl, structInfo.ns);
@@ -1607,10 +1105,10 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 				AnnotateAttr* ctorAttr = ctorDecl->getAttr<AnnotateAttr>();
 				if (ctorAttr != nullptr)
 				{
-					ParsedDeclInfo parsedCtorInfo;
-					parseExportAttribute(ctorAttr, srcClassName, parsedCtorInfo);
+					ScriptExportInformation parsedCtorInfo;
+					ScriptExportUtility::ParseExportAttribute(ctorAttr, srcClassName, parsedCtorInfo);
 
-					if ((parsedCtorInfo.exportFlags & (int)ExportFlags::Exclude) != 0)
+					if ((parsedCtorInfo.ExportFlags & (int)ExportFlags::Exclude) != 0)
 					{
 						++ctorIter;
 						continue;
@@ -1827,10 +1325,10 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 				FieldInfo fieldInfo;
 				fieldInfo.name = fieldDecl->getName().str();
 
-				ParsedDeclInfo parsedFieldInfo;
-				if (parseExportAttribute(fieldDecl, srcClassName, parsedFieldInfo))
+				ScriptExportInformation parsedFieldInfo;
+				if (ScriptExportUtility::ParseExportAttribute(fieldDecl, srcClassName, parsedFieldInfo))
 				{
-					if ((parsedFieldInfo.exportFlags & (int)ExportFlags::Exclude) != 0)
+					if ((parsedFieldInfo.ExportFlags & (int)ExportFlags::Exclude) != 0)
 					{
 						structInfo.requiresInterop = true;
 						continue;
@@ -1908,10 +1406,10 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 			structInfo.ctors.push_back(SimpleConstructorInfo());
 
 		std::string declFile = astContext->getSourceManager().getFilename(decl->getSourceRange().getBegin()).str();
-		registerUserTypeInfo(structInfo.ns, srcClassName, structInfo.api, declFile, parsedClassInfo.exportName,
-			parsedClassInfo.exportFile, ::ParsedType::Struct);
+		registerUserTypeInfo(structInfo.ns, srcClassName, structInfo.api, declFile, parsedClassInfo.ExportedTypeName,
+			parsedClassInfo.ExportedFileName, ::ParsedType::Struct);
 
-		addEntryToFile<StructInfo>(fileInfo, structInfo, parsedClassInfo.exportFile,
+		addEntryToFile<StructInfo>(fileInfo, structInfo, parsedClassInfo.ExportedFileName,
 			[](FileInfo& fileInfo, const StructInfo& structInfo) { fileInfo.structInfos.push_back(structInfo); });
 	}
 	else
@@ -1928,11 +1426,11 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 		ClassInfo classInfo;
 		classInfo.name = srcClassName;
 		classInfo.cleanName = declName.str();
-		classInfo.visibility = parsedClassInfo.visibility;
-		classInfo.api = apiFromExportFlags(parsedClassInfo.exportFlags);
+		classInfo.visibility = parsedClassInfo.Visibility;
+		classInfo.api = apiFromExportFlags(parsedClassInfo.ExportFlags);
 		classInfo.flags = 0;
-		classInfo.baseClass = parseExportableBaseClass(decl);
-		classInfo.module = parsedClassInfo.moduleName;
+		classInfo.baseClass = ScriptExportUtility::FindExportableBaseClassName(decl);
+		classInfo.module = parsedClassInfo.DocumentationGroup;
 		classInfo.templParams = templParams;
 		mCommentParser.ParseComments(templatedDecl, classInfo.documentation);
 		clearParamRefComments(classInfo.documentation);
@@ -1945,7 +1443,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 		if (specDecl != nullptr)
 			classInfo.flags |= (int)ClassFlags::IsTemplateInst;
 
-		bool clsIsModule = isModule(decl);
+		bool clsIsModule = ParserUtility::CheckIsBuiltinModuleType(decl);
 		if (clsIsModule)
 			classInfo.flags |= (int)ClassFlags::IsModule;
 
@@ -1955,8 +1453,8 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 		::ParsedType classType = getObjectType(decl);
 
 		std::string declFile = astContext->getSourceManager().getFilename(decl->getSourceRange().getBegin()).str();
-		registerUserTypeInfo(classInfo.ns, srcClassName, classInfo.api, declFile, parsedClassInfo.exportName,
-			parsedClassInfo.exportFile, classType);
+		registerUserTypeInfo(classInfo.ns, srcClassName, classInfo.api, declFile, parsedClassInfo.ExportedTypeName,
+			parsedClassInfo.ExportedFileName, classType);
 
 		std::stack<const CXXRecordDecl*> todo;
 		todo.push(decl);
@@ -1978,19 +1476,19 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 						continue;
 
 					StringRef dummy;
-					ParsedDeclInfo parsedMethodInfo;
-					if (!parseExportAttribute(methodAttr, dummy, parsedMethodInfo))
+					ScriptExportInformation parsedMethodInfo;
+					if (!ScriptExportUtility::ParseExportAttribute(methodAttr, dummy, parsedMethodInfo))
 						continue;
 
 					MethodInfo methodInfo;
 					methodInfo.sourceName = declName.str();
-					methodInfo.scriptName = parsedClassInfo.exportName;
+					methodInfo.scriptName = parsedClassInfo.ExportedTypeName;
 					methodInfo.flags = (int)MethodFlags::Constructor;
-					methodInfo.visibility = parsedMethodInfo.visibility;
-					methodInfo.api = apiFromExportFlags(parsedMethodInfo.exportFlags);
+					methodInfo.visibility = parsedMethodInfo.Visibility;
+					methodInfo.api = apiFromExportFlags(parsedMethodInfo.ExportFlags);
 					mCommentParser.ParseComments(ctorDecl, methodInfo.documentation);
 
-					if ((parsedMethodInfo.exportFlags & (int)ExportFlags::InteropOnly))
+					if ((parsedMethodInfo.ExportFlags & (int)ExportFlags::InteropOnly))
 						methodInfo.flags |= (int)MethodFlags::InteropOnly;
 
 					bool invalidParam = false;
@@ -2049,8 +1547,8 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 
 				StringRef sourceMethodName = methodDecl->getName();
 
-				ParsedDeclInfo parsedMethodInfo;
-				if (!parseExportAttribute(methodDecl, sourceMethodName, parsedMethodInfo))
+				ScriptExportInformation parsedMethodInfo;
+				if (!ScriptExportUtility::ParseExportAttribute(methodDecl, sourceMethodName, parsedMethodInfo))
 					continue;
 
 				if (methodDecl->getAccess() != AS_public)
@@ -2059,13 +1557,13 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 				int methodFlags = 0;
 
 				bool isExternal = false;
-				if ((parsedMethodInfo.exportFlags & (int)ExportFlags::External) != 0)
+				if ((parsedMethodInfo.ExportFlags & (int)ExportFlags::External) != 0)
 				{
 					methodFlags |= (int)MethodFlags::External;
 					isExternal = true;
 				}
 
-				if ((parsedMethodInfo.exportFlags & (int)ExportFlags::ExternalConstructor) != 0)
+				if ((parsedMethodInfo.ExportFlags & (int)ExportFlags::ExternalConstructor) != 0)
 				{
 					methodFlags |= (int)MethodFlags::External;
 					methodFlags |= (int)MethodFlags::Constructor;
@@ -2073,7 +1571,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 					isExternal = true;
 				}
 
-				if ((parsedMethodInfo.exportFlags & (int)ExportFlags::InteropOnly))
+				if ((parsedMethodInfo.ExportFlags & (int)ExportFlags::InteropOnly))
 					methodFlags |= (int)MethodFlags::InteropOnly;
 
 				bool isStatic = false;
@@ -2083,22 +1581,22 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 					isStatic = true;
 				}
 
-				if ((parsedMethodInfo.exportFlags & (int)ExportFlags::PropertyGetter) != 0)
+				if ((parsedMethodInfo.ExportFlags & (int)ExportFlags::PropertyGetter) != 0)
 					methodFlags |= (int)MethodFlags::PropertyGetter;
-				else if ((parsedMethodInfo.exportFlags & (int)ExportFlags::PropertySetter) != 0)
+				else if ((parsedMethodInfo.ExportFlags & (int)ExportFlags::PropertySetter) != 0)
 					methodFlags |= (int)MethodFlags::PropertySetter;
 
 				MethodInfo methodInfo;
 				methodInfo.sourceName = sourceMethodName.str();
-				methodInfo.scriptName = parsedMethodInfo.exportName;
+				methodInfo.scriptName = parsedMethodInfo.ExportedTypeName;
 				methodInfo.flags = methodFlags;
 				methodInfo.externalClass = srcClassName;
-				methodInfo.visibility = parsedMethodInfo.visibility;
-				methodInfo.api = apiFromExportFlags(parsedMethodInfo.exportFlags);
+				methodInfo.visibility = parsedMethodInfo.Visibility;
+				methodInfo.api = apiFromExportFlags(parsedMethodInfo.ExportFlags);
 				methodInfo.style = parsedMethodInfo.style;
 				mCommentParser.ParseComments(methodDecl, methodInfo.documentation);
 
-				bool isProperty = (parsedMethodInfo.exportFlags & ((int)ExportFlags::PropertyGetter | (int)ExportFlags::PropertySetter));
+				bool isProperty = (parsedMethodInfo.ExportFlags & ((int)ExportFlags::PropertyGetter | (int)ExportFlags::PropertySetter));
 
 				if (!isProperty)
 				{
@@ -2118,7 +1616,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 				}
 				else
 				{
-					if ((parsedMethodInfo.exportFlags & (int)ExportFlags::PropertyGetter) != 0)
+					if ((parsedMethodInfo.ExportFlags & (int)ExportFlags::PropertyGetter) != 0)
 					{
 						QualType returnType = methodDecl->getReturnType();
 						if (returnType->isVoidType())
@@ -2218,10 +1716,10 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 
 				if (isExternal)
 				{
-					if (parsedMethodInfo.externalClass == "T")
-						parsedMethodInfo.externalClass = srcClassName;
+					if (parsedMethodInfo.ExtensionOfType == "T")
+						parsedMethodInfo.ExtensionOfType = srcClassName;
 
-					ExternalClassInfos& infos = externalClassInfos[parsedMethodInfo.externalClass];
+					ExternalClassInfos& infos = externalClassInfos[parsedMethodInfo.ExtensionOfType];
 					infos.methods.push_back(methodInfo);
 				}
 				else
@@ -2241,13 +1739,13 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 					FieldInfo fieldInfo;
 					fieldInfo.name = fieldDecl->getName().str();
 
-					ParsedDeclInfo parsedFieldInfo;
+					ScriptExportInformation parsedFieldInfo;
 					bool foundExportAttrib = false;
 					for(const auto& entry : fieldDecl->specific_attrs<AnnotateAttr>())
 					{
-						if(isExportAttribute(entry))
+						if(ScriptExportUtility::IsExportAttribute(entry))
 						{
-							if (parseExportAttribute(entry, fieldInfo.name, parsedFieldInfo))
+							if (ScriptExportUtility::ParseExportAttribute(entry, fieldInfo.name, parsedFieldInfo))
 								foundExportAttrib = true;
 
 							break;
@@ -2278,9 +1776,9 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 					// Register wrapper methods, this way we can re-use much of the same logic for method/property generation
 					MethodInfo getterInfo;
 					getterInfo.sourceName = "Get" + fieldInfo.name;
-					getterInfo.scriptName = parsedFieldInfo.exportName;
-					getterInfo.visibility = parsedFieldInfo.visibility;
-					getterInfo.api = apiFromExportFlags(parsedFieldInfo.exportFlags);
+					getterInfo.scriptName = parsedFieldInfo.ExportedTypeName;
+					getterInfo.visibility = parsedFieldInfo.Visibility;
+					getterInfo.api = apiFromExportFlags(parsedFieldInfo.ExportFlags);
 					getterInfo.flags = (int)MethodFlags::PropertyGetter | (int)MethodFlags::FieldWrapper;
 					getterInfo.style = fieldInfo.style;
 
@@ -2289,7 +1787,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 					getterInfo.returnInfo.typeName = fieldInfo.typeName;
 					parseParamOrFieldAttribute(fieldDecl, true, getterInfo.returnInfo.flags);
 
-					if ((parsedFieldInfo.exportFlags & (int)ExportFlags::InteropOnly) != 0)
+					if ((parsedFieldInfo.ExportFlags & (int)ExportFlags::InteropOnly) != 0)
 						getterInfo.flags |= (int)MethodFlags::InteropOnly;
 
 					VarInfo paramInfo;
@@ -2302,15 +1800,15 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 
 					MethodInfo setterInfo;
 					setterInfo.sourceName = "Set" + fieldInfo.name;
-					setterInfo.scriptName = parsedFieldInfo.exportName;
+					setterInfo.scriptName = parsedFieldInfo.ExportedTypeName;
 					setterInfo.documentation = fieldInfo.documentation;
 					setterInfo.paramInfos.push_back(paramInfo);
-					setterInfo.visibility = parsedFieldInfo.visibility;
-					setterInfo.api = apiFromExportFlags(parsedFieldInfo.exportFlags);
+					setterInfo.visibility = parsedFieldInfo.Visibility;
+					setterInfo.api = apiFromExportFlags(parsedFieldInfo.ExportFlags);
 					setterInfo.flags = (int)MethodFlags::PropertySetter | (int)MethodFlags::FieldWrapper;
 					setterInfo.style = fieldInfo.style;
 
-					if ((parsedFieldInfo.exportFlags & (int)ExportFlags::InteropOnly) != 0)
+					if ((parsedFieldInfo.ExportFlags & (int)ExportFlags::InteropOnly) != 0)
 						setterInfo.flags |= (int)MethodFlags::InteropOnly;
 
 					classInfo.methodInfos.push_back(getterInfo);
@@ -2343,7 +1841,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 				CXXRecordDecl* baseDecl = baseSpec->getType()->getAsCXXRecordDecl();
 
 				// Base classes never need to be exported. Exportable classes will handle their own methods/fields.
-				if (isBase(baseDecl) || isExportable(baseDecl))
+				if (ParserUtility::IsBuiltinBaseType(baseDecl) || ScriptExportUtility::IsExportable(baseDecl))
 				{
 					iter++;
 					continue;
@@ -2355,9 +1853,9 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 		}
 
 		// External classes are just containers for external methods, we don't need to process them directly
-		if ((parsedClassInfo.exportFlags & (int)ExportFlags::External) == 0)
+		if ((parsedClassInfo.ExportFlags & (int)ExportFlags::External) == 0)
 		{
-			addEntryToFile<ClassInfo>(fileInfo, classInfo, parsedClassInfo.exportFile,
+			addEntryToFile<ClassInfo>(fileInfo, classInfo, parsedClassInfo.ExportedFileName,
 				[](FileInfo& fileInfo, const ClassInfo& classInfo) { fileInfo.classInfos.push_back(classInfo); });
 		}
 	}

@@ -26,12 +26,12 @@ using namespace clang::tooling;
 using namespace llvm;
 using namespace clang;
 
-extern const char* BUILTIN_COMPONENT_TYPE;
-extern const char* BUILTIN_SCENEOBJECT_TYPE;
-extern const char* BUILTIN_RESOURCE_TYPE;
-extern const char* BUILTIN_MODULE_TYPE;
-extern const char* BUILTIN_GUIELEMENT_TYPE;
-extern const char* BUILTIN_REFLECTABLE_TYPE;
+extern const char *const kBuiltinComponentType;
+extern const char *const kBuiltinSceneObjectType;
+extern const char *const kBuiltinResourceType;
+extern const char *const kBuiltinModuleType;
+extern const char *const kBuiltinGUIElementType;
+extern const char *const kBuiltinReflectableType;
 
 extern std::string sFrameworkCppNs;
 extern std::string sEditorCppNs;
@@ -155,7 +155,7 @@ enum class ApiFlags : uint8_t
 	Any = BSF | B3D
 };
 
-struct Style
+struct ExportStyle
 {
 	float rangeMin;
 	float rangeMax;
@@ -239,7 +239,7 @@ struct CommentEntry
 struct FieldInfo : VarInfo
 {
 	CommentEntry documentation;
-	Style style;
+	ExportStyle style;
 };
 
 struct TemplateParamInfo
@@ -261,7 +261,7 @@ struct MethodInfo
 
 	std::string externalClass;
 	int flags;
-	Style style;
+	ExportStyle style;
 };
 
 struct PropertyInfo
@@ -276,7 +276,7 @@ struct PropertyInfo
 	ApiFlags api;
 	int typeFlags;
 	bool isStatic;
-	Style style;
+	ExportStyle style;
 	CommentEntry documentation;
 };
 
