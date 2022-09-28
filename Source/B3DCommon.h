@@ -42,26 +42,27 @@ extern std::string sEditorExportMacro;
 extern std::string sFrameworkCopyrightNotice;
 extern std::string sEditorCopyrightNotice;
 
-enum class ParsedType
+/** Determines the high level type of the exported class/struct. */
+enum class TypeCategory
 {
-	Component,
-	SceneObject,
-	Resource,
-	GUIElement,
-	Class,
-	ReflectableClass,
-	Struct,
-	Enum,
-	Builtin,
-	String,
-	WString,
-	Path,
-	MonoObject
+	Component, /**< Child of native builtin Component type. */
+	SceneObject,/**< Child of native builtin SceneObject type. */
+	Resource, /**< Child of native builtin Resource type. */
+	GUIElement, /**< Child of native builtin GUIElementBase type. */
+	Class, /**< Generic class (no known builtin type is a base). */
+	ReflectableClass, /**< Child of native builtin IReflectable type. */
+	Struct, /**< Generic struct (no known builtin type is a base). */
+	Enum, /**< enum or enum class. */
+	Primitive, /**< int, float, bool, etc. */
+	String, /**< Builtin String type. */
+	WString, /**< Builtin WString type. */
+	Path, /**< Builtin Path type. */
+	MonoObject /**< Builtin MonoObject type. */
 };
 
-enum class TypeFlags
+enum class TypeFlags // TODO - Ideally this is split up into types and qualifiers
 {
-	Builtin = 1 << 0,
+	Primitive = 1 << 0,
 	Output = 1 << 1,
 	Vector = 1 << 2,
 	SrcPtr = 1 << 3,
@@ -107,16 +108,16 @@ enum class CSVisibility
 
 enum class ExportFlags
 {
-	Plain = 1 << 0,
+	ExportAsStruct = 1 << 0,
 	PropertyGetter = 1 << 1,
 	PropertySetter = 1 << 2,
-	External = 1 << 3,
+	ExternalMethod = 1 << 3,
 	ExternalConstructor = 1 << 4,
 	Exclude = 1 << 5,
 	InteropOnly = 1 << 6,
-	ApiBSF = 1 << 7,
-	ApiB3D = 1 << 8,
-	ApiBED = 1 << 9
+	FrameworkAPI = 1 << 7,
+	EngineAPI = 1 << 8,
+	EditorAPI = 1 << 9
 };
 
 enum class ClassFlags
@@ -147,12 +148,12 @@ enum class StyleFlags
 	HDR = 1 << 14,
 };
 
-enum class ApiFlags : uint8_t
+enum class ApiFlags
 {
-	BSF = 1 << 0,
-	B3D = 1 << 1,
-	BED = 1 << 2,
-	Any = BSF | B3D
+	Framework = 1 << 0,
+	Engine = 1 << 1,
+	Editor = 1 << 2,
+	Any = Framework | Engine
 };
 
 struct ExportStyle
@@ -165,26 +166,31 @@ struct ExportStyle
 	int flags = 0;
 };
 
-struct UserTypeInfo
+/**
+ * Contains information about how a native type maps to a script type.
+ *
+ * Note we need this separate from ClassInfo and StructInfo as occasionally we need to provide type mapping for types that won't be generated (e.g. are builtin)
+ */
+struct TypeMappingInformation
 {
-	UserTypeInfo() {}
+	TypeMappingInformation() {}
 
-	UserTypeInfo(SmallVector<std::string, 4> ns, const std::string& scriptName, ::ParsedType type, const std::string& declFile, const std::string& destFile)
-		:ns(std::move(ns)), scriptName(scriptName), type(type), declFile(declFile), destFile(destFile), destFileEditor(destFile)
+	TypeMappingInformation(SmallVector<std::string, 4> nativeNamespace, const std::string& scriptName, ::TypeCategory typeCategory, const std::string& nativeFile, const std::string& destFile)
+		:NativeNamespace(std::move(nativeNamespace)), ScriptTypeName(scriptName), TypeCategory(typeCategory), NativeFile(nativeFile), InteropFile(destFile), EditorInteropFile(destFile)
 	{ }
 
-	UserTypeInfo(SmallVector<std::string, 4> ns, const std::string& scriptName, ::ParsedType type, const std::string& declFile, const std::string& destFile,
+	TypeMappingInformation(SmallVector<std::string, 4> nativeNamespace, const std::string& scriptName, ::TypeCategory typeCategory, const std::string& nativeFile, const std::string& destFile,
 		const std::string& destFileEditor)
-		:ns(std::move(ns)), scriptName(scriptName), type(type), declFile(declFile), destFile(destFile), destFileEditor(destFileEditor)
+		:NativeNamespace(std::move(nativeNamespace)), ScriptTypeName(scriptName), TypeCategory(typeCategory), NativeFile(nativeFile), InteropFile(destFile), EditorInteropFile(destFileEditor)
 	{ }
 
-	SmallVector<std::string, 4> ns;
-	std::string scriptName;
-	std::string declFile;
-	std::string destFile;
-	std::string destFileEditor;
-	::ParsedType type;
-	BuiltinType::Kind underlyingType; // For enums
+	std::string ScriptTypeName; /**< Name of the type in the script code. */
+	SmallVector<std::string, 4> NativeNamespace; /**< Namespace in which the native type is located in. Used for e.g. forward declares in generated native interop code. */
+	std::string NativeFile; /**< File in which the native type is defined in. Used for resolving includes. */
+	std::string InteropFile; /**< File in which the interop for this type is defined in. Used for resolving includes. */
+	std::string EditorInteropFile; /**< Same as @p InteropFile, but if a type is exported in both framework and editor, then we need to generate two interop files. */
+	::TypeCategory TypeCategory; /**< Determines a high level category that this type belongs to. */
+	BuiltinType::Kind EnumUnderlyingType; /**< Underlying primitive type for enum or enum class. */
 };
 
 struct VarTypeInfo
@@ -216,8 +222,8 @@ struct CommentReference
 struct CommentText
 {
 	std::string Text;
-	SmallVector<CommentReference, 2> ParameterReferences; /**< Locations within @p text at which parameters are referenced. */
-	SmallVector<CommentReference, 2> TemplateParameterReferences; /**< Locations within @p text at which template parameters are referenced. */
+	SmallVector<CommentReference, 2> ParameterReferences; /**< Locations within @p text at which method parameters are referenced. Only relevant if the current comment is part of a method comment. */
+	SmallVector<CommentReference, 2> DeclarationReferences; /**< Locations within @p text at which other declarations are referenced (e.g. other types, methods, fields). */
 };
 
 /** Contains zero or multiple paragraphs of comment text for a method parameter. */
@@ -333,12 +339,13 @@ struct StructInfo
 	std::string module;
 };
 
+/** Information about a single entry within an enum. */
 struct EnumEntryInfo
 {
-	std::string name;
-	std::string scriptName;
-	std::string value;
-	CommentEntry documentation;
+	std::string NativeName;
+	std::string ScriptName;
+	std::string Value;
+	CommentEntry Documentation;
 };
 
 struct EnumInfo
@@ -407,14 +414,14 @@ enum IncludeType
 struct IncludeInfo
 {
 	IncludeInfo() { }
-	IncludeInfo(const std::string& typeName, const UserTypeInfo& typeInfo, uint32_t originIncludeFlags, 
+	IncludeInfo(const std::string& typeName, const TypeMappingInformation& typeInfo, uint32_t originIncludeFlags, 
 		uint32_t interopIncludeFlags, bool isStruct = false, bool isEditor = false)
 		: typeName(typeName), typeInfo(typeInfo), originIncludeFlags(originIncludeFlags)
 		, interopIncludeFlags(interopIncludeFlags), isStruct(isStruct), isEditor(isEditor)
 	{ }
 
 	std::string typeName;
-	UserTypeInfo typeInfo;
+	TypeMappingInformation typeInfo;
 	uint32_t originIncludeFlags;
 	uint32_t interopIncludeFlags;
 	bool isStruct;
@@ -466,7 +473,8 @@ enum FileType
 	FT_COUNT // Keep at end
 };
 
-extern std::unordered_map<std::string, UserTypeInfo> cppToCsTypeMap;
+/** Contains a map of native types to script types. The key is the native name as provided in ClassInfo.Name, StructInfo.Name or EnumInfo.Name. */
+extern std::unordered_map<std::string, TypeMappingInformation> NativeToScriptTypeMap;
 extern std::unordered_map<std::string, FileInfo> outputFileInfos;
 extern std::unordered_map<std::string, ExternalClassInfos> externalClassInfos;
 extern std::unordered_map<std::string, BaseClassInfo> baseClassLookup;
@@ -671,113 +679,113 @@ inline bool mapBuiltinTypeToCppType(BuiltinType::Kind kind, std::string& output)
 	return false;
 }
 
-inline UserTypeInfo getTypeInfo(const std::string& sourceType, int flags)
+inline TypeMappingInformation getTypeInfo(const std::string& sourceType, int flags)
 {
-	if ((flags & (int)TypeFlags::Builtin) != 0)
+	if ((flags & (int)TypeFlags::Primitive) != 0)
 	{
-		UserTypeInfo outType;
-		outType.scriptName = mapCppTypeToCSType(sourceType);
-		outType.type = ::ParsedType::Builtin;
+		TypeMappingInformation outType;
+		outType.ScriptTypeName = mapCppTypeToCSType(sourceType);
+		outType.TypeCategory = ::TypeCategory::Primitive;
 
 		return outType;
 	}
 
 	if ((flags & (int)TypeFlags::String) != 0)
 	{
-		UserTypeInfo outType;
-		outType.scriptName = "string";
-		outType.type = ::ParsedType::String;
+		TypeMappingInformation outType;
+		outType.ScriptTypeName = "string";
+		outType.TypeCategory = ::TypeCategory::String;
 
 		return outType;
 	}
 
 	if ((flags & (int)TypeFlags::WString) != 0)
 	{
-		UserTypeInfo outType;
-		outType.scriptName = "string";
-		outType.type = ::ParsedType::WString;
+		TypeMappingInformation outType;
+		outType.ScriptTypeName = "string";
+		outType.TypeCategory = ::TypeCategory::WString;
 
 		return outType;
 	}
 
 	if ((flags & (int)TypeFlags::Path) != 0)
 	{
-		UserTypeInfo outType;
-		outType.scriptName = "string";
-		outType.type = ::ParsedType::Path;
+		TypeMappingInformation outType;
+		outType.ScriptTypeName = "string";
+		outType.TypeCategory = ::TypeCategory::Path;
 
 		return outType;
 	}
 
 	if ((flags & (int)TypeFlags::MonoObject) != 0)
 	{
-		UserTypeInfo outType;
-		outType.scriptName = "object";
-		outType.type = ::ParsedType::MonoObject;
+		TypeMappingInformation outType;
+		outType.ScriptTypeName = "object";
+		outType.TypeCategory = ::TypeCategory::MonoObject;
 
 		return outType;
 	}
 
 	if ((flags & (int)TypeFlags::AsResourceRef) != 0)
 	{
-		UserTypeInfo outType;
+		TypeMappingInformation outType;
 
 		if (sourceType == "Resource")
 		{
-			outType = cppToCsTypeMap.find("Resource")->second;
-			outType.scriptName = "RRefBase";
+			outType = NativeToScriptTypeMap.find("Resource")->second;
+			outType.ScriptTypeName = "RRefBase";
 		}
 		else
 		{
-			auto iterFind = cppToCsTypeMap.find(sourceType);
-			if (iterFind != cppToCsTypeMap.end())
+			auto iterFind = NativeToScriptTypeMap.find(sourceType);
+			if (iterFind != NativeToScriptTypeMap.end())
 			{
 				outType = iterFind->second;
-				outType.scriptName = "RRef<" + iterFind->second.scriptName + ">";
+				outType.ScriptTypeName = "RRef<" + iterFind->second.ScriptTypeName + ">";
 				assert(outType.type == ::ParsedType::Resource);
 			}
 			else
 			{
-				outType.scriptName = "RRefBase";
-				outType.type = ::ParsedType::Resource;
+				outType.ScriptTypeName = "RRefBase";
+				outType.TypeCategory = ::TypeCategory::Resource;
 
 				errs() << "Unable to map type \"" << sourceType << "\". Assuming generic resource.\n";
 			}
 		}
 
 		if ((flags & (int)TypeFlags::AsyncOp) != 0)
-			outType.scriptName = "AsyncOp<" + outType.scriptName + ">";
+			outType.ScriptTypeName = "AsyncOp<" + outType.ScriptTypeName + ">";
 
 		return outType;
 	}
 
 	if ((flags & (int)TypeFlags::AsyncOp) != 0)
 	{
-		auto iterFind = cppToCsTypeMap.find(sourceType);
-		if (iterFind != cppToCsTypeMap.end())
+		auto iterFind = NativeToScriptTypeMap.find(sourceType);
+		if (iterFind != NativeToScriptTypeMap.end())
 		{
-			UserTypeInfo outType = iterFind->second;
-			outType.scriptName = "AsyncOp<" + iterFind->second.scriptName + ">";
+			TypeMappingInformation outType = iterFind->second;
+			outType.ScriptTypeName = "AsyncOp<" + iterFind->second.ScriptTypeName + ">";
 
 			return outType;
 		}
 		else
 		{
-			UserTypeInfo outType;
-			outType.scriptName = "AsyncOp<" + sourceType + ">";
-			outType.type = ::ParsedType::Class;
+			TypeMappingInformation outType;
+			outType.ScriptTypeName = "AsyncOp<" + sourceType + ">";
+			outType.TypeCategory = ::TypeCategory::Class;
 
 			errs() << "Unable to map type \"" << sourceType << "\". Assuming same name as source. \n";
 			return outType;
 		}
 	}
 
-	auto iterFind = cppToCsTypeMap.find(sourceType);
-	if (iterFind == cppToCsTypeMap.end())
+	auto iterFind = NativeToScriptTypeMap.find(sourceType);
+	if (iterFind == NativeToScriptTypeMap.end())
 	{
-		UserTypeInfo outType;
-		outType.scriptName = mapCppTypeToCSType(sourceType);
-		outType.type = ::ParsedType::Builtin;
+		TypeMappingInformation outType;
+		outType.ScriptTypeName = mapCppTypeToCSType(sourceType);
+		outType.TypeCategory = ::TypeCategory::Primitive;
 
 		errs() << "Unable to map type \"" << sourceType << "\". Assuming same name as source.\n";
 		return outType;
@@ -788,17 +796,17 @@ inline UserTypeInfo getTypeInfo(const std::string& sourceType, int flags)
 
 inline bool hasAPIBED(ApiFlags api)
 {
-	return ((int)api & (int)ApiFlags::BED) != 0;
+	return ((int)api & (int)ApiFlags::Editor) != 0;
 }
 
 inline bool hasAPIB3D(ApiFlags api)
 {
-	return ((int)api & (int)ApiFlags::B3D) != 0;
+	return ((int)api & (int)ApiFlags::Engine) != 0;
 }
 
 inline bool hasAPIBSF(ApiFlags api)
 {
-	return ((int)api & (int)ApiFlags::BSF) != 0;
+	return ((int)api & (int)ApiFlags::Framework) != 0;
 }
 
 inline bool isValidAPI(ApiFlags api, bool editor)
@@ -832,24 +840,24 @@ inline const std::string& escapeXML(const std::string& data)
 	return buffer;
 }
 
-inline bool isInt64(const UserTypeInfo& typeInfo)
+inline bool isInt64(const TypeMappingInformation& typeInfo)
 {
-	return typeInfo.type == ::ParsedType::Builtin && (typeInfo.scriptName == "long" || typeInfo.scriptName == "ulong");
+	return typeInfo.TypeCategory == ::TypeCategory::Primitive && (typeInfo.ScriptTypeName == "long" || typeInfo.ScriptTypeName == "ulong");
 }
 
-inline bool isInteger(const UserTypeInfo& typeInfo)
+inline bool isInteger(const TypeMappingInformation& typeInfo)
 {
-	return typeInfo.type == ::ParsedType::Builtin &&
-		(typeInfo.scriptName == "int" || typeInfo.scriptName == "uint" ||
-			typeInfo.scriptName == "long" || typeInfo.scriptName == "ulong" ||
-			typeInfo.scriptName == "short" || typeInfo.scriptName == "ushort" ||
-			typeInfo.scriptName == "byte");
+	return typeInfo.TypeCategory == ::TypeCategory::Primitive &&
+		(typeInfo.ScriptTypeName == "int" || typeInfo.ScriptTypeName == "uint" ||
+			typeInfo.ScriptTypeName == "long" || typeInfo.ScriptTypeName == "ulong" ||
+			typeInfo.ScriptTypeName == "short" || typeInfo.ScriptTypeName == "ushort" ||
+			typeInfo.ScriptTypeName == "byte");
 }
 
-inline bool isReal(const UserTypeInfo& typeInfo)
+inline bool isReal(const TypeMappingInformation& typeInfo)
 {
-	return typeInfo.type == ::ParsedType::Builtin &&
-		(typeInfo.scriptName == "float" || typeInfo.scriptName == "double");
+	return typeInfo.TypeCategory == ::TypeCategory::Primitive &&
+		(typeInfo.ScriptTypeName == "float" || typeInfo.ScriptTypeName == "double");
 }
 
 inline bool isOutput(int flags)
@@ -950,19 +958,19 @@ inline bool isStruct(int flags)
 	return (flags & (int)ClassFlags::IsStruct) != 0;
 }
 
-inline bool isHandleType(::ParsedType type)
+inline bool isHandleType(::TypeCategory type)
 {
-	return type == ::ParsedType::Resource || type == ::ParsedType::SceneObject || type == ::ParsedType::Component;
+	return type == ::TypeCategory::Resource || type == ::TypeCategory::SceneObject || type == ::TypeCategory::Component;
 }
 
-inline bool isClassType(::ParsedType type)
+inline bool isClassType(::TypeCategory type)
 {
-	return type == ::ParsedType::Class || type == ::ParsedType::ReflectableClass;
+	return type == ::TypeCategory::Class || type == ::TypeCategory::ReflectableClass;
 }
 
-inline bool isPlainStruct(::ParsedType type, int flags)
+inline bool isPlainStruct(::TypeCategory type, int flags)
 {
-	return type == ::ParsedType::Struct && !isArrayOrVector(flags);
+	return type == ::TypeCategory::Struct && !isArrayOrVector(flags);
 }
 
 inline bool isPassedByValue(int flags)
@@ -974,14 +982,14 @@ inline ApiFlags apiFromExportFlags(int flags)
 {
 	int output = 0;
 
-	if((flags & (int)ExportFlags::ApiB3D) != 0)
-		output |= (int)ApiFlags::B3D;
+	if((flags & (int)ExportFlags::EngineAPI) != 0)
+		output |= (int)ApiFlags::Engine;
 
-	if((flags & (int)ExportFlags::ApiBSF) != 0)
-		output |= (int)ApiFlags::BSF;
+	if((flags & (int)ExportFlags::FrameworkAPI) != 0)
+		output |= (int)ApiFlags::Framework;
 
-	if((flags & (int)ExportFlags::ApiBED) != 0)
-		output |= (int)ApiFlags::BED;
+	if((flags & (int)ExportFlags::EditorAPI) != 0)
+		output |= (int)ApiFlags::Editor;
 
 	if((int)output == 0)
 		output = (int)ApiFlags::Any;
@@ -994,35 +1002,35 @@ inline bool willBeDereferenced(int flags)
 	return (isSrcReference(flags) || isSrcValue(flags) || isSrcPointer(flags)) && !isSrcSPtr(flags) && !isSrcRHandle(flags) && !isSrcGHandle(flags);
 }
 
-inline bool needsIntermediateArray(::ParsedType type, int flags = 0)
+inline bool needsIntermediateArray(::TypeCategory type, int flags = 0)
 {
-	if(type == ::ParsedType::Class || type == ::ParsedType::ReflectableClass)
+	if(type == ::TypeCategory::Class || type == ::TypeCategory::ReflectableClass)
 		return !isSrcSPtr(flags);
 
 	return false;
 }
 
-inline bool isReferenceType(::ParsedType type, int flags)
+inline bool isReferenceType(::TypeCategory type, int flags)
 {
 	if (isArrayOrVector(flags))
 		return true;
 
 	switch(type)
 	{
-	case ::ParsedType::Component:
-	case ::ParsedType::SceneObject:
-	case ::ParsedType::Resource:
-	case ::ParsedType::GUIElement:
-	case ::ParsedType::Class:
-	case ::ParsedType::ReflectableClass:
-	case ::ParsedType::String:
-	case ::ParsedType::WString:
-	case ::ParsedType::Path:
-	case ::ParsedType::MonoObject:
+	case ::TypeCategory::Component:
+	case ::TypeCategory::SceneObject:
+	case ::TypeCategory::Resource:
+	case ::TypeCategory::GUIElement:
+	case ::TypeCategory::Class:
+	case ::TypeCategory::ReflectableClass:
+	case ::TypeCategory::String:
+	case ::TypeCategory::WString:
+	case ::TypeCategory::Path:
+	case ::TypeCategory::MonoObject:
 		return true;
-	case ::ParsedType::Struct:
-	case ::ParsedType::Enum:
-	case ::ParsedType::Builtin:
+	case ::TypeCategory::Struct:
+	case ::TypeCategory::Enum:
+	case ::TypeCategory::Primitive:
 	default: 
 		return false;
 	}
@@ -1033,7 +1041,7 @@ inline bool isCSOnly(int flags)
 	return (flags & (int)MethodFlags::CSOnly) != 0;
 }
 
-inline bool canBeReturned(::ParsedType type, int flags)
+inline bool canBeReturned(::TypeCategory type, int flags)
 {
 	if (isOutput(flags))
 		return false;
@@ -1041,7 +1049,7 @@ inline bool canBeReturned(::ParsedType type, int flags)
 	if (isArrayOrVector(flags))
 		return true;
 
-	if (type == ::ParsedType::Struct)
+	if (type == ::TypeCategory::Struct)
 		return false;
 
 	return true;
@@ -1080,7 +1088,7 @@ inline std::string getStructInteropType(const std::string& name)
 	return "__" + cleanTemplParams(name) + "Interop";
 }
 
-inline bool isValidStructType(UserTypeInfo& typeInfo, int flags)
+inline bool isValidStructType(TypeMappingInformation& typeInfo, int flags)
 {
 	if (isOutput(flags))
 		return false;
@@ -1088,18 +1096,18 @@ inline bool isValidStructType(UserTypeInfo& typeInfo, int flags)
 	return true;
 }
 
-inline std::string getDefaultValue(const std::string& typeName, int flags, const UserTypeInfo& typeInfo)
+inline std::string getDefaultValue(const std::string& typeName, int flags, const TypeMappingInformation& typeInfo)
 {
 	if(isArrayOrVector(flags))
 		return "null";
 
-	if (typeInfo.type == ::ParsedType::Builtin)
+	if (typeInfo.TypeCategory == ::TypeCategory::Primitive)
 		return "0";
-	else if (typeInfo.type == ::ParsedType::Enum)
-		return "(" + typeInfo.scriptName + ")0";
-	else if (typeInfo.type == ::ParsedType::Struct)
-		return typeInfo.scriptName + ".Default()";
-	else if (typeInfo.type == ::ParsedType::String || typeInfo.type == ::ParsedType::WString || typeInfo.type == ::ParsedType::Path)
+	else if (typeInfo.TypeCategory == ::TypeCategory::Enum)
+		return "(" + typeInfo.ScriptTypeName + ")0";
+	else if (typeInfo.TypeCategory == ::TypeCategory::Struct)
+		return typeInfo.ScriptTypeName + ".Default()";
+	else if (typeInfo.TypeCategory == ::TypeCategory::String || typeInfo.TypeCategory == ::TypeCategory::WString || typeInfo.TypeCategory == ::TypeCategory::Path)
 		return "\"\"";
 	else // Some class type
 		return "null";

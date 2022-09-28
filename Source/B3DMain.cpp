@@ -27,7 +27,7 @@ std::string sEditorCopyrightNotice =
 	"//********************************** Banshee Engine (www.banshee3d.com) **************************************************//\n" \
 	"//************** Copyright (c) 2016-2019 Marko Pintera (marko.pintera@gmail.com). All rights reserved. *******************//\n";
 
-std::unordered_map<std::string, UserTypeInfo> cppToCsTypeMap;
+std::unordered_map<std::string, TypeMappingInformation> NativeToScriptTypeMap;
 std::unordered_map<std::string, FileInfo> outputFileInfos;
 std::unordered_map<std::string, ExternalClassInfos> externalClassInfos;
 std::unordered_map<std::string, BaseClassInfo> baseClassLookup;
@@ -210,28 +210,28 @@ int main(int argc, const char** argv)
 	// Note: I could auto-generate C++ wrappers for these types
 	SmallVector<std::string, 4> frameworkNs = { sFrameworkCppNs };
 	
-	cppToCsTypeMap["Vector2"] = UserTypeInfo(frameworkNs,"Vector2", ::ParsedType::Struct, "Math/BsVector2.h", "Wrappers/BsScriptVector.h");
-	cppToCsTypeMap["Vector3"] = UserTypeInfo(frameworkNs, "Vector3", ::ParsedType::Struct, "Math/BsVector3.h", "Wrappers/BsScriptVector.h");
-	cppToCsTypeMap["Vector4"] = UserTypeInfo(frameworkNs, "Vector4", ::ParsedType::Struct, "Math/BsVector4.h", "Wrappers/BsScriptVector.h");
-	cppToCsTypeMap["Matrix3"] = UserTypeInfo(frameworkNs, "Matrix3", ::ParsedType::Struct, "Math/BsMatrix3.h", "");
-	cppToCsTypeMap["Matrix4"] = UserTypeInfo(frameworkNs, "Matrix4", ::ParsedType::Struct, "Math/BsMatrix4.h", "");
-	cppToCsTypeMap["Quaternion"] = UserTypeInfo(frameworkNs, "Quaternion", ::ParsedType::Struct, "Math/BsQuaternion.h", "Wrappers/BsScriptQuaternion.h");
-	cppToCsTypeMap["Radian"] = UserTypeInfo(frameworkNs, "Radian", ::ParsedType::Struct, "Math/BsRadian.h", "");
-	cppToCsTypeMap["Degree"] = UserTypeInfo(frameworkNs, "Degree", ::ParsedType::Struct, "Math/BsDegree.h", "");
-	cppToCsTypeMap["Color"] = UserTypeInfo(frameworkNs, "Color", ::ParsedType::Struct, "Image/BsColor.h", "Wrappers/BsScriptColor.h");
-	cppToCsTypeMap["AABox"] = UserTypeInfo(frameworkNs, "AABox", ::ParsedType::Struct, "Math/BsAABox.h", "");
-	cppToCsTypeMap["Sphere"] = UserTypeInfo(frameworkNs, "Sphere", ::ParsedType::Struct, "Math/BsSphere.h", "");
-	cppToCsTypeMap["Capsule"] = UserTypeInfo(frameworkNs, "Capsule", ::ParsedType::Struct, "Math/BsCapsule.h", "");
-	cppToCsTypeMap["Ray"] = UserTypeInfo(frameworkNs, "Ray", ::ParsedType::Struct, "Math/BsRay.h", "");
-	cppToCsTypeMap["Vector2I"] = UserTypeInfo(frameworkNs, "Vector2I", ::ParsedType::Struct, "Math/BsVector2I.h", "Wrappers/BsScriptVector2I.h");
-	cppToCsTypeMap["Rect2"] = UserTypeInfo(frameworkNs, "Rect2", ::ParsedType::Struct, "Math/BsRect2.h", "");
-	cppToCsTypeMap["Rect2I"] = UserTypeInfo(frameworkNs, "Rect2I", ::ParsedType::Struct, "Math/BsRect2I.h", "");
-	cppToCsTypeMap["Bounds"] = UserTypeInfo(frameworkNs, "Bounds", ::ParsedType::Struct, "Math/BsBounds.h", "");
-	cppToCsTypeMap["Plane"] = UserTypeInfo(frameworkNs, "Plane", ::ParsedType::Struct, "Math/BsPlane.h", "Wrappers/BsScriptPlane.h");
-	cppToCsTypeMap["UUID"] = UserTypeInfo(frameworkNs, "UUID", ::ParsedType::Struct, "Utility/BsUUID.h", "");
-	cppToCsTypeMap["SceneObject"] = UserTypeInfo(frameworkNs, "SceneObject", ::ParsedType::SceneObject, "Scene/BsSceneObject.h", "Wrappers/BsScriptSceneObject.h");
-	cppToCsTypeMap["Resource"] = UserTypeInfo(frameworkNs, "Resource", ::ParsedType::Resource, "Resources/BsResource.h", "Wrappers/BsScriptResource.h");
-	cppToCsTypeMap["Any"] = UserTypeInfo(frameworkNs, "Any", ::ParsedType::Class, "Utility/BsAny.h", "");
+	NativeToScriptTypeMap["Vector2"] = TypeMappingInformation(frameworkNs,"Vector2", ::TypeCategory::Struct, "Math/BsVector2.h", "Wrappers/BsScriptVector.h");
+	NativeToScriptTypeMap["Vector3"] = TypeMappingInformation(frameworkNs, "Vector3", ::TypeCategory::Struct, "Math/BsVector3.h", "Wrappers/BsScriptVector.h");
+	NativeToScriptTypeMap["Vector4"] = TypeMappingInformation(frameworkNs, "Vector4", ::TypeCategory::Struct, "Math/BsVector4.h", "Wrappers/BsScriptVector.h");
+	NativeToScriptTypeMap["Matrix3"] = TypeMappingInformation(frameworkNs, "Matrix3", ::TypeCategory::Struct, "Math/BsMatrix3.h", "");
+	NativeToScriptTypeMap["Matrix4"] = TypeMappingInformation(frameworkNs, "Matrix4", ::TypeCategory::Struct, "Math/BsMatrix4.h", "");
+	NativeToScriptTypeMap["Quaternion"] = TypeMappingInformation(frameworkNs, "Quaternion", ::TypeCategory::Struct, "Math/BsQuaternion.h", "Wrappers/BsScriptQuaternion.h");
+	NativeToScriptTypeMap["Radian"] = TypeMappingInformation(frameworkNs, "Radian", ::TypeCategory::Struct, "Math/BsRadian.h", "");
+	NativeToScriptTypeMap["Degree"] = TypeMappingInformation(frameworkNs, "Degree", ::TypeCategory::Struct, "Math/BsDegree.h", "");
+	NativeToScriptTypeMap["Color"] = TypeMappingInformation(frameworkNs, "Color", ::TypeCategory::Struct, "Image/BsColor.h", "Wrappers/BsScriptColor.h");
+	NativeToScriptTypeMap["AABox"] = TypeMappingInformation(frameworkNs, "AABox", ::TypeCategory::Struct, "Math/BsAABox.h", "");
+	NativeToScriptTypeMap["Sphere"] = TypeMappingInformation(frameworkNs, "Sphere", ::TypeCategory::Struct, "Math/BsSphere.h", "");
+	NativeToScriptTypeMap["Capsule"] = TypeMappingInformation(frameworkNs, "Capsule", ::TypeCategory::Struct, "Math/BsCapsule.h", "");
+	NativeToScriptTypeMap["Ray"] = TypeMappingInformation(frameworkNs, "Ray", ::TypeCategory::Struct, "Math/BsRay.h", "");
+	NativeToScriptTypeMap["Vector2I"] = TypeMappingInformation(frameworkNs, "Vector2I", ::TypeCategory::Struct, "Math/BsVector2I.h", "Wrappers/BsScriptVector2I.h");
+	NativeToScriptTypeMap["Rect2"] = TypeMappingInformation(frameworkNs, "Rect2", ::TypeCategory::Struct, "Math/BsRect2.h", "");
+	NativeToScriptTypeMap["Rect2I"] = TypeMappingInformation(frameworkNs, "Rect2I", ::TypeCategory::Struct, "Math/BsRect2I.h", "");
+	NativeToScriptTypeMap["Bounds"] = TypeMappingInformation(frameworkNs, "Bounds", ::TypeCategory::Struct, "Math/BsBounds.h", "");
+	NativeToScriptTypeMap["Plane"] = TypeMappingInformation(frameworkNs, "Plane", ::TypeCategory::Struct, "Math/BsPlane.h", "Wrappers/BsScriptPlane.h");
+	NativeToScriptTypeMap["UUID"] = TypeMappingInformation(frameworkNs, "UUID", ::TypeCategory::Struct, "Utility/BsUUID.h", "");
+	NativeToScriptTypeMap["SceneObject"] = TypeMappingInformation(frameworkNs, "SceneObject", ::TypeCategory::SceneObject, "Scene/BsSceneObject.h", "Wrappers/BsScriptSceneObject.h");
+	NativeToScriptTypeMap["Resource"] = TypeMappingInformation(frameworkNs, "Resource", ::TypeCategory::Resource, "Resources/BsResource.h", "Wrappers/BsScriptResource.h");
+	NativeToScriptTypeMap["Any"] = TypeMappingInformation(frameworkNs, "Any", ::TypeCategory::Class, "Utility/BsAny.h", "");
 
 	// Parse C++ into an easy to read format
 	const std::unique_ptr<BansheeCodeGeneratorFrontendActionFactory> factory = std::unique_ptr<BansheeCodeGeneratorFrontendActionFactory>(new BansheeCodeGeneratorFrontendActionFactory);

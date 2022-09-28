@@ -56,7 +56,7 @@ public:
 	/** Returns the name of the first base class of the provided declaration that has the script export attribute. */
 	static std::string FindExportableBaseClassName(const CXXRecordDecl* decl);
 
-	/** Returns the name of the first base class of the provided declaration that has the script export attribute with the Plain option set. */
+	/** Returns the name of the first base class of the provided declaration that has the script export attribute with the ExportAsStruct option set. */
 	static std::string FindExportableBasePlainClassName(const CXXRecordDecl* decl);
 
 	/**

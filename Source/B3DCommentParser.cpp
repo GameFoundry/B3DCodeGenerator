@@ -173,7 +173,7 @@ bool CommentParser::ParseComments(const Decl* decl, CommentEntry& output)
 							if (name == "p")
 								commentText.ParameterReferences.push_back(ref);
 							else if (name == "see")
-								commentText.TemplateParameterReferences.push_back(ref);
+								commentText.DeclarationReferences.push_back(ref);
 
 							refsTotalSize += ref.Name.size();
 						}
@@ -192,13 +192,13 @@ bool CommentParser::ParseComments(const Decl* decl, CommentEntry& output)
 				for (auto& entry : commentText.ParameterReferences)
 					entry.PositionInText -= leftTrimmedCount;
 
-				for (auto& entry : commentText.TemplateParameterReferences)
+				for (auto& entry : commentText.DeclarationReferences)
 					entry.PositionInText -= leftTrimmedCount;
 			}
 			
 			trimmedText = trimmedText.trim();
 
-			if (!trimmedText.empty() || !commentText.ParameterReferences.empty() || !commentText.TemplateParameterReferences.empty())
+			if (!trimmedText.empty() || !commentText.ParameterReferences.empty() || !commentText.DeclarationReferences.empty())
 			{
 				commentText.Text = trimmedText.str();
 				output.push_back(commentText);
@@ -734,6 +734,48 @@ void CommentParser::ResolveCopydocComments(CommentEntry& comment, const std::str
 	ResolveCopydocComments(comment, parentType, currentNamespace);
 }
 
+void CommentParser::EnsureValidParameterReferenceComments(const std::vector<VarInfo>& paramInfos, CommentText& comment)
+{
+	for(auto iter = comment.ParameterReferences.begin(); iter != comment.ParameterReferences.end();)
+	{
+		const CommentReference& entry = *iter;
+
+		auto iterFind = std::find_if(paramInfos.begin(), paramInfos.end(), 
+			[&entry](const VarInfo& varInfo)
+		{
+			return entry.Name == varInfo.name;
+		});
+
+		if (iterFind == paramInfos.end())
+		{
+			comment.DeclarationReferences.push_back(entry);
+			iter = comment.ParameterReferences.erase(iter);
+		}
+		else
+			++iter;
+	}
+}
+
+void CommentParser::EnsureValidParameterReferenceComments(const std::vector<VarInfo>& paramInfos, CommentEntry& comment)
+{
+	for (auto& entry : comment.brief)
+		EnsureValidParameterReferenceComments(paramInfos, entry);
+
+	for (auto& entry : comment.params)
+	{
+		for(auto& textEntry : entry.comments)
+			EnsureValidParameterReferenceComments(paramInfos, textEntry);
+	}
+
+	for (auto& entry : comment.returns)
+		EnsureValidParameterReferenceComments(paramInfos, entry);
+}
+
+void CommentParser::ClearParameterReferenceComments(CommentEntry& comment)
+{
+	EnsureValidParameterReferenceComments({}, comment);
+}
+
 std::string CommentParser::GenerateXMLCommentText(const CommentText& commentTextEntry)
 {
 	uint32_t idx = 0;
@@ -750,7 +792,7 @@ std::string CommentParser::GenerateXMLCommentText(const CommentText& commentText
 			}
 		}
 
-		for (auto& refEntry : commentTextEntry.TemplateParameterReferences)
+		for (auto& refEntry : commentTextEntry.DeclarationReferences)
 		{
 			if (refEntry.PositionInText == idx)
 			{
@@ -850,7 +892,7 @@ std::string CommentParser::GenerateXMLComments(const CommentEntry& commentEntry,
 			for (auto& entry : input[0].ParameterReferences)
 				refLength += sizeof("<paramref name=\"\"/>") + entry.Name.size();
 
-			for (auto& entry : input[0].TemplateParameterReferences)
+			for (auto& entry : input[0].DeclarationReferences)
 				refLength += sizeof("<see cref=\"\"/>") + entry.Name.size();
 
 			int lineLength = head.length() + tail.length() + indent.size() + 4 + input[0].Text.size() + refLength;

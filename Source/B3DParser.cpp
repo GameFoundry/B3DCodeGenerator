@@ -3,7 +3,7 @@
 
 #include "B3DParserUtility.h"
 
-::ParsedType getObjectType(const CXXRecordDecl* decl)
+::TypeCategory getObjectType(const CXXRecordDecl* decl)
 {
 	std::stack<const CXXRecordDecl*> todo;
 	todo.push(decl);
@@ -24,15 +24,15 @@
 				std::string className = baseDecl->getName().str();
 
 				if (className == kBuiltinComponentType)
-					return ::ParsedType::Component;
+					return ::TypeCategory::Component;
 				else if (className == kBuiltinResourceType)
-					return ::ParsedType::Resource;
+					return ::TypeCategory::Resource;
 				else if (className == kBuiltinSceneObjectType)
-					return ::ParsedType::SceneObject;
+					return ::TypeCategory::SceneObject;
 				else if (className == kBuiltinGUIElementType)
-					return ::ParsedType::GUIElement;
+					return ::TypeCategory::GUIElement;
 				else if (className == kBuiltinReflectableType)
-					return ::ParsedType::ReflectableClass;
+					return ::TypeCategory::ReflectableClass;
 
 				todo.push(baseDecl);
 				iter++;
@@ -40,7 +40,7 @@
 		}
 	}
 
-	return ::ParsedType::Class;
+	return ::TypeCategory::Class;
 }
 
 bool isGameObjectOrResource(QualType type)
@@ -54,8 +54,8 @@ bool isGameObjectOrResource(QualType type)
 	if (cxxDecl == nullptr)
 		return false;
 
-	::ParsedType objType = getObjectType(cxxDecl);
-	return objType == ::ParsedType::Component || objType == ::ParsedType::SceneObject || objType == ::ParsedType::Resource;
+	::TypeCategory objType = getObjectType(cxxDecl);
+	return objType == ::TypeCategory::Component || objType == ::TypeCategory::SceneObject || objType == ::TypeCategory::Resource;
 }
 
 std::string getNamespace(const RecordDecl* decl)
@@ -73,50 +73,8 @@ std::string getNamespace(const RecordDecl* decl)
 	return nsName;
 }
 
-void updateParamRefComments(const std::vector<VarInfo>& paramInfos, CommentText& comment)
-{
-	for(auto iter = comment.ParameterReferences.begin(); iter != comment.ParameterReferences.end();)
-	{
-		const CommentReference& entry = *iter;
-
-		auto iterFind = std::find_if(paramInfos.begin(), paramInfos.end(), 
-			[&entry](const VarInfo& varInfo)
-		{
-			return entry.Name == varInfo.name;
-		});
-
-		if (iterFind == paramInfos.end())
-		{
-			comment.TemplateParameterReferences.push_back(entry);
-			iter = comment.ParameterReferences.erase(iter);
-		}
-		else
-			++iter;
-	}
-}
-
-void updateParamRefComments(const std::vector<VarInfo>& paramInfos, CommentEntry& comment)
-{
-	for (auto& entry : comment.brief)
-		updateParamRefComments(paramInfos, entry);
-
-	for (auto& entry : comment.params)
-	{
-		for(auto& textEntry : entry.comments)
-			updateParamRefComments(paramInfos, textEntry);
-	}
-
-	for (auto& entry : comment.returns)
-		updateParamRefComments(paramInfos, entry);
-}
-
-void clearParamRefComments(CommentEntry& comment)
-{
-	updateParamRefComments({}, comment);
-}
-
 void registerUserTypeInfo(const SmallVector<std::string, 4>& classNs, const std::string& className, ApiFlags api, 
-	const std::string declFile, const std::string& exportName, const std::string& exportFile, ::ParsedType type)
+	const std::string declFile, const std::string& exportName, const std::string& exportFile, ::TypeCategory type)
 {
 	std::string destFile = "BsScript" + exportFile + ".generated.h";
 	std::string destFileEditor = destFile;
@@ -125,7 +83,7 @@ void registerUserTypeInfo(const SmallVector<std::string, 4>& classNs, const std:
 	if (hasAPIBED(api) && hasAPIBSF(api))
 		destFileEditor = "BsScript" + exportFile + ".editor.generated.h";
 
-	cppToCsTypeMap[className] = UserTypeInfo(classNs, exportName, type, declFile, destFile, destFileEditor);
+	NativeToScriptTypeMap[className] = TypeMappingInformation(classNs, exportName, type, declFile, destFile, destFileEditor);
 }
 
 template<class T>
@@ -141,10 +99,10 @@ void addEntryToFile(FileInfo& fileInfo, T& entry, const std::string& file, std::
 		}
 		else // Editor and bsf, add new file for editor
 		{
-			entry.api = ApiFlags::BSF;
+			entry.api = ApiFlags::Framework;
 			addEntry(fileInfo, entry);
 
-			entry.api = ApiFlags::BED;
+			entry.api = ApiFlags::Editor;
 
 			std::string editorFile = file + ".editor";
 
@@ -482,7 +440,7 @@ bool BansheeCodeGeneratorASTVisitor::parseType(QualType type, VarTypeInfo& outTy
 		if (!mapBuiltinTypeToCppType(builtinType->getKind(), outType.typeName))
 			return false;
 
-		outType.flags |= (int)TypeFlags::Builtin;
+		outType.flags |= (int)TypeFlags::Primitive;
 		return true;
 	}
 	else if (realType->isStructureOrClassType())
@@ -835,7 +793,7 @@ bool BansheeCodeGeneratorASTVisitor::parseEvent(ValueDecl* decl, const std::stri
 
 	int eventFlags = 0;
 
-	if ((parsedEventInfo.ExportFlags & (int)ExportFlags::External) != 0)
+	if ((parsedEventInfo.ExportFlags & (int)ExportFlags::ExternalMethod) != 0)
 	{
 		outs() << "Error: External events currently not supported. Skipping export for event \"" + sourceFieldName + "\".";
 		return false;
@@ -854,7 +812,7 @@ bool BansheeCodeGeneratorASTVisitor::parseEvent(ValueDecl* decl, const std::stri
 	eventInfo.visibility = parsedEventInfo.Visibility;
 	eventInfo.api = apiFromExportFlags(parsedEventInfo.ExportFlags);
 	mCommentParser.ParseComments(decl, eventInfo.documentation);
-	clearParamRefComments(eventInfo.documentation);
+	CommentParser::ClearParameterReferenceComments(eventInfo.documentation);
 
 	if (!eventSignature.returnType.typeName.empty())
 	{
@@ -916,7 +874,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitEnumDecl(EnumDecl* decl)
 	enumEntry.api = apiFromExportFlags(parsedEnumInfo.ExportFlags);
 	enumEntry.module = parsedEnumInfo.DocumentationGroup;
 	mCommentParser.ParseComments(decl, enumEntry.documentation);
-	clearParamRefComments(enumEntry.documentation);
+	CommentParser::ClearParameterReferenceComments(enumEntry.documentation);
 
 	parseNamespace(decl, enumEntry.ns);
 
@@ -931,8 +889,8 @@ bool BansheeCodeGeneratorASTVisitor::VisitEnumDecl(EnumDecl* decl)
 	std::string destFileEditor = "BsScript" + parsedEnumInfo.ExportedFileName + ".editor.generated.h";
 
 	registerUserTypeInfo(enumEntry.ns, sourceClassName.str(), enumEntry.api, declFile, parsedEnumInfo.ExportedTypeName,
-		parsedEnumInfo.ExportedFileName, ::ParsedType::Enum);
-	cppToCsTypeMap[sourceClassName.str()].underlyingType = builtinType->getKind();
+		parsedEnumInfo.ExportedFileName, ::TypeCategory::Enum);
+	NativeToScriptTypeMap[sourceClassName.str()].EnumUnderlyingType = builtinType->getKind();
 
 	auto iter = decl->enumerator_begin();
 	while (iter != decl->enumerator_end())
@@ -958,14 +916,14 @@ bool BansheeCodeGeneratorASTVisitor::VisitEnumDecl(EnumDecl* decl)
 		const APSInt& entryVal = constDecl->getInitVal();
 
 		EnumEntryInfo entryInfo;
-		entryInfo.name = entryName.str();
-		entryInfo.scriptName = parsedEnumEntryInfo.ExportedTypeName;
-		mCommentParser.ParseComments(constDecl, entryInfo.documentation);
-		clearParamRefComments(entryInfo.documentation);
+		entryInfo.NativeName = entryName.str();
+		entryInfo.ScriptName = parsedEnumEntryInfo.ExportedTypeName;
+		mCommentParser.ParseComments(constDecl, entryInfo.Documentation);
+		CommentParser::ClearParameterReferenceComments(entryInfo.Documentation);
 
 		SmallString<5> valueStr;
 		entryVal.toString(valueStr);
-		entryInfo.value = valueStr.str().str();
+		entryInfo.Value = valueStr.str().str();
 
 		enumEntry.entries[(int)entryVal.getExtValue()] = entryInfo;
 		++iter;
@@ -1059,7 +1017,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 	}
 
 	FileInfo& fileInfo = outputFileInfos[parsedClassInfo.ExportedFileName];
-	if ((parsedClassInfo.ExportFlags & (int)ExportFlags::Plain) != 0)
+	if ((parsedClassInfo.ExportFlags & (int)ExportFlags::ExportAsStruct) != 0)
 	{
 		auto iterFind = std::find_if(fileInfo.structInfos.begin(), fileInfo.structInfos.end(), 
 			[&srcClassName](const StructInfo& si)
@@ -1083,7 +1041,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 
 		mCommentParser.ParseComments(templatedDecl, structInfo.documentation);
 		parseNamespace(decl, structInfo.ns);
-		clearParamRefComments(structInfo.documentation);
+		CommentParser::ClearParameterReferenceComments(structInfo.documentation);
 
 		std::unordered_map<FieldDecl*, std::pair<std::string, std::string>> defaultFieldValues;
 
@@ -1303,7 +1261,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 					ctorInfo.fieldAssignments[fieldName] = paramName;
 				}
 
-				updateParamRefComments(ctorInfo.params, ctorInfo.documentation);
+				CommentParser::EnsureValidParameterReferenceComments(ctorInfo.params, ctorInfo.documentation);
 
 				structInfo.ctors.push_back(ctorInfo);
 				++ctorIter;
@@ -1385,7 +1343,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 					hasDefaultValue = true;
 
 				mCommentParser.ParseComments(fieldDecl, fieldInfo.documentation);
-				clearParamRefComments(fieldInfo.documentation);
+				CommentParser::ClearParameterReferenceComments(fieldInfo.documentation);
 
 				structInfo.fields.push_back(fieldInfo);
 			}
@@ -1407,7 +1365,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 
 		std::string declFile = astContext->getSourceManager().getFilename(decl->getSourceRange().getBegin()).str();
 		registerUserTypeInfo(structInfo.ns, srcClassName, structInfo.api, declFile, parsedClassInfo.ExportedTypeName,
-			parsedClassInfo.ExportedFileName, ::ParsedType::Struct);
+			parsedClassInfo.ExportedFileName, ::TypeCategory::Struct);
 
 		addEntryToFile<StructInfo>(fileInfo, structInfo, parsedClassInfo.ExportedFileName,
 			[](FileInfo& fileInfo, const StructInfo& structInfo) { fileInfo.structInfos.push_back(structInfo); });
@@ -1433,7 +1391,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 		classInfo.module = parsedClassInfo.DocumentationGroup;
 		classInfo.templParams = templParams;
 		mCommentParser.ParseComments(templatedDecl, classInfo.documentation);
-		clearParamRefComments(classInfo.documentation);
+		CommentParser::ClearParameterReferenceComments(classInfo.documentation);
 
 		parseNamespace(decl, classInfo.ns);
 
@@ -1443,14 +1401,14 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 		if (specDecl != nullptr)
 			classInfo.flags |= (int)ClassFlags::IsTemplateInst;
 
-		bool clsIsModule = ParserUtility::CheckIsBuiltinModuleType(decl);
-		if (clsIsModule)
+		const bool typeIsBuiltinModuleType = ParserUtility::CheckIsBuiltinModuleType(decl);
+		if (typeIsBuiltinModuleType)
 			classInfo.flags |= (int)ClassFlags::IsModule;
 
 		if (decl->isStruct())
 			classInfo.flags |= (int)ClassFlags::IsStruct;
 
-		::ParsedType classType = getObjectType(decl);
+		::TypeCategory classType = getObjectType(decl);
 
 		std::string declFile = astContext->getSourceManager().getFilename(decl->getSourceRange().getBegin()).str();
 		registerUserTypeInfo(classInfo.ns, srcClassName, classInfo.api, declFile, parsedClassInfo.ExportedTypeName,
@@ -1465,7 +1423,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 			todo.pop();
 
 			// Parse constructors for non-module (singleton) classes
-			if (!clsIsModule)
+			if (!typeIsBuiltinModuleType)
 			{
 				for (auto I = curDecl->ctor_begin(); I != curDecl->ctor_end(); ++I)
 				{
@@ -1525,7 +1483,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 					if (invalidParam)
 						continue;
 
-					updateParamRefComments(methodInfo.paramInfos, methodInfo.documentation);
+					CommentParser::EnsureValidParameterReferenceComments(methodInfo.paramInfos, methodInfo.documentation);
 					classInfo.ctorInfos.push_back(methodInfo);
 				}
 			}
@@ -1557,7 +1515,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 				int methodFlags = 0;
 
 				bool isExternal = false;
-				if ((parsedMethodInfo.ExportFlags & (int)ExportFlags::External) != 0)
+				if ((parsedMethodInfo.ExportFlags & (int)ExportFlags::ExternalMethod) != 0)
 				{
 					methodFlags |= (int)MethodFlags::External;
 					isExternal = true;
@@ -1712,7 +1670,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 				if (invalidParam)
 					continue;
 
-				updateParamRefComments(methodInfo.paramInfos, methodInfo.documentation);
+				CommentParser::EnsureValidParameterReferenceComments(methodInfo.paramInfos, methodInfo.documentation);
 
 				if (isExternal)
 				{
@@ -1769,7 +1727,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 					fieldInfo.style = parsedFieldInfo.style;
 
 					mCommentParser.ParseComments(fieldDecl, fieldInfo.documentation);
-					clearParamRefComments(fieldInfo.documentation);
+					CommentParser::ClearParameterReferenceComments(fieldInfo.documentation);
 
 					classInfo.fieldInfos.push_back(fieldInfo);
 
@@ -1853,7 +1811,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 		}
 
 		// External classes are just containers for external methods, we don't need to process them directly
-		if ((parsedClassInfo.ExportFlags & (int)ExportFlags::External) == 0)
+		if ((parsedClassInfo.ExportFlags & (int)ExportFlags::ExternalMethod) == 0)
 		{
 			addEntryToFile<ClassInfo>(fileInfo, classInfo, parsedClassInfo.ExportedFileName,
 				[](FileInfo& fileInfo, const ClassInfo& classInfo) { fileInfo.classInfos.push_back(classInfo); });

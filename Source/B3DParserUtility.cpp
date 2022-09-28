@@ -96,8 +96,8 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 				if (classInfo.name != name)
 					continue;
 
-				// Two versions of editor and BSF class migth exist, make sure to pick the right one
-				if((isEditor && classInfo.api == ApiFlags::BSF) || (!isEditor &&  hasAPIBED(classInfo.api)))
+				// Two versions of editor and Framework class migth exist, make sure to pick the right one
+				if((isEditor && classInfo.api == ApiFlags::Framework) || (!isEditor &&  hasAPIBED(classInfo.api)))
 					continue;
 
 				return &classInfo;
@@ -195,7 +195,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 			commentParser.ResolveCopydocComments(enumInfo.documentation, enumInfo.name, enumInfo.ns);
 
 			for (auto& enumEntryInfo : enumInfo.entries)
-				commentParser.ResolveCopydocComments(enumEntryInfo.second.documentation, enumInfo.name, enumInfo.ns);
+				commentParser.ResolveCopydocComments(enumEntryInfo.second.Documentation, enumInfo.name, enumInfo.ns);
 		}
 	}
 
@@ -335,9 +335,9 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 		if (paramInfo.defaultValue.empty())
 			return;
 
-		UserTypeInfo typeInfo = getTypeInfo(paramInfo.typeName, paramInfo.flags);
+		TypeMappingInformation typeInfo = getTypeInfo(paramInfo.typeName, paramInfo.flags);
 
-		if (typeInfo.type != ::ParsedType::Enum)
+		if (typeInfo.TypeCategory != ::TypeCategory::Enum)
 			return;
 
 		int enumIdx = atoi(paramInfo.defaultValue.c_str());
@@ -359,7 +359,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 			return;
 		}
 
-		paramInfo.defaultValue = enumInfo->scriptName + "." + iterFind->second.scriptName;
+		paramInfo.defaultValue = enumInfo->scriptName + "." + iterFind->second.ScriptName;
 	};
 
 	for (auto& fileInfo : outputFileInfos)
@@ -399,9 +399,9 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 		{
 			for(auto& fieldInfo : structInfo.fields)
 			{
-				UserTypeInfo typeInfo = getTypeInfo(fieldInfo.typeName, fieldInfo.flags);
+				TypeMappingInformation typeInfo = getTypeInfo(fieldInfo.typeName, fieldInfo.flags);
 
-				if(isArrayOrVector(fieldInfo.flags) || !(typeInfo.type == ::ParsedType::Builtin || typeInfo.type == ::ParsedType::Enum))
+				if(isArrayOrVector(fieldInfo.flags) || !(typeInfo.TypeCategory == ::TypeCategory::Primitive || typeInfo.TypeCategory == ::TypeCategory::Enum))
 				{
 					structInfo.requiresInterop = true;
 					break;
@@ -420,8 +420,8 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 	{
 		auto markComplexType = [](const std::string& type, int& flags)
 		{
-			UserTypeInfo typeInfo = getTypeInfo(type, flags);
-			if (typeInfo.type != ::ParsedType::Struct)
+			TypeMappingInformation typeInfo = getTypeInfo(type, flags);
+			if (typeInfo.TypeCategory != ::TypeCategory::Struct)
 				return;
 
 			StructInfo* structInfo = findStructInfo(type);
@@ -431,9 +431,9 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 
 		auto markBaseType = [&findClassInfo](const std::string& type, int& flags)
 		{
-			UserTypeInfo typeInfo = getTypeInfo(type, flags);
-			if (typeInfo.type != ::ParsedType::Class && typeInfo.type != ::ParsedType::ReflectableClass &&
-				typeInfo.type != ::ParsedType::GUIElement && !isHandleType(typeInfo.type))
+			TypeMappingInformation typeInfo = getTypeInfo(type, flags);
+			if (typeInfo.TypeCategory != ::TypeCategory::Class && typeInfo.TypeCategory != ::TypeCategory::ReflectableClass &&
+				typeInfo.TypeCategory != ::TypeCategory::GUIElement && !isHandleType(typeInfo.TypeCategory))
 				return;
 
 			ClassInfo* classInfo = findClassInfo(type, false);
@@ -513,51 +513,51 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 
 			for (auto& classInfo : fileInfo.second.classInfos)
 			{
-				UserTypeInfo& typeInfo = cppToCsTypeMap[classInfo.name];
+				TypeMappingInformation& typeInfo = NativeToScriptTypeMap[classInfo.name];
 
 				fileInfo.second.forwardDeclarations.insert({ classInfo.ns, classInfo.cleanName, isStruct(classInfo.flags), classInfo.templParams });
 
-				if (typeInfo.type == ::ParsedType::Resource)
+				if (typeInfo.TypeCategory == ::TypeCategory::Resource)
 					fileInfo.second.referencedHeaderIncludes.push_back("Wrappers/BsScriptResource.h");
-				else if (typeInfo.type == ::ParsedType::Component)
+				else if (typeInfo.TypeCategory == ::TypeCategory::Component)
 					fileInfo.second.referencedHeaderIncludes.push_back("Wrappers/BsScriptComponent.h");
-				else if (typeInfo.type == ::ParsedType::SceneObject)
+				else if (typeInfo.TypeCategory == ::TypeCategory::SceneObject)
 					fileInfo.second.referencedHeaderIncludes.push_back("Wrappers/BsScriptSceneObject.h");
-				else if (typeInfo.type == ::ParsedType::GUIElement)
+				else if (typeInfo.TypeCategory == ::TypeCategory::GUIElement)
 					fileInfo.second.referencedHeaderIncludes.push_back("Wrappers/GUI/BsScriptGUIElement.h");
-				else if (typeInfo.type == ::ParsedType::ReflectableClass)
+				else if (typeInfo.TypeCategory == ::TypeCategory::ReflectableClass)
 					fileInfo.second.referencedHeaderIncludes.push_back("Wrappers/BsScriptReflectable.h");
 				else // Class
 					fileInfo.second.referencedHeaderIncludes.push_back("BsScriptObject.h");
 
 				if (!classInfo.baseClass.empty())
 				{
-					UserTypeInfo& baseTypeInfo = cppToCsTypeMap[classInfo.baseClass];
+					TypeMappingInformation& baseTypeInfo = NativeToScriptTypeMap[classInfo.baseClass];
 
 					if(hasAPIBED(classInfo.api))
-						fileInfo.second.referencedHeaderIncludes.push_back(baseTypeInfo.destFileEditor);
+						fileInfo.second.referencedHeaderIncludes.push_back(baseTypeInfo.EditorInteropFile);
 					else
-						fileInfo.second.referencedHeaderIncludes.push_back(baseTypeInfo.destFile);
+						fileInfo.second.referencedHeaderIncludes.push_back(baseTypeInfo.InteropFile);
 				}
 
-				if (typeInfo.type != ::ParsedType::ReflectableClass && classInfo.templParams.empty())
-					fileInfo.second.referencedSourceIncludes.push_back(typeInfo.declFile);
+				if (typeInfo.TypeCategory != ::TypeCategory::ReflectableClass && classInfo.templParams.empty())
+					fileInfo.second.referencedSourceIncludes.push_back(typeInfo.NativeFile);
 				else
 				{
 					// Templated classes need to be included in header, so the linker doesn't instantiate them multiple times for different libraries
 					// (in case template is exported).
 					// Reflectable classes need to be included in the header because they provide a getInternal<T>() method
 					// which requires information about T.
-					fileInfo.second.referencedHeaderIncludes.push_back(typeInfo.declFile);
+					fileInfo.second.referencedHeaderIncludes.push_back(typeInfo.NativeFile);
 				}
 			}
 
 			for(auto& structInfo : fileInfo.second.structInfos)
 			{
-				UserTypeInfo& typeInfo = cppToCsTypeMap[structInfo.name];
+				TypeMappingInformation& typeInfo = NativeToScriptTypeMap[structInfo.name];
 
 				fileInfo.second.referencedHeaderIncludes.push_back("BsScriptObject.h");
-				fileInfo.second.referencedHeaderIncludes.push_back(typeInfo.declFile);
+				fileInfo.second.referencedHeaderIncludes.push_back(typeInfo.NativeFile);
 			}
 
 			if(includesInfo.requiresResourceManager)
@@ -582,10 +582,10 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 
 				if (originFlags != 0)
 				{
-					std::string include = entry.second.typeInfo.declFile;
+					std::string include = entry.second.typeInfo.NativeFile;
 
 					if ((originFlags & IT_FWD) != 0)
-						fileInfo.second.forwardDeclarations.insert({ entry.second.typeInfo.ns, entry.second.typeName, entry.second.isStruct });
+						fileInfo.second.forwardDeclarations.insert({ entry.second.typeInfo.NativeNamespace, entry.second.typeName, entry.second.isStruct });
 
 					if((originFlags & IT_IMPL) != 0)
 						fileInfo.second.referencedSourceIncludes.push_back(include);
@@ -597,14 +597,14 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 				{
 					std::string include;
 					if(entry.second.isEditor)
-						include = entry.second.typeInfo.destFileEditor;
+						include = entry.second.typeInfo.EditorInteropFile;
 					else
-						include = entry.second.typeInfo.destFile;
+						include = entry.second.typeInfo.InteropFile;
 
 					if ((interopFlags & IT_FWD) != 0)
 					{
 						if(entry.second.isEditor)
-							fileInfo.second.forwardDeclarations.insert({ entry.second.typeInfo.ns, entry.second.typeName, false });
+							fileInfo.second.forwardDeclarations.insert({ entry.second.typeInfo.NativeNamespace, entry.second.typeName, false });
 					}
 
 					if(!include.empty())
@@ -724,17 +724,17 @@ void ParserUtility::PostProcessDefaultParameters(MethodInfo& methodInfo, std::ve
 
 void ParserUtility::GatherIncludes(const std::string& typeName, int flags, bool isEditor, IncludesInfo& output)
 {
-	UserTypeInfo typeInfo = getTypeInfo(typeName, flags);
-	if (typeInfo.type == ::ParsedType::Class || typeInfo.type == ::ParsedType::ReflectableClass ||
-		typeInfo.type == ::ParsedType::Struct || typeInfo.type == ::ParsedType::Component ||
-		typeInfo.type == ::ParsedType::SceneObject || typeInfo.type == ::ParsedType::Resource ||
-		typeInfo.type == ::ParsedType::Enum)
+	TypeMappingInformation typeInfo = getTypeInfo(typeName, flags);
+	if (typeInfo.TypeCategory == ::TypeCategory::Class || typeInfo.TypeCategory == ::TypeCategory::ReflectableClass ||
+		typeInfo.TypeCategory == ::TypeCategory::Struct || typeInfo.TypeCategory == ::TypeCategory::Component ||
+		typeInfo.TypeCategory == ::TypeCategory::SceneObject || typeInfo.TypeCategory == ::TypeCategory::Resource ||
+		typeInfo.TypeCategory == ::TypeCategory::Enum)
 	{
 		auto iterFind = output.includes.find(typeName);
 		if (iterFind == output.includes.end())
 		{
 			uint32_t sourceIncludeType = 0;
-			uint32_t interopIncludeType = typeInfo.type != ::ParsedType::Enum ? IT_IMPL : 0;
+			uint32_t interopIncludeType = typeInfo.TypeCategory != ::TypeCategory::Enum ? IT_IMPL : 0;
 			bool isStruct = false;
 
 			if (getPassAsResourceRef(flags))
@@ -743,25 +743,25 @@ void ParserUtility::GatherIncludes(const std::string& typeName, int flags, bool 
 				interopIncludeType = 0;
 			}
 
-			if (typeInfo.type == ::ParsedType::Struct && !isComplexStruct(flags))
+			if (typeInfo.TypeCategory == ::TypeCategory::Struct && !isComplexStruct(flags))
 			{
 				sourceIncludeType = IT_HEADER;
 				isStruct = true;
 			}
 
 			// If enum or passed by value we need to include the header for the source type
-			if (typeInfo.type == ::ParsedType::Enum || isSrcValue(flags))
+			if (typeInfo.TypeCategory == ::TypeCategory::Enum || isSrcValue(flags))
 				sourceIncludeType = IT_HEADER;
 
 			// If a class is being passed by reference or a raw pointer then we need the declaration because we perform
 			// assignment copy
-			if (isClassType(typeInfo.type) && !isSrcSPtr(flags))
+			if (isClassType(typeInfo.TypeCategory) && !isSrcSPtr(flags))
 				sourceIncludeType = IT_HEADER;
 
 			output.includes[typeName] = IncludeInfo(typeName, typeInfo, sourceIncludeType, interopIncludeType, isStruct, isEditor);
 		}
 
-		if (isClassType(typeInfo.type))
+		if (isClassType(typeInfo.TypeCategory))
 		{
 			bool isBase = isBaseParam(flags);
 			if (isBase)
@@ -777,17 +777,17 @@ void ParserUtility::GatherIncludes(const std::string& typeName, int flags, bool 
 		}
 	}
 
-	if (typeInfo.type == ::ParsedType::Struct && isComplexStruct(flags))
-		output.fwdDecls[typeName] = { typeInfo.ns, getStructInteropType(typeName), true };
+	if (typeInfo.TypeCategory == ::TypeCategory::Struct && isComplexStruct(flags))
+		output.fwdDecls[typeName] = { typeInfo.NativeNamespace, getStructInteropType(typeName), true };
 
-	if (typeInfo.type == ::ParsedType::Resource)
+	if (typeInfo.TypeCategory == ::TypeCategory::Resource)
 	{
 		output.requiresResourceManager = true;
 
 		if (getPassAsResourceRef(flags))
 			output.requiresRRef = true;
 	}
-	else if (typeInfo.type == ::ParsedType::Component || typeInfo.type == ::ParsedType::SceneObject)
+	else if (typeInfo.TypeCategory == ::TypeCategory::Component || typeInfo.TypeCategory == ::TypeCategory::SceneObject)
 		output.requiresGameObjectManager = true;
 
 	if (getIsAsyncOp(flags))
@@ -808,7 +808,7 @@ void ParserUtility::GatherIncludes(const MethodInfo& methodInfo, bool isEditor, 
 		auto iterFind = output.includes.find(methodInfo.externalClass);
 		if (iterFind == output.includes.end())
 		{
-			UserTypeInfo typeInfo = getTypeInfo(methodInfo.externalClass, 0);
+			TypeMappingInformation typeInfo = getTypeInfo(methodInfo.externalClass, 0);
 			output.includes[methodInfo.externalClass] = IncludeInfo(methodInfo.externalClass, typeInfo, IT_FWD_AND_IMPL, 0, false, isEditor);
 		}
 	}
@@ -816,11 +816,11 @@ void ParserUtility::GatherIncludes(const MethodInfo& methodInfo, bool isEditor, 
 
 void ParserUtility::GatherIncludes(const FieldInfo& fieldInfo, bool isEditor, IncludesInfo& output)
 {
-	UserTypeInfo fieldTypeInfo = getTypeInfo(fieldInfo.typeName, fieldInfo.flags);
+	TypeMappingInformation fieldTypeInfo = getTypeInfo(fieldInfo.typeName, fieldInfo.flags);
 
 	// These types never require additional includes
-	if (fieldTypeInfo.type == ::ParsedType::Builtin || fieldTypeInfo.type == ::ParsedType::String ||
-		fieldTypeInfo.type == ::ParsedType::WString || fieldTypeInfo.type == ::ParsedType::Path)
+	if (fieldTypeInfo.TypeCategory == ::TypeCategory::Primitive || fieldTypeInfo.TypeCategory == ::TypeCategory::String ||
+		fieldTypeInfo.TypeCategory == ::TypeCategory::WString || fieldTypeInfo.TypeCategory == ::TypeCategory::Path)
 		return;
 
 	// If passed by value, we needs its header in our header
@@ -831,28 +831,28 @@ void ParserUtility::GatherIncludes(const FieldInfo& fieldInfo, bool isEditor, In
 		output.includes[fieldInfo.typeName] = IncludeInfo(fieldInfo.typeName, fieldTypeInfo, IT_HEADER, complexStruct ? IT_HEADER : 0, false, isEditor);
 	}
 
-	if (fieldTypeInfo.type == ::ParsedType::Class || fieldTypeInfo.type == ::ParsedType::ReflectableClass ||
-		fieldTypeInfo.type == ::ParsedType::Struct || fieldTypeInfo.type == ::ParsedType::Component ||
-		fieldTypeInfo.type == ::ParsedType::SceneObject || fieldTypeInfo.type == ::ParsedType::Resource)
+	if (fieldTypeInfo.TypeCategory == ::TypeCategory::Class || fieldTypeInfo.TypeCategory == ::TypeCategory::ReflectableClass ||
+		fieldTypeInfo.TypeCategory == ::TypeCategory::Struct || fieldTypeInfo.TypeCategory == ::TypeCategory::Component ||
+		fieldTypeInfo.TypeCategory == ::TypeCategory::SceneObject || fieldTypeInfo.TypeCategory == ::TypeCategory::Resource)
 	{
 		bool isRRef = getPassAsResourceRef(fieldInfo.flags);
 
-		if (!fieldTypeInfo.destFile.empty() || isRRef)
+		if (!fieldTypeInfo.InteropFile.empty() || isRRef)
 		{
 			std::string name = "__" + fieldInfo.typeName;
 			output.includes[name] = IncludeInfo(fieldInfo.typeName, fieldTypeInfo, IT_IMPL, IT_IMPL, false, isEditor);
 		}
 
-		if (fieldTypeInfo.type == ::ParsedType::Resource)
+		if (fieldTypeInfo.TypeCategory == ::TypeCategory::Resource)
 		{
 			output.requiresResourceManager = true;
 
 			if (getPassAsResourceRef(fieldInfo.flags))
 				output.requiresRRef = true;
 		}
-		else if (fieldTypeInfo.type == ::ParsedType::Component || fieldTypeInfo.type == ::ParsedType::SceneObject)
+		else if (fieldTypeInfo.TypeCategory == ::TypeCategory::Component || fieldTypeInfo.TypeCategory == ::TypeCategory::SceneObject)
 			output.requiresGameObjectManager = true;
-		else if (fieldTypeInfo.type == ::ParsedType::Class || fieldTypeInfo.type == ::ParsedType::ReflectableClass)
+		else if (fieldTypeInfo.TypeCategory == ::TypeCategory::Class || fieldTypeInfo.TypeCategory == ::TypeCategory::ReflectableClass)
 		{
 			bool isBase = isBaseParam(fieldInfo.flags);
 			if (isBase)
@@ -1028,7 +1028,7 @@ std::string ScriptExportUtility::FindExportableBasePlainClassName(const CXXRecor
 
 			if (ParseExportAttribute(attr, sourceClassName, parsedDeclInfo))
 			{
-				if((parsedDeclInfo.ExportFlags & (int)ExportFlags::Plain) != 0)
+				if((parsedDeclInfo.ExportFlags & (int)ExportFlags::ExportAsStruct) != 0)
 					return sourceClassName.str();
 			}
 		}
@@ -1061,7 +1061,7 @@ void ScriptExportUtility::ParseScriptExportAttributeCommand(const std::string& n
 	}
 	else if (name == "pl" || name == "plain")
 	{
-		output.ExportFlags |= (int)ExportFlags::Plain;
+		output.ExportFlags |= (int)ExportFlags::ExportAsStruct;
 	}
 	else if (name == "pr" || name == "property")
 	{
@@ -1078,11 +1078,11 @@ void ScriptExportUtility::ParseScriptExportAttributeCommand(const std::string& n
 	else if (name == "api")
 	{
 		if (value == "bsf")
-			output.ExportFlags |= (int)ExportFlags::ApiBSF;
+			output.ExportFlags |= (int)ExportFlags::FrameworkAPI;
 		else if (value == "b3d")
-			output.ExportFlags |= (int)ExportFlags::ApiB3D;
+			output.ExportFlags |= (int)ExportFlags::EngineAPI;
 		else if (value == "bed")
-			output.ExportFlags |= (int)ExportFlags::ApiBED;
+			output.ExportFlags |= (int)ExportFlags::EditorAPI;
 		else
 		{
 			outs() << "Warning: Unrecognized value for \"pr\" option: \"" + value + "\" for type \"" <<
@@ -1091,7 +1091,7 @@ void ScriptExportUtility::ParseScriptExportAttributeCommand(const std::string& n
 	}
 	else if (name == "e")
 	{
-		output.ExportFlags |= (int)ExportFlags::External;
+		output.ExportFlags |= (int)ExportFlags::ExternalMethod;
 
 		output.ExtensionOfType = value;
 	}
