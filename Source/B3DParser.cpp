@@ -173,18 +173,18 @@ bool BansheeCodeGeneratorASTVisitor::parseType(QualType type, VarTypeInfo& outTy
 	if (type->isPointerType())
 	{
 		realType = type->getPointeeType();
-		outType.flags |= (int)TypeFlags::SrcPtr;
+		outType.flags |= (int)TypeFlags::IsNativePointerQualifier;
 
 		if (!returnValue && !realType.isConstQualified())
-			outType.flags |= (int)TypeFlags::Output;
+			outType.flags |= (int)TypeFlags::IsOutputQualifier;
 	}
 	else if (type->isReferenceType())
 	{
 		realType = type->getPointeeType();
-		outType.flags |= (int)TypeFlags::SrcRef;
+		outType.flags |= (int)TypeFlags::IsReferenceQualifier;
 
 		if (!returnValue && !realType.isConstQualified())
-			outType.flags |= (int)TypeFlags::Output;
+			outType.flags |= (int)TypeFlags::IsOutputQualifier;
 	}
 	else
 		realType = type;
@@ -366,7 +366,7 @@ bool BansheeCodeGeneratorASTVisitor::parseType(QualType type, VarTypeInfo& outTy
 					{
 						const BuiltinType* builtinType = realType->getAs<BuiltinType>();
 						std::string storageTypeStr;
-						if (mapBuiltinTypeToCppType(builtinType->getKind(), storageTypeStr))
+						if (ParserUtility::MapBuiltinPrimitiveTypeToCppType(builtinType->getKind(), storageTypeStr))
 						{
 							if (storageTypeStr == "uint32_t")
 								validStorageType = true;
@@ -401,7 +401,7 @@ bool BansheeCodeGeneratorASTVisitor::parseType(QualType type, VarTypeInfo& outTy
 			}
 			else if (sourceTypeName == "shared_ptr" && recordDecl->isInStdNamespace())
 			{
-				outType.flags |= (int)TypeFlags::SrcSPtr;
+				outType.flags |= (int)TypeFlags::IsSharedPointerQualifier;
 
 				realType = specType->getArg(0).getAsType();
 				if (isGameObjectOrResource(realType))
@@ -417,13 +417,13 @@ bool BansheeCodeGeneratorASTVisitor::parseType(QualType type, VarTypeInfo& outTy
 				// Note: Not supporting weak resource handles
 
 				realType = specType->getArg(0).getAsType();
-				outType.flags |= (int)TypeFlags::SrcRHandle;
+				outType.flags |= (int)TypeFlags::IsResourceHandleQualifier;
 				outType.flags |= (int)TypeFlags::AsResourceRef;
 			}
 			else if (sourceTypeName == "GameObjectHandle")
 			{
 				realType = specType->getArg(0).getAsType();
-				outType.flags |= (int)TypeFlags::SrcGHandle;
+				outType.flags |= (int)TypeFlags::IsGameObjectHandleQualifier;
 			}
 		}
 	}
@@ -437,7 +437,7 @@ bool BansheeCodeGeneratorASTVisitor::parseType(QualType type, VarTypeInfo& outTy
 	if (realType->isBuiltinType())
 	{
 		const BuiltinType* builtinType = realType->getAs<BuiltinType>();
-		if (!mapBuiltinTypeToCppType(builtinType->getKind(), outType.typeName))
+		if (!ParserUtility::MapBuiltinPrimitiveTypeToCppType(builtinType->getKind(), outType.typeName))
 			return false;
 
 		outType.flags |= (int)TypeFlags::Primitive;

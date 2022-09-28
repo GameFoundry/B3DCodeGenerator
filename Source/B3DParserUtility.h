@@ -20,6 +20,8 @@ public:
 	static bool IsBuiltinBaseType(const CXXRecordDecl* decl);
 
 	static void PostProcessFileInfos(CommentParser& commentParser);
+
+	static bool MapBuiltinPrimitiveTypeToCppType(BuiltinType::Kind kind, std::string& output);
 private:
 	/** Splits a method with default parameters into multiple methods, if some of the parameter default values cannot be parsed. */
 	static void PostProcessDefaultParameters(MethodInfo& methodInfo, std::vector<MethodInfo>& newMethodInfos);

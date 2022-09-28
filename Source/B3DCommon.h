@@ -60,26 +60,38 @@ enum class TypeCategory
 	MonoObject /**< Builtin MonoObject type. */
 };
 
+// TODO - Refactor type parsing to output this struct instead, replace uses of TypeFlags
+// - Move all the getters that check flags here
+struct TypeInformation
+{
+	// Type: Primitive, Vector, Array, SmallVector, AsyncOp, Path, ComponentOrActor, MonoObject, String, WString, ResourceHandle, GameObjectHandle, Shared, FlagsEnum
+	// Type name (Direct type for Primitive, Path, MonoObject, String, WString, underlying type for ComponentOrActor, ResourceHandle, GameObjectHandle, FlagsEnum)
+	// Optional<TypeInformation>: Underlying Type (For Vector, Array, SmallVector, Shared, AsyncOp)
+	// Native qualifiers: Pointer, Reference, Const
+
+	// PostProcessTypeFlags: IsReferencingComplexStruct, IsReferencingBaseClass
+	// ParameterFlags: VarParams, AsResourceRef
+};
+
 enum class TypeFlags // TODO - Ideally this is split up into types and qualifiers
 {
 	Primitive = 1 << 0,
-	Output = 1 << 1,
+	IsOutputQualifier = 1 << 1, /**< True if the type qualifiers don't contain 'const', and are a pointer or a reference type. */
 	Vector = 1 << 2,
-	SrcPtr = 1 << 3,
-	SrcSPtr = 1 << 4,
-	SrcRef = 1 << 5,
-	SrcRHandle = 1 << 6,
-	SrcGHandle = 1 << 7,
+	IsNativePointerQualifier = 1 << 3,
+	IsSharedPointerQualifier = 1 << 4,
+	IsReferenceQualifier = 1 << 5,
+	IsResourceHandleQualifier = 1 << 6,
+	IsGameObjectHandleQualifier = 1 << 7,
 	String = 1 << 8,
 	WString = 1 << 9,
-	Function = 1 << 10,
-	ComplexStruct = 1 << 11,
+	IsStructWrapperUsed = 1 << 11, /**< Special flag to be set during post-processing. Signals to the user that a struct wrapper had to be generated and should be used instead of the native type. */
 	FlagsEnum = 1 << 12,
-	ReferencesBase = 1 << 13,
+	IsReferencingBaseClass = 1 << 13, /**< Special flag to be set during post-processing. Signals to the user that a parameter, return value or a field is referencing a script exported base class. */
 	Array = 1 << 14,
 	MonoObject = 1 << 15,
-	VarParams = 1 << 16,
-	AsResourceRef = 1 << 17,
+	VarParams = 1 << 16, /**< Flag for parameters only, that lets the generator know to generate a variable number of parameters in place of this parameter. */
+	AsResourceRef = 1 << 17, /**< Flag for parameters only, that lets the generator know to pass a resource as a resource reference, rather than directly. */
 	ComponentOrActor = 1 << 18,
 	Path = 1 << 19,
 	AsyncOp = 1 << 20,
@@ -171,7 +183,8 @@ struct ExportStyle
  *
  * Note we need this separate from ClassInfo and StructInfo as occasionally we need to provide type mapping for types that won't be generated (e.g. are builtin)
  */
-struct TypeMappingInformation
+struct TypeMappingInformation // TODO - Add a new TypeMapping file/class. Registering a new struct/class/enum should auto-register this type as well. And a special method for registering existing/builtin types
+// TODO - GetTypeInfo should be moved there, and built-in types should not be constructed on the fly (But probably not important at the moment)
 {
 	TypeMappingInformation() {}
 
@@ -609,76 +622,6 @@ inline std::string getCSLiteralSuffix(const std::string& cppType)
 	return "";
 }
 
-inline bool mapBuiltinTypeToCppType(BuiltinType::Kind kind, std::string& output)
-{
-	switch (kind)
-	{
-	case BuiltinType::Void:
-		output = "void";
-		return true;
-	case BuiltinType::Bool:
-		output = "bool";
-		return true;
-	case BuiltinType::Char_S:
-		output = "char";
-		return true;
-	case BuiltinType::SChar:
-		output = "int8_t";
-		return true;
-	case BuiltinType::Char_U:
-		output = "uint8_t";
-		return true;
-	case BuiltinType::Short:
-		output = "int16_t";
-		return true;
-	case BuiltinType::Int:
-		output = "int32_t";
-		return true;
-	case BuiltinType::Long:
-		output = "int32_t";
-		return true;
-	case BuiltinType::LongLong:
-		output = "int64_t";
-		return true;
-	case BuiltinType::UChar:
-		output = "uint8_t";
-		return true;
-	case BuiltinType::UShort:
-		output = "uint16_t";
-		return true;
-	case BuiltinType::UInt:
-		output = "uint32_t";
-		return true;
-	case BuiltinType::ULong:
-		output = "uint32_t";
-		return true;
-	case BuiltinType::ULongLong:
-		output = "uint64_t";
-		return true;
-	case BuiltinType::Float:
-		output = "float";
-		return true;
-	case BuiltinType::Double:
-		output = "double";
-		return true;
-	case BuiltinType::WChar_S:
-	case BuiltinType::WChar_U:
-		output = "wchar_t";
-		return true;
-	case BuiltinType::Char16:
-		output = "char16_t";
-		return true;
-	case BuiltinType::Char32:
-		output = "char32_t";
-		return true;
-	default:
-		break;
-	}
-
-	errs() << "Unrecognized builtin type found.\n";
-	return false;
-}
-
 inline TypeMappingInformation getTypeInfo(const std::string& sourceType, int flags)
 {
 	if ((flags & (int)TypeFlags::Primitive) != 0)
@@ -862,7 +805,7 @@ inline bool isReal(const TypeMappingInformation& typeInfo)
 
 inline bool isOutput(int flags)
 {
-	return (flags & (int)TypeFlags::Output) != 0;
+	return (flags & (int)TypeFlags::IsOutputQualifier) != 0;
 }
 
 inline bool isArray(int flags)
@@ -892,45 +835,45 @@ inline bool isFlagsEnum(int flags)
 
 inline bool isSrcPointer(int flags)
 {
-	return (flags & (int)TypeFlags::SrcPtr) != 0;
+	return (flags & (int)TypeFlags::IsNativePointerQualifier) != 0;
 }
 
 inline bool isSrcReference(int flags)
 {
-	return (flags & (int)TypeFlags::SrcRef) != 0;
+	return (flags & (int)TypeFlags::IsReferenceQualifier) != 0;
 }
 
 inline bool isSrcValue(int flags)
 {
-	int nonValueFlags = (int)TypeFlags::SrcPtr | (int)TypeFlags::SrcRef | (int)TypeFlags::SrcSPtr |
-		(int)TypeFlags::SrcRHandle | (int)TypeFlags::SrcGHandle;
+	int nonValueFlags = (int)TypeFlags::IsNativePointerQualifier | (int)TypeFlags::IsReferenceQualifier | (int)TypeFlags::IsSharedPointerQualifier |
+		(int)TypeFlags::IsResourceHandleQualifier | (int)TypeFlags::IsGameObjectHandleQualifier;
 
 	return (flags & nonValueFlags) == 0;
 }
 
 inline bool isSrcSPtr(int flags)
 {
-	return (flags & (int)TypeFlags::SrcSPtr) != 0;
+	return (flags & (int)TypeFlags::IsSharedPointerQualifier) != 0;
 }
 
 inline bool isSrcRHandle(int flags)
 {
-	return (flags & (int)TypeFlags::SrcRHandle) != 0;
+	return (flags & (int)TypeFlags::IsResourceHandleQualifier) != 0;
 }
 
 inline bool isSrcGHandle(int flags)
 {
-	return (flags & (int)TypeFlags::SrcGHandle) != 0;
+	return (flags & (int)TypeFlags::IsGameObjectHandleQualifier) != 0;
 }
 
 inline bool isComplexStruct(int flags)
 {
-	return (flags & (int)TypeFlags::ComplexStruct) != 0;
+	return (flags & (int)TypeFlags::IsStructWrapperUsed) != 0;
 }
 
 inline bool isBaseParam(int flags)
 {
-	return (flags & (int)TypeFlags::ReferencesBase) != 0;
+	return (flags & (int)TypeFlags::IsReferencingBaseClass) != 0;
 }
 
 inline bool isVarParam(int flags)
@@ -1010,32 +953,6 @@ inline bool needsIntermediateArray(::TypeCategory type, int flags = 0)
 	return false;
 }
 
-inline bool isReferenceType(::TypeCategory type, int flags)
-{
-	if (isArrayOrVector(flags))
-		return true;
-
-	switch(type)
-	{
-	case ::TypeCategory::Component:
-	case ::TypeCategory::SceneObject:
-	case ::TypeCategory::Resource:
-	case ::TypeCategory::GUIElement:
-	case ::TypeCategory::Class:
-	case ::TypeCategory::ReflectableClass:
-	case ::TypeCategory::String:
-	case ::TypeCategory::WString:
-	case ::TypeCategory::Path:
-	case ::TypeCategory::MonoObject:
-		return true;
-	case ::TypeCategory::Struct:
-	case ::TypeCategory::Enum:
-	case ::TypeCategory::Primitive:
-	default: 
-		return false;
-	}
-}
-
 inline bool isCSOnly(int flags)
 {
 	return (flags & (int)MethodFlags::CSOnly) != 0;
@@ -1094,60 +1011,6 @@ inline bool isValidStructType(TypeMappingInformation& typeInfo, int flags)
 		return false;
 
 	return true;
-}
-
-inline std::string getDefaultValue(const std::string& typeName, int flags, const TypeMappingInformation& typeInfo)
-{
-	if(isArrayOrVector(flags))
-		return "null";
-
-	if (typeInfo.TypeCategory == ::TypeCategory::Primitive)
-		return "0";
-	else if (typeInfo.TypeCategory == ::TypeCategory::Enum)
-		return "(" + typeInfo.ScriptTypeName + ")0";
-	else if (typeInfo.TypeCategory == ::TypeCategory::Struct)
-		return typeInfo.ScriptTypeName + ".Default()";
-	else if (typeInfo.TypeCategory == ::TypeCategory::String || typeInfo.TypeCategory == ::TypeCategory::WString || typeInfo.TypeCategory == ::TypeCategory::Path)
-		return "\"\"";
-	else // Some class type
-		return "null";
-
-	assert(false);
-	return ""; // Shouldn't be reached
-}
-
-inline std::string getRelativeTo(const StringRef& path, const StringRef& relativeTo)
-{
-	SmallVector<char, 100> relativeToVector(relativeTo.begin(), relativeTo.end());
-
-	vfs::getRealFileSystem()->makeAbsolute(relativeToVector);
-	StringRef absRelativeTo(relativeToVector.data(), relativeToVector.size());
-
-	SmallVector<char, 100> output;
-
-	auto iterPath = llvm::sys::path::begin(path);
-	auto iterRelativePath = llvm::sys::path::begin(absRelativeTo);
-
-	bool foundRelative = false;
-	for(; iterPath != llvm::sys::path::end(path) && iterRelativePath != llvm::sys::path::end(absRelativeTo); ++iterPath, ++iterRelativePath)
-	{
-		if (*iterPath != *iterRelativePath)
-			break;
-
-		foundRelative = true;
-	}
-
-	if (!foundRelative)
-		return path.str();
-
-	for(; iterRelativePath != llvm::sys::path::end(absRelativeTo); ++iterRelativePath)
-		llvm::sys::path::append(output, "..");
-
-	for (; iterPath != llvm::sys::path::end(path); ++iterPath)
-		llvm::sys::path::append(output, *iterPath);
-
-	llvm::sys::path::native(output, llvm::sys::path::Style::posix);
-	return std::string(output.data(), output.size());
 }
 
 inline void getDerivedClasses(const std::string& typeName, std::vector<std::string>& output, bool onlyDirect = false)

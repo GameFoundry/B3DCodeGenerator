@@ -2,6 +2,62 @@
 #include <chrono>
 
 #include "B3DCommentParser.h"
+#include "B3DParserUtility.h"
+
+
+std::string getDefaultValue(const std::string& typeName, int flags, const TypeMappingInformation& typeInfo)
+{
+	if(isArrayOrVector(flags))
+		return "null";
+
+	if (typeInfo.TypeCategory == ::TypeCategory::Primitive)
+		return "0";
+	else if (typeInfo.TypeCategory == ::TypeCategory::Enum)
+		return "(" + typeInfo.ScriptTypeName + ")0";
+	else if (typeInfo.TypeCategory == ::TypeCategory::Struct)
+		return typeInfo.ScriptTypeName + ".Default()";
+	else if (typeInfo.TypeCategory == ::TypeCategory::String || typeInfo.TypeCategory == ::TypeCategory::WString || typeInfo.TypeCategory == ::TypeCategory::Path)
+		return "\"\"";
+	else // Some class type
+		return "null";
+
+	assert(false);
+	return ""; // Shouldn't be reached
+}
+
+std::string getRelativeTo(const StringRef& path, const StringRef& relativeTo)
+{
+	SmallVector<char, 100> relativeToVector(relativeTo.begin(), relativeTo.end());
+
+	vfs::getRealFileSystem()->makeAbsolute(relativeToVector);
+	StringRef absRelativeTo(relativeToVector.data(), relativeToVector.size());
+
+	SmallVector<char, 100> output;
+
+	auto iterPath = llvm::sys::path::begin(path);
+	auto iterRelativePath = llvm::sys::path::begin(absRelativeTo);
+
+	bool foundRelative = false;
+	for(; iterPath != llvm::sys::path::end(path) && iterRelativePath != llvm::sys::path::end(absRelativeTo); ++iterPath, ++iterRelativePath)
+	{
+		if (*iterPath != *iterRelativePath)
+			break;
+
+		foundRelative = true;
+	}
+
+	if (!foundRelative)
+		return path.str();
+
+	for(; iterRelativePath != llvm::sys::path::end(absRelativeTo); ++iterRelativePath)
+		llvm::sys::path::append(output, "..");
+
+	for (; iterPath != llvm::sys::path::end(path); ++iterPath)
+		llvm::sys::path::append(output, *iterPath);
+
+	llvm::sys::path::native(output, llvm::sys::path::Style::posix);
+	return std::string(output.data(), output.size());
+}
 
 std::string getInteropCppVarType(const std::string& typeName, ::TypeCategory type, int flags, bool forStruct = false)
 {
@@ -1235,7 +1291,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 			case ::TypeCategory::Enum:
 			{
 				std::string enumType;
-				mapBuiltinTypeToCppType(paramTypeInfo.EnumUnderlyingType, enumType);
+				ParserUtility::MapBuiltinPrimitiveTypeToCppType(paramTypeInfo.EnumUnderlyingType, enumType);
 
 				preCallActions << "\t\t\t\t" << argName << "[i] = (" << entryType << ")" << arrayName << ".Get<" << enumType << ">(i);" << std::endl;
 				break;
@@ -1324,7 +1380,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 			case ::TypeCategory::Enum:
 			{
 				std::string enumType;
-				mapBuiltinTypeToCppType(paramTypeInfo.EnumUnderlyingType, enumType);
+				ParserUtility::MapBuiltinPrimitiveTypeToCppType(paramTypeInfo.EnumUnderlyingType, enumType);
 
 				if(isFlagsEnum(varTypeInfo.flags))
 					postCallActions << "\t\t\t" << arrayName << ".Set(i, (" << enumType << ")(uint32_t)" << argName << "[i]);" << std::endl;
@@ -1691,7 +1747,7 @@ std::string generateFieldConvertBlock(const std::string& name, const VarTypeInfo
 			case ::TypeCategory::Enum:
 			{
 				std::string enumType;
-				mapBuiltinTypeToCppType(paramTypeInfo.EnumUnderlyingType, enumType);
+				ParserUtility::MapBuiltinPrimitiveTypeToCppType(paramTypeInfo.EnumUnderlyingType, enumType);
 
 				preActions << "\t\t\t\t" << argName << "[i] = (" << entryType << ")" << arrayName << ".get<" << enumType << ">(i);" << std::endl;
 				break;
@@ -1775,7 +1831,7 @@ std::string generateFieldConvertBlock(const std::string& name, const VarTypeInfo
 			case ::TypeCategory::Enum:
 			{
 				std::string enumType;
-				mapBuiltinTypeToCppType(paramTypeInfo.EnumUnderlyingType, enumType);
+				ParserUtility::MapBuiltinPrimitiveTypeToCppType(paramTypeInfo.EnumUnderlyingType, enumType);
 
 				preActions << "\t\t\t" << arrayName << ".Set(i, (" << enumType << ")value." << name << "[i]);" << std::endl;
 				break;
@@ -2008,7 +2064,7 @@ std::string generateEventCallbackBodyBlockForParam(const std::string& name, cons
 		case ::TypeCategory::Enum:
 		{
 			std::string enumType;
-			mapBuiltinTypeToCppType(paramTypeInfo.EnumUnderlyingType, enumType);
+			ParserUtility::MapBuiltinPrimitiveTypeToCppType(paramTypeInfo.EnumUnderlyingType, enumType);
 
 			if(isFlagsEnum(varTypeInfo.flags))
 				preCallActions << "\t\t\t" << arrayName << ".Set(i, (" << enumType << ")(uint32_t)" << name << "[i]);" << std::endl;
@@ -2176,7 +2232,7 @@ std::string generateCppMethodBody(const ClassInfo& classInfo, const MethodInfo& 
 				methodCall << sourceClassName << "::Instance()." << methodInfo.sourceName << "(" << methodArgs.str() << ")";
 			else
 			{
-				methodCall << generateGetInternalLine(sourceClassName, "thisPtr", classType, isBase ? (int)TypeFlags::ReferencesBase : 0);
+				methodCall << generateGetInternalLine(sourceClassName, "thisPtr", classType, isBase ? (int)TypeFlags::IsReferencingBaseClass : 0);
 				methodCall << "->" << methodInfo.sourceName << "(" << methodArgs.str() << ")";
 			}
 		}
@@ -2187,7 +2243,7 @@ std::string generateCppMethodBody(const ClassInfo& classInfo, const MethodInfo& 
 				methodCall << fullMethodName << "(" << methodArgs.str() << ")";
 			else
 			{
-				methodCall << fullMethodName << "(" << generateGetInternalLine(sourceClassName, "thisPtr", classType, isBase ? (int)TypeFlags::ReferencesBase : 0);
+				methodCall << fullMethodName << "(" << generateGetInternalLine(sourceClassName, "thisPtr", classType, isBase ? (int)TypeFlags::IsReferencingBaseClass : 0);
 
 				std::string methodArgsStr = methodArgs.str();
 				if (!methodArgsStr.empty())
@@ -2277,7 +2333,7 @@ std::string generateCppFieldGetterBody(const ClassInfo& classInfo, const FieldIn
 		fieldAccess << classInfo.name << "::Instance()." << fieldInfo.name;
 	else
 	{
-		fieldAccess << generateGetInternalLine(classInfo.name, "thisPtr", classType, isBase ? (int)TypeFlags::ReferencesBase : 0);
+		fieldAccess << generateGetInternalLine(classInfo.name, "thisPtr", classType, isBase ? (int)TypeFlags::IsReferencingBaseClass : 0);
 		fieldAccess << "->" << fieldInfo.name;
 	}
 
@@ -2337,7 +2393,7 @@ std::string generateCppFieldSetterBody(const ClassInfo& classInfo, const FieldIn
 		fieldAccess << classInfo.name << "::Instance()." << fieldInfo.name;
 	else
 	{
-		fieldAccess << generateGetInternalLine(classInfo.name, "thisPtr", classType, isBase ? (int)TypeFlags::ReferencesBase : 0);
+		fieldAccess << generateGetInternalLine(classInfo.name, "thisPtr", classType, isBase ? (int)TypeFlags::IsReferencingBaseClass : 0);
 		fieldAccess << "->" << fieldInfo.name;
 	}
 

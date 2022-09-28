@@ -426,7 +426,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 
 			StructInfo* structInfo = findStructInfo(type);
 			if (structInfo != nullptr && structInfo->requiresInterop)
-				flags |= (int)TypeFlags::ComplexStruct;
+				flags |= (int)TypeFlags::IsStructWrapperUsed;
 		};
 
 		auto markBaseType = [&findClassInfo](const std::string& type, int& flags)
@@ -441,7 +441,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 			{
 				bool isBase = (classInfo->flags & (int)ClassFlags::IsBase) != 0;
 				if (isBase)
-					flags |= (int)TypeFlags::ReferencesBase;
+					flags |= (int)TypeFlags::IsReferencingBaseClass;
 			}
 		};
 
@@ -945,6 +945,76 @@ bool ParserUtility::IsBuiltinBaseType(const CXXRecordDecl* decl)
 	else if (className == kBuiltinReflectableType)
 		return true;
 
+	return false;
+}
+
+bool ParserUtility::MapBuiltinPrimitiveTypeToCppType(BuiltinType::Kind kind, std::string& output)
+{
+	switch (kind)
+	{
+	case BuiltinType::Void:
+		output = "void";
+		return true;
+	case BuiltinType::Bool:
+		output = "bool";
+		return true;
+	case BuiltinType::Char_S:
+		output = "char";
+		return true;
+	case BuiltinType::SChar:
+		output = "int8_t";
+		return true;
+	case BuiltinType::Char_U:
+		output = "uint8_t";
+		return true;
+	case BuiltinType::Short:
+		output = "int16_t";
+		return true;
+	case BuiltinType::Int:
+		output = "int32_t";
+		return true;
+	case BuiltinType::Long:
+		output = "int32_t";
+		return true;
+	case BuiltinType::LongLong:
+		output = "int64_t";
+		return true;
+	case BuiltinType::UChar:
+		output = "uint8_t";
+		return true;
+	case BuiltinType::UShort:
+		output = "uint16_t";
+		return true;
+	case BuiltinType::UInt:
+		output = "uint32_t";
+		return true;
+	case BuiltinType::ULong:
+		output = "uint32_t";
+		return true;
+	case BuiltinType::ULongLong:
+		output = "uint64_t";
+		return true;
+	case BuiltinType::Float:
+		output = "float";
+		return true;
+	case BuiltinType::Double:
+		output = "double";
+		return true;
+	case BuiltinType::WChar_S:
+	case BuiltinType::WChar_U:
+		output = "wchar_t";
+		return true;
+	case BuiltinType::Char16:
+		output = "char16_t";
+		return true;
+	case BuiltinType::Char32:
+		output = "char32_t";
+		return true;
+	default:
+		break;
+	}
+
+	errs() << "Unrecognized builtin type found.\n";
 	return false;
 }
 
