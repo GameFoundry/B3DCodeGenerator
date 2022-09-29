@@ -468,7 +468,7 @@ MethodInfo findUnusedCtorSignature(const ClassInfo& classInfo)
 
 		for (auto& paramInfo : info.paramInfos)
 		{
-			if (paramInfo.typeName != "bool")
+			if (paramInfo.TypeInformation.TypeName != "bool")
 				return true;
 		}
 
@@ -521,10 +521,13 @@ MethodInfo findUnusedCtorSignature(const ClassInfo& classInfo)
 
 	for (int i = 0; i < numBools; i++)
 	{
-		VarInfo paramInfo;
-		paramInfo.name = "__dummy" + std::to_string(i);
+		VariableInformation paramInfo;
+		paramInfo.Name = "__dummy" + std::to_string(i);
 		paramInfo.typeName = "bool";
 		paramInfo.flags = (int)TypeFlags::Primitive;
+
+		paramInfo.TypeInformation.TypeName = "bool";
+		paramInfo.TypeInformation.TypeCategory = VariableTypeCategory::Primitive;
 
 		output.paramInfos.push_back(paramInfo);
 	}
@@ -606,7 +609,7 @@ std::string generateCppMethodSignature(const MethodInfo& methodInfo, const std::
 		output << "void";
 	else
 	{
-		TypeMappingInformation returnTypeInfo = getTypeInfo(methodInfo.returnInfo.typeName, methodInfo.returnInfo.flags);
+		TypeMappingInformation returnTypeInfo = GetNativeToScriptTypeMapping(methodInfo.returnInfo.TypeInformation);
 		if (!canBeReturned(returnTypeInfo.TypeCategory, methodInfo.returnInfo.flags))
 		{
 			output << "void";
@@ -642,9 +645,9 @@ std::string generateCppMethodSignature(const MethodInfo& methodInfo, const std::
 
 	for (auto I = methodInfo.paramInfos.begin(); I != methodInfo.paramInfos.end(); ++I)
 	{
-		TypeMappingInformation paramTypeInfo = getTypeInfo(I->typeName, I->flags);
+		TypeMappingInformation paramTypeInfo = GetNativeToScriptTypeMapping(I->TypeInformation);
 
-		output << getInteropCppVarType(I->typeName, paramTypeInfo.TypeCategory, I->flags) << " " << I->name;
+		output << getInteropCppVarType(I->typeName, paramTypeInfo.TypeCategory, I->flags) << " " << I->Name;
 
 		if ((I + 1) != methodInfo.paramInfos.end() || returnAsParameter)
 			output << ", ";
@@ -652,7 +655,7 @@ std::string generateCppMethodSignature(const MethodInfo& methodInfo, const std::
 
 	if (returnAsParameter)
 	{
-		TypeMappingInformation returnTypeInfo = getTypeInfo(methodInfo.returnInfo.typeName, methodInfo.returnInfo.flags);
+		TypeMappingInformation returnTypeInfo = GetNativeToScriptTypeMapping(methodInfo.returnInfo.TypeInformation);
 
 		output << getInteropCppVarType(methodInfo.returnInfo.typeName, returnTypeInfo.TypeCategory, methodInfo.returnInfo.flags) <<
 			" " << "__output";
@@ -681,7 +684,7 @@ std::string generateCppEventCallbackSignature(const MethodInfo& eventInfo, const
 	int idx = 0;
 	for (auto I = eventInfo.paramInfos.begin(); I != eventInfo.paramInfos.end(); ++I)
 	{
-		TypeMappingInformation paramTypeInfo = getTypeInfo(I->typeName, I->flags);
+		TypeMappingInformation paramTypeInfo = GetNativeToScriptTypeMapping(I->TypeInformation);
 
 		if (!isSrcValue(I->flags) && !isOutput(I->flags))
 			output << "const ";
@@ -734,12 +737,12 @@ std::string generateCppEventThunk(const MethodInfo& eventInfo, bool isModule)
 
 	for (auto I = eventInfo.paramInfos.begin(); I != eventInfo.paramInfos.end(); ++I)
 	{
-		TypeMappingInformation paramTypeInfo = getTypeInfo(I->typeName, I->flags);
+		TypeMappingInformation paramTypeInfo = GetNativeToScriptTypeMapping(I->TypeInformation);
 
 		if (paramTypeInfo.TypeCategory == ::ExportedClassTypeCategory::Struct)
-			output << "MonoObject* " << I-> name << ", ";
+			output << "MonoObject* " << I-> Name << ", ";
 		else
-			output << getInteropCppVarType(I->typeName, paramTypeInfo.TypeCategory, I->flags) << " " << I->name << ", ";
+			output << getInteropCppVarType(I->typeName, paramTypeInfo.TypeCategory, I->flags) << " " << I->Name << ", ";
 	}
 
 	output << "MonoException**);" << std::endl;
@@ -838,10 +841,10 @@ std::string generateNativeToScriptObjectLine(::ExportedClassTypeCategory type, i
 	return output.str();
 }
 
-std::string generateMethodBodyBlockForParam(const std::string& name, const VarTypeInfo& varTypeInfo,
+std::string generateMethodBodyBlockForParam(const std::string& name, const VariableBase& varTypeInfo,
 	bool isLast, bool returnValue, std::stringstream& preCallActions, std::stringstream& postCallActions)
 {
-	TypeMappingInformation paramTypeInfo = getTypeInfo(varTypeInfo.typeName, varTypeInfo.flags);
+	TypeMappingInformation paramTypeInfo = GetNativeToScriptTypeMapping(varTypeInfo.TypeInformation);
 
 	if(getIsAsyncOp(varTypeInfo.flags))
 	{
@@ -1468,9 +1471,9 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 	}
 }
 
-std::string generateFieldConvertBlock(const std::string& name, const VarTypeInfo& varTypeInfo, bool toInterop, std::stringstream& preActions)
+std::string generateFieldConvertBlock(const std::string& name, const VariableBase& varTypeInfo, bool toInterop, std::stringstream& preActions)
 {
-	TypeMappingInformation paramTypeInfo = getTypeInfo(varTypeInfo.typeName, varTypeInfo.flags);
+	TypeMappingInformation paramTypeInfo = GetNativeToScriptTypeMapping(varTypeInfo.TypeInformation);
 
 	if (getIsAsyncOp(varTypeInfo.flags))
 	{
@@ -1911,9 +1914,9 @@ std::string generateFieldConvertBlock(const std::string& name, const VarTypeInfo
 	}
 }
 
-std::string generateEventCallbackBodyBlockForParam(const std::string& name, const VarTypeInfo& varTypeInfo, std::stringstream& preCallActions)
+std::string generateEventCallbackBodyBlockForParam(const std::string& name, const VariableBase& varTypeInfo, std::stringstream& preCallActions)
 {
-	TypeMappingInformation paramTypeInfo = getTypeInfo(varTypeInfo.typeName, varTypeInfo.flags);
+	TypeMappingInformation paramTypeInfo = GetNativeToScriptTypeMapping(varTypeInfo.TypeInformation);
 
 	if (getIsAsyncOp(varTypeInfo.flags))
 	{
@@ -2137,7 +2140,7 @@ std::string generateCppMethodBody(const ClassInfo& classInfo, const MethodInfo& 
 	TypeMappingInformation returnTypeInfo;
 	if (!methodInfo.returnInfo.typeName.empty() && !isCtor)
 	{
-		returnTypeInfo = getTypeInfo(methodInfo.returnInfo.typeName, methodInfo.returnInfo.flags);
+		returnTypeInfo = GetNativeToScriptTypeMapping(methodInfo.returnInfo.TypeInformation);
 		if (!canBeReturned(returnTypeInfo.TypeCategory, methodInfo.returnInfo.flags))
 			returnAsParameter = true;
 		else
@@ -2156,11 +2159,11 @@ std::string generateCppMethodBody(const ClassInfo& classInfo, const MethodInfo& 
 	{
 		bool isLast = (I + 1) == methodInfo.paramInfos.end();
 
-		std::string argName = generateMethodBodyBlockForParam(I->name, *I, isLast, false, preCallActions, postCallActions);
+		std::string argName = generateMethodBodyBlockForParam(I->Name, *I, isLast, false, preCallActions, postCallActions);
 
 		if (!isArrayOrVector(I->flags))
 		{
-			TypeMappingInformation paramTypeInfo = getTypeInfo(I->typeName, I->flags);
+			TypeMappingInformation paramTypeInfo = GetNativeToScriptTypeMapping(I->TypeInformation);
 
 			methodArgs << getAsManagedToCppArgument(argName, paramTypeInfo.TypeCategory, I->flags, methodInfo.sourceName);
 		}
@@ -2301,7 +2304,7 @@ std::string generateCppFieldGetterBody(const ClassInfo& classInfo, const FieldIn
 	bool isStatic = (methodInfo.flags & (int)MethodFlags::Static) != 0;
 
 	bool returnAsParameter = false;
-	TypeMappingInformation returnTypeInfo = getTypeInfo(methodInfo.returnInfo.typeName, methodInfo.returnInfo.flags);
+	TypeMappingInformation returnTypeInfo = GetNativeToScriptTypeMapping(methodInfo.returnInfo.TypeInformation);
 	if (!canBeReturned(returnTypeInfo.TypeCategory, methodInfo.returnInfo.flags))
 		returnAsParameter = true;
 	else
@@ -2328,13 +2331,13 @@ std::string generateCppFieldGetterBody(const ClassInfo& classInfo, const FieldIn
 
 	std::stringstream fieldAccess;
 	if (isStatic)
-		fieldAccess << classInfo.name << "::" << fieldInfo.name; 
+		fieldAccess << classInfo.name << "::" << fieldInfo.Name; 
 	else if(isModule)
-		fieldAccess << classInfo.name << "::Instance()." << fieldInfo.name;
+		fieldAccess << classInfo.name << "::Instance()." << fieldInfo.Name;
 	else
 	{
 		fieldAccess << generateGetInternalLine(classInfo.name, "thisPtr", classType, isBase ? (int)TypeFlags::IsReferencingBaseClass : 0);
-		fieldAccess << "->" << fieldInfo.name;
+		fieldAccess << "->" << fieldInfo.Name;
 	}
 
 	// Dereference input if needed
@@ -2372,10 +2375,10 @@ std::string generateCppFieldSetterBody(const ClassInfo& classInfo, const FieldIn
 	bool isBase = (classInfo.flags & (int)ClassFlags::IsBase) != 0;
 	bool isStatic = (methodInfo.flags & (int)MethodFlags::Static) != 0;
 
-	const VarInfo& paramInfo = methodInfo.paramInfos[0];
-	std::string argName = generateMethodBodyBlockForParam(paramInfo.name, paramInfo, false, false, preCallActions, postCallActions);
+	const VariableInformation& paramInfo = methodInfo.paramInfos[0];
+	std::string argName = generateMethodBodyBlockForParam(paramInfo.Name, paramInfo, false, false, preCallActions, postCallActions);
 
-	TypeMappingInformation paramTypeInfo = getTypeInfo(paramInfo.typeName, paramInfo.flags);
+	TypeMappingInformation paramTypeInfo = GetNativeToScriptTypeMapping(paramInfo.TypeInformation);
 
 	if(!isArrayOrVector(paramInfo.flags))
 		argValue << getAsManagedToCppArgument(argName, paramTypeInfo.TypeCategory, paramInfo.flags, methodInfo.sourceName);
@@ -2388,13 +2391,13 @@ std::string generateCppFieldSetterBody(const ClassInfo& classInfo, const FieldIn
 
 	std::stringstream fieldAccess;
 	if (isStatic)
-		fieldAccess << classInfo.name << "::" << fieldInfo.name; 
+		fieldAccess << classInfo.name << "::" << fieldInfo.Name; 
 	else if(isModule)
-		fieldAccess << classInfo.name << "::Instance()." << fieldInfo.name;
+		fieldAccess << classInfo.name << "::Instance()." << fieldInfo.Name;
 	else
 	{
 		fieldAccess << generateGetInternalLine(classInfo.name, "thisPtr", classType, isBase ? (int)TypeFlags::IsReferencingBaseClass : 0);
-		fieldAccess << "->" << fieldInfo.name;
+		fieldAccess << "->" << fieldInfo.Name;
 	}
 
 	output << "\t\t" << fieldAccess.str() << " = " << argValue.str() << ";\n";
@@ -2421,11 +2424,11 @@ std::string generateCppEventCallbackBody(const MethodInfo& eventInfo, bool isMod
 	{
 		bool isLast = (I + 1) == eventInfo.paramInfos.end();
 
-		std::string argName = generateEventCallbackBodyBlockForParam(I->name, *I, preCallActions);
+		std::string argName = generateEventCallbackBodyBlockForParam(I->Name, *I, preCallActions);
 
 		if (!isArrayOrVector(I->flags))
 		{
-			TypeMappingInformation paramTypeInfo = getTypeInfo(I->typeName, I->flags);
+			TypeMappingInformation paramTypeInfo = GetNativeToScriptTypeMapping(I->TypeInformation);
 
 			if(paramTypeInfo.TypeCategory == ::ExportedClassTypeCategory::Struct)
 				methodArgs << getAsCppToManagedArgument(argName, ::ExportedClassTypeCategory::Class, I->flags, eventInfo.sourceName);
@@ -2987,8 +2990,8 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 
 		for (auto I = eventInfo.paramInfos.begin(); I != eventInfo.paramInfos.end(); ++I)
 		{
-			const VarInfo& paramInfo = *I;
-			TypeMappingInformation paramTypeInfo = getTypeInfo(paramInfo.typeName, paramInfo.flags);
+			const VariableInformation& paramInfo = *I;
+			TypeMappingInformation paramTypeInfo = GetNativeToScriptTypeMapping(paramInfo.TypeInformation);
 
 			std::string typeName;
 
@@ -3214,8 +3217,8 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 		const MethodInfo* setterInfo = nullptr;
 		const MethodInfo* getterInfo = nullptr;
 
-		std::string getterName = "Get" + I->name;
-		std::string setterName = "Set" + I->name;
+		std::string getterName = "Get" + I->Name;
+		std::string setterName = "Set" + I->Name;
 		for(auto& entry : classInfo.methodInfos)
 		{
 			if ((entry.flags & (int)MethodFlags::FieldWrapper) == 0)
@@ -3255,7 +3258,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 
 std::string generateCppStructHeader(const StructInfo& structInfo)
 {
-	TypeMappingInformation typeInfo = getTypeInfo(structInfo.name, 0);
+	TypeMappingInformation typeInfo = GetNativeToScriptTypeMapping(structInfo.name);
 
 	std::stringstream output;
 	output << generateCppApiCheckBegin(structInfo.api);
@@ -3267,11 +3270,11 @@ std::string generateCppStructHeader(const StructInfo& structInfo)
 
 		for(auto& fieldInfo : structInfo.fields)
 		{
-			TypeMappingInformation fieldTypeInfo = getTypeInfo(fieldInfo.typeName, fieldInfo.flags);
+			TypeMappingInformation fieldTypeInfo = GetNativeToScriptTypeMapping(fieldInfo.TypeInformation);
 
 			output << "\t\t";
 			output << getInteropCppVarType(fieldInfo.typeName, fieldTypeInfo.TypeCategory, fieldInfo.flags, true);
-			output << " " << fieldInfo.name << ";\n";
+			output << " " << fieldInfo.Name << ";\n";
 		}
 
 		output << "\t};\n\n";
@@ -3323,7 +3326,7 @@ std::string generateCppStructHeader(const StructInfo& structInfo)
 
 std::string generateCppStructSource(const StructInfo& structInfo)
 {
-	TypeMappingInformation typeInfo = getTypeInfo(structInfo.name, 0);
+	TypeMappingInformation typeInfo = GetNativeToScriptTypeMapping(structInfo.name);
 	std::string interopClassName = getScriptInteropType(structInfo.name);
 
 	std::stringstream output;
@@ -3366,17 +3369,17 @@ std::string generateCppStructSource(const StructInfo& structInfo)
 			// Arrays can be assigned, so copy them entry by entry
 			if(isArray(fieldInfo.flags))
 			{
-				std::string argName = generateFieldConvertBlock(fieldInfo.name, fieldInfo, false, output);
+				std::string argName = generateFieldConvertBlock(fieldInfo.Name, fieldInfo, false, output);
 
-				output << "\t\tauto tmp" << fieldInfo.name << " = " << argName << ";\n";
+				output << "\t\tauto tmp" << fieldInfo.Name << " = " << argName << ";\n";
 				output << "\t\tfor(int i = 0; i < " << fieldInfo.arraySize << "; ++i)\n";
-				output << "\t\t\toutput." << fieldInfo.name << "[i] = tmp" << fieldInfo.name << "[i];\n";
+				output << "\t\t\toutput." << fieldInfo.Name << "[i] = tmp" << fieldInfo.Name << "[i];\n";
 			}
 			else
 			{
-				std::string argName = generateFieldConvertBlock(fieldInfo.name, fieldInfo, false, output);
+				std::string argName = generateFieldConvertBlock(fieldInfo.Name, fieldInfo, false, output);
 
-				output << "\t\toutput." << fieldInfo.name << " = " << argName << ";\n";
+				output << "\t\toutput." << fieldInfo.Name << " = " << argName << ";\n";
 			}
 		}
 
@@ -3391,9 +3394,9 @@ std::string generateCppStructSource(const StructInfo& structInfo)
 		output << "\t\t" << structInfo.interopName << " output;\n";
 		for(auto& fieldInfo : structInfo.fields)
 		{
-			std::string argName = generateFieldConvertBlock(fieldInfo.name, fieldInfo, true, output);
+			std::string argName = generateFieldConvertBlock(fieldInfo.Name, fieldInfo, true, output);
 
-			output << "\t\toutput." << fieldInfo.name << " = " << argName << ";\n";
+			output << "\t\toutput." << fieldInfo.Name << " = " << argName << ";\n";
 		}
 
 		output << "\n";
@@ -3462,19 +3465,19 @@ std::string generateCSStyleAttributes(const ExportStyle& style, const TypeMappin
 	return output.str();
 }
 
-std::string generateCSDefaultValueAssignment(const VarInfo& paramInfo)
+std::string generateCSDefaultValueAssignment(const VariableInformation& paramInfo)
 {
-	if (paramInfo.defaultValueType.empty() || isFlagsEnum(paramInfo.flags))
-		return paramInfo.defaultValue;
+	if (paramInfo.DefaultValueType.empty() || isFlagsEnum(paramInfo.flags))
+		return paramInfo.DefaultValue;
 	else
 	{
 		// Constructor or cast, assuming constructor as cast implies a constructor accepting the type exists (and we don't export cast operators anyway)
-		TypeMappingInformation defaultValTypeInfo = getTypeInfo(paramInfo.defaultValueType, 0);
+		TypeMappingInformation defaultValTypeInfo = GetNativeToScriptTypeMapping(paramInfo.DefaultValueType);
 
-		if(defaultValTypeInfo.TypeCategory == ::ExportedClassTypeCategory::Struct && paramInfo.defaultValue.empty())
+		if(defaultValTypeInfo.TypeCategory == ::ExportedClassTypeCategory::Struct && paramInfo.DefaultValue.empty())
 			return defaultValTypeInfo.ScriptTypeName + ".Default()";
 		else
-			return "new " + defaultValTypeInfo.ScriptTypeName + "(" + paramInfo.defaultValue + ")";
+			return "new " + defaultValTypeInfo.ScriptTypeName + "(" + paramInfo.DefaultValue + ")";
 	}
 }
 
@@ -3483,9 +3486,9 @@ std::string generateCSMethodParams(const MethodInfo& methodInfo, bool forInterop
 	std::stringstream output;
 	for (auto I = methodInfo.paramInfos.begin(); I != methodInfo.paramInfos.end(); ++I)
 	{
-		const VarInfo& paramInfo = *I;
+		const VariableInformation& paramInfo = *I;
 
-		if(!forInterop && !paramInfo.defaultValueType.empty() && !isFlagsEnum(paramInfo.flags))
+		if(!forInterop && !paramInfo.DefaultValueType.empty() && !isFlagsEnum(paramInfo.flags))
 		{
 			// We don't generate parameters that have complex default values (as they're not supported in C#).
 			// Instead the post-processor has generated different versions of this method, so we can just skip
@@ -3496,16 +3499,16 @@ std::string generateCSMethodParams(const MethodInfo& methodInfo, bool forInterop
 		if (I != methodInfo.paramInfos.begin())
 			output << ", ";
 
-		TypeMappingInformation paramTypeInfo = getTypeInfo(paramInfo.typeName, paramInfo.flags);
+		TypeMappingInformation paramTypeInfo = GetNativeToScriptTypeMapping(paramInfo.TypeInformation);
 		std::string qualifiedType = getCSVarType(paramTypeInfo.ScriptTypeName, paramTypeInfo.TypeCategory, paramInfo.flags, true, true, forInterop);
 
 		bool isLastParam = (I + 1) == methodInfo.paramInfos.end();
 		if (isVarParam(paramInfo.flags) && isLastParam)
 			output << "params ";
 
-		output << qualifiedType << " " << paramInfo.name;
+		output << qualifiedType << " " << paramInfo.Name;
 
-		if (!forInterop && !paramInfo.defaultValue.empty())
+		if (!forInterop && !paramInfo.DefaultValue.empty())
 			output << " = " << generateCSDefaultValueAssignment(paramInfo);
 	}
 
@@ -3517,15 +3520,15 @@ std::string generateCSMethodArgs(const MethodInfo& methodInfo, bool forInterop)
 	std::stringstream output;
 	for (auto I = methodInfo.paramInfos.begin(); I != methodInfo.paramInfos.end(); ++I)
 	{
-		const VarInfo& paramInfo = *I;
-		TypeMappingInformation paramTypeInfo = getTypeInfo(paramInfo.typeName, paramInfo.flags);
+		const VariableInformation& paramInfo = *I;
+		TypeMappingInformation paramTypeInfo = GetNativeToScriptTypeMapping(paramInfo.TypeInformation);
 
 		if (isOutput(paramInfo.flags))
 			output << "out ";
 		else if (forInterop && isPlainStruct(paramTypeInfo.TypeCategory, paramInfo.flags))
 			output << "ref ";
 
-		output << paramInfo.name;
+		output << paramInfo.Name;
 
 		if ((I + 1) != methodInfo.paramInfos.end())
 			output << ", ";
@@ -3539,21 +3542,21 @@ std::string generateCSMethodDefaultParamAssignments(const MethodInfo& methodInfo
 	std::stringstream output;
 	for (auto I = methodInfo.paramInfos.begin(); I != methodInfo.paramInfos.end(); ++I)
 	{
-		const VarInfo& paramInfo = *I;
+		const VariableInformation& paramInfo = *I;
 		
-		if (paramInfo.defaultValueType.empty() || isFlagsEnum(paramInfo.flags))
+		if (paramInfo.DefaultValueType.empty() || isFlagsEnum(paramInfo.flags))
 			continue;
 
-		if (paramInfo.defaultValueType == "null" || paramInfo.defaultValue == "null")
+		if (paramInfo.DefaultValueType == "null" || paramInfo.DefaultValue == "null")
 		{
-			TypeMappingInformation paramTypeInfo = getTypeInfo(paramInfo.typeName, paramInfo.flags);
-			output << indent << paramTypeInfo.ScriptTypeName << " " << paramInfo.name << " = " << paramInfo.defaultValue << ";\n";
+			TypeMappingInformation paramTypeInfo = GetNativeToScriptTypeMapping(paramInfo.TypeInformation);
+			output << indent << paramTypeInfo.ScriptTypeName << " " << paramInfo.Name << " = " << paramInfo.DefaultValue << ";\n";
 		}
 		else
 		{
-			TypeMappingInformation defaultValTypeInfo = getTypeInfo(paramInfo.defaultValueType, 0);
-			output << indent << defaultValTypeInfo.ScriptTypeName << " " << paramInfo.name << " = ";
-			output << "new " << defaultValTypeInfo.ScriptTypeName << "(" << paramInfo.defaultValue << ");\n";
+			TypeMappingInformation defaultValTypeInfo = GetNativeToScriptTypeMapping(paramInfo.DefaultValueType);
+			output << indent << defaultValTypeInfo.ScriptTypeName << " " << paramInfo.Name << " = ";
+			output << "new " << defaultValTypeInfo.ScriptTypeName << "(" << paramInfo.DefaultValue << ");\n";
 		}
 	}
 
@@ -3566,8 +3569,8 @@ std::string generateCSEventSignature(const MethodInfo& methodInfo)
 	std::stringstream output;
 	for (auto I = methodInfo.paramInfos.begin(); I != methodInfo.paramInfos.end(); ++I)
 	{
-		const VarInfo& paramInfo = *I;
-		TypeMappingInformation paramTypeInfo = getTypeInfo(paramInfo.typeName, paramInfo.flags);
+		const VariableInformation& paramInfo = *I;
+		TypeMappingInformation paramTypeInfo = GetNativeToScriptTypeMapping(paramInfo.TypeInformation);
 		std::string type = getCSVarType(paramTypeInfo.ScriptTypeName, paramTypeInfo.TypeCategory, paramInfo.flags, false, true, false);
 
 		output << type;
@@ -3585,7 +3588,7 @@ std::string generateCSEventArgs(const MethodInfo& methodInfo)
 
 	for (auto I = methodInfo.paramInfos.begin(); I != methodInfo.paramInfos.end(); ++I)
 	{
-		output << I->name;
+		output << I->Name;
 
 		if ((I + 1) != methodInfo.paramInfos.end())
 			output << ", ";
@@ -3606,7 +3609,7 @@ std::string generateCSInteropMethodSignature(const MethodInfo& methodInfo, const
 		output << "void";
 	else
 	{
-		TypeMappingInformation returnTypeInfo = getTypeInfo(methodInfo.returnInfo.typeName, methodInfo.returnInfo.flags);
+		TypeMappingInformation returnTypeInfo = GetNativeToScriptTypeMapping(methodInfo.returnInfo.TypeInformation);
 		if (!canBeReturned(returnTypeInfo.TypeCategory, methodInfo.returnInfo.flags))
 		{
 			output << "void";
@@ -3643,7 +3646,7 @@ std::string generateCSInteropMethodSignature(const MethodInfo& methodInfo, const
 
 	if (returnAsParameter)
 	{
-		TypeMappingInformation returnTypeInfo = getTypeInfo(methodInfo.returnInfo.typeName, methodInfo.returnInfo.flags);
+		TypeMappingInformation returnTypeInfo = GetNativeToScriptTypeMapping(methodInfo.returnInfo.TypeInformation);
 		std::string qualifiedType = getCSVarType(returnTypeInfo.ScriptTypeName, returnTypeInfo.TypeCategory, methodInfo.returnInfo.flags, false, true, false);
 
 		if (methodInfo.paramInfos.size() > 0)
@@ -3800,7 +3803,7 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 					returnType = "void";
 				else
 				{
-					returnTypeInfo = getTypeInfo(entry.returnInfo.typeName, entry.returnInfo.flags);
+					returnTypeInfo = GetNativeToScriptTypeMapping(entry.returnInfo.TypeInformation);
 					returnType = getCSVarType(returnTypeInfo.ScriptTypeName, returnTypeInfo.TypeCategory, entry.returnInfo.flags, false, true, false);
 				}
 
@@ -3869,7 +3872,7 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 	// Properties
 	for (auto& entry : input.propertyInfos)
 	{
-		TypeMappingInformation propTypeInfo = getTypeInfo(entry.type, entry.typeFlags);
+		TypeMappingInformation propTypeInfo = GetNativeToScriptTypeMapping(entry.TypeInformation);
 		std::string propTypeName = getCSVarType(propTypeInfo.ScriptTypeName, propTypeInfo.TypeCategory, entry.typeFlags, false, true, false);
 
 		properties << generateCsApiCheckBegin(entry.api);
@@ -4044,7 +4047,7 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 	std::string baseType;
 	if (!input.baseClass.empty())
 	{
-		TypeMappingInformation baseTypeInfo = getTypeInfo(input.baseClass, 0);
+		TypeMappingInformation baseTypeInfo = GetNativeToScriptTypeMapping(input.baseClass);
 		baseType = baseTypeInfo.ScriptTypeName;
 	}
 	else if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource)
@@ -4128,9 +4131,9 @@ std::string generateCSStruct(StructInfo& input)
 
 		for (auto I = entry.params.begin(); I != entry.params.end(); ++I)
 		{
-			const VarInfo& paramInfo = *I;
+			const VariableInformation& paramInfo = *I;
 
-			TypeMappingInformation typeInfo = getTypeInfo(paramInfo.typeName, paramInfo.flags);
+			TypeMappingInformation typeInfo = GetNativeToScriptTypeMapping(paramInfo.TypeInformation);
 
 			if (!isValidStructType(typeInfo, paramInfo.flags))
 			{
@@ -4139,7 +4142,7 @@ std::string generateCSStruct(StructInfo& input)
 			}
 
 			
-			if(!paramInfo.defaultValueType.empty() && !isFlagsEnum(paramInfo.flags))
+			if(!paramInfo.DefaultValueType.empty() && !isFlagsEnum(paramInfo.flags))
 			{
 				// We don't generate parameters that have complex default values (as they're not supported in C#).
 				// Instead the post-processor has generated different versions of this method, so we can just skip
@@ -4147,9 +4150,9 @@ std::string generateCSStruct(StructInfo& input)
 				continue;
 			}
 
-			output << typeInfo.ScriptTypeName << " " << paramInfo.name;
+			output << typeInfo.ScriptTypeName << " " << paramInfo.Name;
 
-			if (!paramInfo.defaultValue.empty())
+			if (!paramInfo.DefaultValue.empty())
 				output << " = " << generateCSDefaultValueAssignment(paramInfo);
 
 			if ((I + 1) != entry.params.end())
@@ -4170,9 +4173,9 @@ std::string generateCSStruct(StructInfo& input)
 
 		for (auto I = input.fields.begin(); I != input.fields.end(); ++I)
 		{
-			const VarInfo& fieldInfo = *I;
+			const VariableInformation& fieldInfo = *I;
 
-			TypeMappingInformation typeInfo = getTypeInfo(fieldInfo.typeName, fieldInfo.flags);
+			TypeMappingInformation typeInfo = GetNativeToScriptTypeMapping(fieldInfo.TypeInformation);
 
 			if (!isValidStructType(typeInfo, fieldInfo.flags))
 			{
@@ -4180,9 +4183,9 @@ std::string generateCSStruct(StructInfo& input)
 				continue;
 			}
 
-			std::string fieldName = fieldInfo.name;
+			std::string fieldName = fieldInfo.Name;
 			
-			auto iterFind = entry.fieldAssignments.find(fieldInfo.name);
+			auto iterFind = entry.fieldAssignments.find(fieldInfo.Name);
 			if (iterFind != entry.fieldAssignments.end())
 			{
 				std::string paramName = iterFind->second;
@@ -4191,7 +4194,7 @@ std::string generateCSStruct(StructInfo& input)
 			else
 			{
 				std::string defaultValue;
-				if (!fieldInfo.defaultValue.empty())
+				if (!fieldInfo.DefaultValue.empty())
 					defaultValue = generateCSDefaultValueAssignment(fieldInfo);
 				else
 					defaultValue = getDefaultValue(fieldInfo.typeName, fieldInfo.flags, typeInfo);
@@ -4212,7 +4215,7 @@ std::string generateCSStruct(StructInfo& input)
 
 	if(!input.baseClass.empty())
 	{
-		TypeMappingInformation baseTypeInfo = getTypeInfo(input.baseClass, 0);
+		TypeMappingInformation baseTypeInfo = GetNativeToScriptTypeMapping(input.baseClass);
 		StructInfo* baseStructInfo = findStructInfo(input.baseClass);
 		if (baseStructInfo != nullptr)
 		{
@@ -4227,7 +4230,7 @@ std::string generateCSStruct(StructInfo& input)
 			for (auto I = baseStructInfo->fields.begin(); I != baseStructInfo->fields.end(); ++I)
 			{
 				const FieldInfo& fieldInfo = *I;
-				output << "\t\t\tvalue." << fieldInfo.name << " = " << fieldInfo.name << ";\n";
+				output << "\t\t\tvalue." << fieldInfo.Name << " = " << fieldInfo.Name << ";\n";
 			}
 
 			output << "\t\t\treturn value;\n";
@@ -4245,7 +4248,7 @@ std::string generateCSStruct(StructInfo& input)
 			for (auto I = baseStructInfo->fields.begin(); I != baseStructInfo->fields.end(); ++I)
 			{
 				const FieldInfo& fieldInfo = *I;
-				output << "\t\t\t" << fieldInfo.name << " = value." << fieldInfo.name << ";\n";
+				output << "\t\t\t" << fieldInfo.Name << " = value." << fieldInfo.Name << ";\n";
 			}
 
 			output << "\t\t}\n";
@@ -4257,11 +4260,11 @@ std::string generateCSStruct(StructInfo& input)
 	{
 		const FieldInfo& fieldInfo = *I;
 
-		TypeMappingInformation typeInfo = getTypeInfo(fieldInfo.typeName, fieldInfo.flags);
+		TypeMappingInformation typeInfo = GetNativeToScriptTypeMapping(fieldInfo.TypeInformation);
 
 		if (!isValidStructType(typeInfo, fieldInfo.flags))
 		{
-			outs() << "Error: Invalid field type found in struct \"" << scriptName << "\" for field \"" << fieldInfo.name << "\". Skipping.\n";
+			outs() << "Error: Invalid field type found in struct \"" << scriptName << "\" for field \"" << fieldInfo.Name << "\". Skipping.\n";
 			continue;
 		}
 
@@ -4278,7 +4281,7 @@ std::string generateCSStruct(StructInfo& input)
 			output << "[]";
 
 		output << " ";
-		output << fieldInfo.name;
+		output << fieldInfo.Name;
 
 		output << ";" << std::endl;
 	}
@@ -4350,14 +4353,14 @@ std::string generateCSEnum(EnumInfo& input)
 	return output.str();
 }
 
-std::string generateXMLParamInfo(const VarInfo& varInfo, const CommentEntry& methodDoc, const std::string& indent)
+std::string generateXMLParamInfo(const VariableInformation& varInfo, const CommentEntry& methodDoc, const std::string& indent)
 {
 	std::stringstream output;
-	output << indent << "<param name=\"" << escapeXML(varInfo.name) << "\" type=\"" << 
-		escapeXML(getTypeInfo(varInfo.typeName, varInfo.flags).ScriptTypeName) << "\">\n";
+	output << indent << "<param name=\"" << escapeXML(varInfo.Name) << "\" type=\"" << 
+		escapeXML(GetNativeToScriptTypeMapping(varInfo.TypeInformation).ScriptTypeName) << "\">\n";
 
 	auto iterFind = std::find_if(methodDoc.params.begin(), methodDoc.params.end(), 
-		[&varName = varInfo.name](const CommentParameterEntry& entry) { return varName == entry.Name; });
+		[&varName = varInfo.Name](const CommentParameterEntry& entry) { return varName == entry.Name; });
 	if (iterFind != methodDoc.params.end() && !iterFind->comments.empty())
 		output << indent << "\t<doc>" << CommentParser::GenerateXMLCommentText(iterFind->comments) << "</doc>\n";
 
@@ -4368,8 +4371,8 @@ std::string generateXMLParamInfo(const VarInfo& varInfo, const CommentEntry& met
 std::string generateXMLFieldInfo(const FieldInfo& fieldInfo, const std::string& indent)
 {
 	std::stringstream output;
-	output << indent << "<field name=\"" << escapeXML(fieldInfo.name) << "\" type=\"" << 
-		escapeXML(getTypeInfo(fieldInfo.typeName, fieldInfo.flags).ScriptTypeName) << "\">\n";
+	output << indent << "<field name=\"" << escapeXML(fieldInfo.Name) << "\" type=\"" << 
+		escapeXML(GetNativeToScriptTypeMapping(fieldInfo.TypeInformation).ScriptTypeName) << "\">\n";
 
 	// TODO - Generate inspector visibility
 	if(!fieldInfo.documentation.brief.empty())
@@ -4404,7 +4407,7 @@ std::string generateXMLMethodInfo(const MethodInfo& methodInfo, const std::strin
 
 	if(!ctor && !methodInfo.returnInfo.typeName.empty())
 	{
-		output << indent << "\t<returns type=\"" << escapeXML(getTypeInfo(methodInfo.returnInfo.typeName, methodInfo.returnInfo.flags).ScriptTypeName) << "\">\n";
+		output << indent << "\t<returns type=\"" << escapeXML(GetNativeToScriptTypeMapping(methodInfo.returnInfo.TypeInformation).ScriptTypeName) << "\">\n";
 
 		if (!methodInfo.documentation.returns.empty())
 			output << indent << "\t\t<doc>" << CommentParser::GenerateXMLCommentText(methodInfo.documentation.returns) << "</doc>\n";
@@ -4440,7 +4443,7 @@ std::string generateXMLPropertyInfo(const PropertyInfo& propertyInfo, const std:
 
 	std::stringstream output;
 	output << indent << "<property name=\"" << escapeXML(propertyInfo.name) << "\" type=\"" << 
-		escapeXML(getTypeInfo(propertyInfo.type, propertyInfo.typeFlags).ScriptTypeName) << 
+		escapeXML(GetNativeToScriptTypeMapping(propertyInfo.TypeInformation).ScriptTypeName) << 
 		"\" getter=\"" << escapeXML(propertyInfo.getter) << "\" setter=\"" << escapeXML(propertyInfo.setter) << 
 		"\" static=\"" << staticStr << "\">\n";
 
@@ -4470,7 +4473,7 @@ std::string generateXMLEventInfo(const MethodInfo& eventInfo, const std::string&
 
 	if(!eventInfo.returnInfo.typeName.empty())
 	{
-		output << indent << "\t<returns type=\"" << escapeXML(getTypeInfo(eventInfo.returnInfo.typeName, eventInfo.returnInfo.flags).ScriptTypeName) << "\">\n";
+		output << indent << "\t<returns type=\"" << escapeXML(GetNativeToScriptTypeMapping(eventInfo.returnInfo.TypeInformation).ScriptTypeName) << "\">\n";
 
 		if (!eventInfo.documentation.returns.empty())
 			output << indent << "\t\t<doc>" << CommentParser::GenerateXMLCommentText(eventInfo.documentation.returns) << "</doc>\n";

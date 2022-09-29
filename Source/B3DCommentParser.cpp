@@ -734,16 +734,16 @@ void CommentParser::ResolveCopydocComments(CommentEntry& comment, const std::str
 	ResolveCopydocComments(comment, parentType, currentNamespace);
 }
 
-void CommentParser::EnsureValidParameterReferenceComments(const std::vector<VarInfo>& paramInfos, CommentText& comment)
+void CommentParser::EnsureValidParameterReferenceComments(const std::vector<VariableInformation>& paramInfos, CommentText& comment)
 {
 	for(auto iter = comment.ParameterReferences.begin(); iter != comment.ParameterReferences.end();)
 	{
 		const CommentReference& entry = *iter;
 
 		auto iterFind = std::find_if(paramInfos.begin(), paramInfos.end(), 
-			[&entry](const VarInfo& varInfo)
+			[&entry](const VariableInformation& varInfo)
 		{
-			return entry.Name == varInfo.name;
+			return entry.Name == varInfo.Name;
 		});
 
 		if (iterFind == paramInfos.end())
@@ -756,7 +756,7 @@ void CommentParser::EnsureValidParameterReferenceComments(const std::vector<VarI
 	}
 }
 
-void CommentParser::EnsureValidParameterReferenceComments(const std::vector<VarInfo>& paramInfos, CommentEntry& comment)
+void CommentParser::EnsureValidParameterReferenceComments(const std::vector<VariableInformation>& paramInfos, CommentEntry& comment)
 {
 	for (auto& entry : comment.brief)
 		EnsureValidParameterReferenceComments(paramInfos, entry);

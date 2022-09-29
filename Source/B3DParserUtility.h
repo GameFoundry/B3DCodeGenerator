@@ -26,7 +26,7 @@ private:
 	/** Splits a method with default parameters into multiple methods, if some of the parameter default values cannot be parsed. */
 	static void PostProcessDefaultParameters(MethodInfo& methodInfo, std::vector<MethodInfo>& newMethodInfos);
 
-	static void GatherIncludes(const std::string& typeName, int flags, bool isEditor, IncludesInfo& output);
+	static void GatherIncludes(const VariableTypeInformation& typeInformation, const std::string& typeName, int flags, bool isEditor, IncludesInfo& output);
 	static void GatherIncludes(const MethodInfo& methodInfo, bool isEditor, IncludesInfo& output);
 	static void GatherIncludes(const FieldInfo& fieldInfo, bool isEditor, IncludesInfo& output);
 	static void GatherIncludes(const ClassInfo& classInfo, IncludesInfo& output);

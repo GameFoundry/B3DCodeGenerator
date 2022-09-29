@@ -48,10 +48,10 @@ public:
 	void ResolveCopydocComments(CommentEntry& comment, const std::string& parentType, const SmallVector<std::string, 4>& currentNamespace);
 
 	/** Checks if any of the parameters referenced in the comment text don't exist in the actual parameter list, and if so, converts them to generic declaration references. */
-	static void EnsureValidParameterReferenceComments(const std::vector<VarInfo>& paramInfos, CommentText& comment);
+	static void EnsureValidParameterReferenceComments(const std::vector<VariableInformation>& paramInfos, CommentText& comment);
 
 	/** Checks if any of the parameters referenced in the comment don't exist in the actual parameter list, and if so, converts them to generic declaration references. */
-	static void EnsureValidParameterReferenceComments(const std::vector<VarInfo>& paramInfos, CommentEntry& comment);
+	static void EnsureValidParameterReferenceComments(const std::vector<VariableInformation>& paramInfos, CommentEntry& comment);
 
 	/** Clears any parameter references from the provided comment entry, and converts them to generic declaration references. */
 	static void ClearParameterReferenceComments(CommentEntry& comment);

@@ -110,14 +110,67 @@ enum class ParameterFlags
 /** Contains type information about a parameter, return value, field or local variable usage. */
 struct VariableTypeInformation
 {
+	VariableTypeInformation() = default;
+	VariableTypeInformation(const VariableTypeInformation& other);
+	VariableTypeInformation& operator=(const VariableTypeInformation& other);
+
+	bool IsParameterFlagSet(enum ParameterFlags flags) const { return (ParameterFlags & (uint32_t)flags) != 0; }
+	bool IsPostProcessFlagSet(VariablePostProcessFlags flags) const { return (PostProcessFlags & (uint32_t)flags) != 0; }
+	bool IsQualifierFlagSet(VariableQualifierFlags flags) const { return (QualifierFlags & (uint32_t)flags) != 0; }
+
+	void UnsetParameterFlag(enum ParameterFlags flags, bool recursive);
+
+	/** Returns true if the variable type is a non-const pointer or reference, which is recognized as a parameter output. */
+	bool IsOutputParameter() const { return (IsQualifierFlagSet(VariableQualifierFlags::IsPointer) || IsQualifierFlagSet(VariableQualifierFlags::IsReference)) && !IsQualifierFlagSet(VariableQualifierFlags::IsConst); }
+
 	VariableTypeCategory TypeCategory = VariableTypeCategory::UserType;
 	std::string TypeName;
-	Optional<VariableTypeInformation> UnderlyingType;
+	std::unique_ptr<VariableTypeInformation> UnderlyingType;
 	uint32_t QualifierFlags = (uint32_t)VariableQualifierFlags::None;
 	uint32_t PostProcessFlags = (uint32_t)VariablePostProcessFlags::None;
 	uint32_t ParameterFlags = (uint32_t)ParameterFlags::None;
 	uint32_t ArraySize = 0; /**< Size of a native array, or SmallVector. */
 };
+
+inline VariableTypeInformation::VariableTypeInformation(const VariableTypeInformation& other)
+{
+	TypeCategory = other.TypeCategory;
+	TypeName = other.TypeName;
+	QualifierFlags = other.QualifierFlags;
+	PostProcessFlags = other.PostProcessFlags;
+	ParameterFlags = other.ParameterFlags;
+	ArraySize = other.ArraySize;
+
+	if (other.UnderlyingType != nullptr)
+	{
+		UnderlyingType = std::make_unique<VariableTypeInformation>(*other.UnderlyingType);
+	}
+}
+
+inline VariableTypeInformation& VariableTypeInformation::operator=(const VariableTypeInformation& other)
+{
+	TypeCategory = other.TypeCategory;
+	TypeName = other.TypeName;
+	QualifierFlags = other.QualifierFlags;
+	PostProcessFlags = other.PostProcessFlags;
+	ParameterFlags = other.ParameterFlags;
+	ArraySize = other.ArraySize;
+
+	if (other.UnderlyingType != nullptr)
+	{
+		UnderlyingType = std::make_unique<VariableTypeInformation>(*other.UnderlyingType);
+	}
+
+	return *this;
+}
+
+inline void VariableTypeInformation::UnsetParameterFlag(enum ParameterFlags flags, bool recursive)
+{
+	ParameterFlags &= ~(uint32_t)flags;
+
+	if(recursive && UnderlyingType)
+		UnderlyingType->UnsetParameterFlag(flags, true);
+}
 
 enum class TypeFlags // TODO - Ideally this is split up into types and qualifiers
 {
@@ -252,22 +305,24 @@ struct TypeMappingInformation // TODO - Add a new TypeMapping file/class. Regist
 	BuiltinType::Kind EnumUnderlyingType; /**< Underlying primitive type for enum or enum class. */
 };
 
-struct VarTypeInfo
+struct VariableBase
 {
-	std::string typeName;
-	unsigned arraySize;
-	int flags;
+	VariableTypeInformation TypeInformation;
+
+	std::string typeName; // TODO - Remove
+	unsigned arraySize; // TODO - Remove
+	int flags; // TODO - Remove
 };
 
-struct VarInfo : VarTypeInfo
+struct VariableInformation : VariableBase
 {
-	std::string name;
+	std::string Name;
 
-	std::string defaultValue;
-	std::string defaultValueType;
+	std::string DefaultValue;
+	std::string DefaultValueType;
 };
 
-struct ReturnInfo : VarTypeInfo
+struct ReturnInfo : VariableBase
 { };
 
 /** Represents a reference to another type, method or parameter within a comment. */
@@ -301,7 +356,7 @@ struct CommentEntry
 	SmallVector<CommentText, 2> returns; /**< Zero or multiple comment paragraphs describing method return value, if this is a method comment. */
 };
 
-struct FieldInfo : VarInfo
+struct FieldInfo : VariableInformation
 {
 	CommentEntry documentation;
 	ExportStyle style;
@@ -321,7 +376,7 @@ struct MethodInfo
 	ApiFlags api;
 
 	ReturnInfo returnInfo;
-	std::vector<VarInfo> paramInfos;
+	std::vector<VariableInformation> paramInfos;
 	CommentEntry documentation;
 
 	std::string externalClass;
@@ -331,15 +386,16 @@ struct MethodInfo
 
 struct PropertyInfo
 {
+	VariableTypeInformation TypeInformation;
 	std::string name;
-	std::string type;
+	std::string type; // TODO - Remove and replace with TypeInformation
 
 	std::string getter;
 	std::string setter;
 
 	CSVisibility visibility;
 	ApiFlags api;
-	int typeFlags;
+	int typeFlags; // TODO - Remove and replace with TypeInformation
 	bool isStatic;
 	ExportStyle style;
 	CommentEntry documentation;
@@ -373,7 +429,7 @@ struct ExternalClassInfos
 
 struct SimpleConstructorInfo
 {
-	std::vector<VarInfo> params;
+	std::vector<VariableInformation> params;
 	std::unordered_map<std::string, std::string> fieldAssignments;
 	CommentEntry documentation;
 };
@@ -668,18 +724,40 @@ inline std::string getCSLiteralSuffix(const std::string& cppType)
 	return "";
 }
 
-inline TypeMappingInformation getTypeInfo(const std::string& sourceType, int flags)
+/** Returns the information about a native type maps to a script type. */
+inline TypeMappingInformation GetNativeToScriptTypeMapping(const std::string& typeName)
 {
-	if ((flags & (int)TypeFlags::Primitive) != 0)
+	auto iterFind = NativeToScriptTypeMap.find(typeName);
+	if (iterFind == NativeToScriptTypeMap.end())
 	{
 		TypeMappingInformation outType;
-		outType.ScriptTypeName = mapCppTypeToCSType(sourceType);
+		outType.ScriptTypeName = mapCppTypeToCSType(typeName);
+		outType.TypeCategory = ::ExportedClassTypeCategory::Primitive;
+
+		errs() << "Unable to map type \"" << typeName << "\". Assuming same name as source.\n";
+		return outType;
+	}
+	
+	return iterFind->second;
+}
+
+/**
+ * Returns the information about how a native type maps to a script type. The provided type information supports extra information about how the type
+ * is being used (e.g. passed as a pointer, reference, resource handle, array etc.), and will utilize this information to return the underlying type.
+ */
+inline TypeMappingInformation GetNativeToScriptTypeMapping(const VariableTypeInformation& typeInformation)
+{
+	switch (typeInformation.TypeCategory)
+	{
+	case VariableTypeCategory::Primitive:
+	{
+		TypeMappingInformation outType;
+		outType.ScriptTypeName = mapCppTypeToCSType(typeInformation.TypeName);
 		outType.TypeCategory = ::ExportedClassTypeCategory::Primitive;
 
 		return outType;
 	}
-
-	if ((flags & (int)TypeFlags::String) != 0)
+	case VariableTypeCategory::String:
 	{
 		TypeMappingInformation outType;
 		outType.ScriptTypeName = "string";
@@ -687,8 +765,7 @@ inline TypeMappingInformation getTypeInfo(const std::string& sourceType, int fla
 
 		return outType;
 	}
-
-	if ((flags & (int)TypeFlags::WString) != 0)
+	case VariableTypeCategory::WString:
 	{
 		TypeMappingInformation outType;
 		outType.ScriptTypeName = "string";
@@ -696,8 +773,7 @@ inline TypeMappingInformation getTypeInfo(const std::string& sourceType, int fla
 
 		return outType;
 	}
-
-	if ((flags & (int)TypeFlags::Path) != 0)
+	case VariableTypeCategory::Path:
 	{
 		TypeMappingInformation outType;
 		outType.ScriptTypeName = "string";
@@ -705,8 +781,7 @@ inline TypeMappingInformation getTypeInfo(const std::string& sourceType, int fla
 
 		return outType;
 	}
-
-	if ((flags & (int)TypeFlags::MonoObject) != 0)
+	case VariableTypeCategory::MonoObject:
 	{
 		TypeMappingInformation outType;
 		outType.ScriptTypeName = "object";
@@ -714,73 +789,88 @@ inline TypeMappingInformation getTypeInfo(const std::string& sourceType, int fla
 
 		return outType;
 	}
-
-	if ((flags & (int)TypeFlags::AsResourceRef) != 0)
+	case VariableTypeCategory::AsyncOp:
 	{
-		TypeMappingInformation outType;
-
-		if (sourceType == "Resource")
+		TypeMappingInformation underlyingTypeMapping;
+		if (!typeInformation.UnderlyingType)
 		{
-			outType = NativeToScriptTypeMap.find("Resource")->second;
-			outType.ScriptTypeName = "RRefBase";
+			errs() << "Unable to map underlying type for \"" << typeInformation.TypeName << "\". No underlying type found. \n";
+
+			underlyingTypeMapping.ScriptTypeName = "Unknown";
+			underlyingTypeMapping.TypeCategory = ::ExportedClassTypeCategory::Class;
 		}
 		else
 		{
-			auto iterFind = NativeToScriptTypeMap.find(sourceType);
-			if (iterFind != NativeToScriptTypeMap.end())
-			{
-				outType = iterFind->second;
-				outType.ScriptTypeName = "RRef<" + iterFind->second.ScriptTypeName + ">";
-				assert(outType.type == ::ParsedType::Resource);
-			}
-			else
-			{
+			underlyingTypeMapping = GetNativeToScriptTypeMapping(*typeInformation.UnderlyingType);
+		}
+
+		TypeMappingInformation outType = underlyingTypeMapping;
+		outType.ScriptTypeName = "AsyncOp<" + underlyingTypeMapping.ScriptTypeName + ">";
+
+		return outType;
+	}
+	case VariableTypeCategory::ResourceHandle:
+	{
+		TypeMappingInformation underlyingTypeMapping;
+		VariableTypeInformation underlyingType;
+		if (!typeInformation.UnderlyingType)
+		{
+			errs() << "Unable to map underlying type for \"" << typeInformation.TypeName << "\". No underlying type found. \n";
+
+			underlyingTypeMapping.ScriptTypeName = "Unknown";
+			underlyingTypeMapping.TypeCategory = ::ExportedClassTypeCategory::Class;
+
+			underlyingType.TypeName = "Unknown";
+			underlyingType.TypeCategory = VariableTypeCategory::UserType;
+		}
+		else
+		{
+			underlyingType = *typeInformation.UnderlyingType;
+			underlyingTypeMapping = GetNativeToScriptTypeMapping(*typeInformation.UnderlyingType);
+		}
+
+		if(typeInformation.IsParameterFlagSet(ParameterFlags::AsResourceRef))
+		{
+			TypeMappingInformation outType = underlyingTypeMapping;
+
+			if (underlyingType.TypeName == "Resource")
 				outType.ScriptTypeName = "RRefBase";
-				outType.TypeCategory = ::ExportedClassTypeCategory::Resource;
-
-				errs() << "Unable to map type \"" << sourceType << "\". Assuming generic resource.\n";
-			}
-		}
-
-		if ((flags & (int)TypeFlags::AsyncOp) != 0)
-			outType.ScriptTypeName = "AsyncOp<" + outType.ScriptTypeName + ">";
-
-		return outType;
-	}
-
-	if ((flags & (int)TypeFlags::AsyncOp) != 0)
-	{
-		auto iterFind = NativeToScriptTypeMap.find(sourceType);
-		if (iterFind != NativeToScriptTypeMap.end())
-		{
-			TypeMappingInformation outType = iterFind->second;
-			outType.ScriptTypeName = "AsyncOp<" + iterFind->second.ScriptTypeName + ">";
+			else
+				outType.ScriptTypeName = "RRef<" + underlyingTypeMapping.ScriptTypeName + ">";
 
 			return outType;
 		}
 		else
-		{
-			TypeMappingInformation outType;
-			outType.ScriptTypeName = "AsyncOp<" + sourceType + ">";
-			outType.TypeCategory = ::ExportedClassTypeCategory::Class;
-
-			errs() << "Unable to map type \"" << sourceType << "\". Assuming same name as source. \n";
-			return outType;
-		}
+			return underlyingTypeMapping;
 	}
-
-	auto iterFind = NativeToScriptTypeMap.find(sourceType);
-	if (iterFind == NativeToScriptTypeMap.end())
+	// Just forward the type resolve to the underlying type. Note we don't support nested vectors, arrays or shared pointers
+	case VariableTypeCategory::Vector:
+	case VariableTypeCategory::SmallVector:
+	case VariableTypeCategory::Array:
+	case VariableTypeCategory::GameObjectHandle:
+	case VariableTypeCategory::ComponentOrActor:
+	case VariableTypeCategory::Flags:
+	case VariableTypeCategory::SharedPointer:
 	{
-		TypeMappingInformation outType;
-		outType.ScriptTypeName = mapCppTypeToCSType(sourceType);
-		outType.TypeCategory = ::ExportedClassTypeCategory::Primitive;
+		TypeMappingInformation underlyingTypeMapping;
+		if (!typeInformation.UnderlyingType)
+		{
+			errs() << "Unable to map underlying type for \"" << typeInformation.TypeName << "\". No underlying type found. \n";
 
-		errs() << "Unable to map type \"" << sourceType << "\". Assuming same name as source.\n";
-		return outType;
+			underlyingTypeMapping.ScriptTypeName = "Unknown";
+			underlyingTypeMapping.TypeCategory = ::ExportedClassTypeCategory::Class;
+		}
+		else
+		{
+			underlyingTypeMapping = GetNativeToScriptTypeMapping(*typeInformation.UnderlyingType);
+		}
+
+		return underlyingTypeMapping;
 	}
-
-	return iterFind->second;
+	default:
+	case VariableTypeCategory::UserType:
+		return GetNativeToScriptTypeMapping(typeInformation.TypeName);
+	}
 }
 
 inline bool hasAPIBED(ApiFlags api)

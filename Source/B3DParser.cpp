@@ -115,19 +115,21 @@ void addEntryToFile(FileInfo& fileInfo, T& entry, const std::string& file, std::
 		addEntry(fileInfo, entry);
 }
 
-bool parseParamOrFieldAttribute(Decl* decl, bool isField, int& typeFlags)
+bool parseParamOrFieldAttribute(Decl* decl, bool isField, int& typeFlags, VariableTypeInformation& typeInformation)
 {
 	for(const auto& entry : decl->specific_attrs<AnnotateAttr>())
 	{
 		if (!isField && entry->getAnnotation() == "params")
 		{
 			typeFlags |= (int)TypeFlags::VarParams;
+			typeInformation.UnsetParameterFlag(ParameterFlags::VarParams, true);
 			return true;
 		}
 
 		if (entry->getAnnotation() == "norref")
 		{
 			typeFlags &= ~(int)TypeFlags::AsResourceRef;
+			typeInformation.UnsetParameterFlag(ParameterFlags::AsResourceRef, true);
 			return true;
 		}
 	}
@@ -160,14 +162,17 @@ void parseNamespace(NamedDecl* decl, SmallVector<std::string, 4>& output)
 struct FunctionTypeInfo
 {
 	// Only relevant for function types
-	std::vector<VarTypeInfo> paramTypes;
-	VarTypeInfo returnType;
+	std::vector<VariableBase> paramTypes;
+	VariableBase returnType;
 };
 
-bool BansheeCodeGeneratorASTVisitor::parseType(QualType type, VarTypeInfo& outType, bool returnValue)
+bool BansheeCodeGeneratorASTVisitor::parseType(QualType type, VariableBase& outType, bool returnValue) // TODO - Need to be removed
 {
 	outType.flags = 0;
 	outType.arraySize = 0;
+
+	if (!ParseTypeInformation(type, outType.TypeInformation))
+		return false;
 
 	QualType realType;
 	if (type->isPointerType())
@@ -556,7 +561,7 @@ bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, Variabl
 					return false;
 				}
 
-				outType.UnderlyingType = underlyingTypeInformation;
+				outType.UnderlyingType = std::make_unique<VariableTypeInformation>(std::move(underlyingTypeInformation));
 				return true;
 			}
 			else if(sourceTypeName == "SmallVector")
@@ -598,7 +603,7 @@ bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, Variabl
 					return false;
 				}
 
-				outType.UnderlyingType = underlyingTypeInformation;
+				outType.UnderlyingType = std::make_unique<VariableTypeInformation>(std::move(underlyingTypeInformation));
 				return true;
 			}
 			else if(sourceTypeName == "ComponentOrActor")
@@ -635,7 +640,7 @@ bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, Variabl
 					return false;
 				}
 
-				outType.UnderlyingType = underlyingTypeInformation;
+				outType.UnderlyingType = std::make_unique<VariableTypeInformation>(std::move(underlyingTypeInformation));
 				return true;
 			}
 			else if(sourceTypeName == "TAsyncOp")
@@ -651,7 +656,7 @@ bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, Variabl
 					return false;
 				}
 
-				outType.UnderlyingType = underlyingTypeInformation;
+				outType.UnderlyingType = std::make_unique<VariableTypeInformation>(std::move(underlyingTypeInformation));
 				return true;
 			}
 			else
@@ -687,7 +692,7 @@ bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, Variabl
 				return false;
 			}
 
-			outType.UnderlyingType = underlyingTypeInformation;
+			outType.UnderlyingType = std::make_unique<VariableTypeInformation>(std::move(underlyingTypeInformation));
 			return true;
 		}
 	}
@@ -784,7 +789,7 @@ bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, Variabl
 					return false;
 				}
 
-				outType.UnderlyingType = underlyingTypeInformation;
+				outType.UnderlyingType = std::make_unique<VariableTypeInformation>(std::move(underlyingTypeInformation));
 				return true;
 			}
 			else if (sourceTypeName == "basic_string" && recordDecl->isInStdNamespace())
@@ -819,7 +824,7 @@ bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, Variabl
 					return false;
 				}
 
-				outType.UnderlyingType = underlyingTypeInformation;
+				outType.UnderlyingType = std::make_unique<VariableTypeInformation>(std::move(underlyingTypeInformation));
 
 				//if (isGameObjectOrResource(underlyingType)) // TODO - Restore this? Or check elsewhere.
 				//{
@@ -837,7 +842,7 @@ bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, Variabl
 
 				outType.TypeName = "TResourceHandle";
 				outType.TypeCategory = VariableTypeCategory::ResourceHandle;
-				outType.PostProcessFlags |= (uint32_t)TypeFlags::AsResourceRef; // Set this here, as we want to make it a default
+				outType.ParameterFlags |= (uint32_t)ParameterFlags::AsResourceRef; // Set this here, as we want to make it a default
 
 				QualType underlyingType = specType->getArg(0).getAsType();
 				VariableTypeInformation underlyingTypeInformation;
@@ -847,7 +852,7 @@ bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, Variabl
 					return false;
 				}
 
-				outType.UnderlyingType = underlyingTypeInformation;
+				outType.UnderlyingType = std::make_unique<VariableTypeInformation>(std::move(underlyingTypeInformation));
 				return true;
 			}
 			else if (sourceTypeName == "GameObjectHandle")
@@ -864,7 +869,7 @@ bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, Variabl
 					return false;
 				}
 
-				outType.UnderlyingType = underlyingTypeInformation;
+				outType.UnderlyingType = std::make_unique<VariableTypeInformation>(std::move(underlyingTypeInformation));
 				return true;
 			}
 		}
@@ -1181,7 +1186,7 @@ bool BansheeCodeGeneratorASTVisitor::evaluateExpression(Expr* expr, std::string&
 	// Constructor or cast of some type
 	QualType parentType = ctorExp->getType();
 
-	VarTypeInfo varTypeInfo;
+	VariableBase varTypeInfo;
 	parseType(parentType, varTypeInfo);
 	valType = varTypeInfo.typeName;
 
@@ -1273,15 +1278,19 @@ bool BansheeCodeGeneratorASTVisitor::parseEvent(ValueDecl* decl, const std::stri
 	{
 		eventInfo.returnInfo.typeName = eventSignature.returnType.typeName;
 		eventInfo.returnInfo.flags = eventSignature.returnType.flags;
+
+		eventInfo.returnInfo.TypeInformation = eventSignature.returnType.TypeInformation;
 	}
 
 	int idx = 0;
 	for(auto& entry : eventSignature.paramTypes)
 	{
-		VarInfo paramInfo;
+		VariableInformation paramInfo;
 		paramInfo.flags = entry.flags;
 		paramInfo.typeName = entry.typeName;
-		paramInfo.name = "p" + std::to_string(idx);
+		paramInfo.Name = "p" + std::to_string(idx);
+
+		paramInfo.TypeInformation = entry.TypeInformation;
 
 		eventInfo.paramInfos.push_back(paramInfo);
 		idx++;
@@ -1403,7 +1412,7 @@ std::string BansheeCodeGeneratorASTVisitor::parseTemplArguments(const std::strin
 		auto& tmplArg = tmplArgs[i];
 		if(tmplArg.getKind() == TemplateArgument::Type)
 		{
-			VarTypeInfo varTypeInfo;
+			VariableBase varTypeInfo;
 			parseType(tmplArg.getAsType(), varTypeInfo, false);
 
 			tmplArgsStream << varTypeInfo.typeName;
@@ -1422,7 +1431,7 @@ std::string BansheeCodeGeneratorASTVisitor::parseTemplArguments(const std::strin
 			else
 				tmplArgsStream << tmplArgExprValue;
 
-			VarTypeInfo varTypeInfo;
+			VariableBase varTypeInfo;
 			parseType(tmplArg.getAsExpr()->getType(), varTypeInfo, false);
 
 			if(templParams != nullptr)
@@ -1535,8 +1544,8 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 				{
 					ParmVarDecl* paramDecl = *I;
 
-					VarInfo paramInfo;
-					paramInfo.name = paramDecl->getName().str();
+					VariableInformation paramInfo;
+					paramInfo.Name = paramDecl->getName().str();
 
 					std::string typeName;
 					unsigned arraySize;
@@ -1549,7 +1558,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 
 					if (paramDecl->hasDefaultArg() && !skippedDefaultArgument)
 					{
-						if (!evaluateExpression(paramDecl->getDefaultArg(), paramInfo.defaultValue, paramInfo.defaultValueType))
+						if (!evaluateExpression(paramDecl->getDefaultArg(), paramInfo.DefaultValue, paramInfo.DefaultValueType))
 						{
 							outs() << "Error: Constructor parameter \"" << paramDecl->getName().str() << "\" has a default "
 								<< "argument that cannot be constantly evaluated, ignoring it.\n";
@@ -1736,7 +1745,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 			{
 				FieldDecl* fieldDecl = *I;
 				FieldInfo fieldInfo;
-				fieldInfo.name = fieldDecl->getName().str();
+				fieldInfo.Name = fieldDecl->getName().str();
 
 				ScriptExportInformation parsedFieldInfo;
 				if (ScriptExportUtility::ParseExportAttribute(fieldDecl, srcClassName, parsedFieldInfo))
@@ -1753,15 +1762,15 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 				auto iterFind = defaultFieldValues.find(fieldDecl);
 				if (iterFind != defaultFieldValues.end())
 				{
-					fieldInfo.defaultValue = iterFind->second.first;
-					fieldInfo.defaultValueType = iterFind->second.second;
+					fieldInfo.DefaultValue = iterFind->second.first;
+					fieldInfo.DefaultValueType = iterFind->second.second;
 				}
 
 				if (fieldDecl->hasInClassInitializer())
 				{
 					Expr* initExpr = fieldDecl->getInClassInitializer();
 
-					evaluateExpression(initExpr, fieldInfo.defaultValue, fieldInfo.defaultValueType);
+					evaluateExpression(initExpr, fieldInfo.DefaultValue, fieldInfo.DefaultValueType);
 				}
 
 				std::string typeName;
@@ -1772,29 +1781,32 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 					continue;
 				}
 
-				parseParamOrFieldAttribute(fieldDecl, true, fieldInfo.flags);
+				parseParamOrFieldAttribute(fieldDecl, true, fieldInfo.flags, fieldInfo.TypeInformation);
 
 				// Remove the pass-as-resource-ref flag to all parameters initializing the field
 				if(!getPassAsResourceRef(fieldInfo.flags))
 				{
 					for(auto& ctorInfo : structInfo.ctors)
 					{
-						auto iterFindField = ctorInfo.fieldAssignments.find(fieldInfo.name);
+						auto iterFindField = ctorInfo.fieldAssignments.find(fieldInfo.Name);
 						if (iterFindField != ctorInfo.fieldAssignments.end())
 						{
 							auto iterFindParam = std::find_if(ctorInfo.params.begin(), ctorInfo.params.end(), 
-								[name = iterFindField->second](const VarInfo& varInfo)
+								[name = iterFindField->second](const VariableInformation& varInfo)
 							{
-								return varInfo.name == name;
+								return varInfo.Name == name;
 							});
 
 							if (iterFindParam != ctorInfo.params.end())
+							{
 								iterFindParam->flags &= ~(int)TypeFlags::AsResourceRef;
+								iterFindParam->TypeInformation.ParameterFlags &= ~(uint32_t)ParameterFlags::AsResourceRef;
+							}
 						}
 					}
 				}
 
-				if (!fieldInfo.defaultValue.empty())
+				if (!fieldInfo.DefaultValue.empty())
 					hasDefaultValue = true;
 
 				mCommentParser.ParseComments(fieldDecl, fieldInfo.documentation);
@@ -1911,19 +1923,19 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 						ParmVarDecl* paramDecl = *J;
 						QualType paramType = paramDecl->getType();
 
-						VarInfo paramInfo;
-						paramInfo.name = paramDecl->getName().str();
+						VariableInformation paramInfo;
+						paramInfo.Name = paramDecl->getName().str();
 
 						if (!parseType(paramType, paramInfo))
 						{
-							outs() << "Error: Unable to parse parameter \"" << paramInfo.name << "\" type in \"" << srcClassName << "\"'s constructor.\n";
+							outs() << "Error: Unable to parse parameter \"" << paramInfo.Name << "\" type in \"" << srcClassName << "\"'s constructor.\n";
 							invalidParam = true;
 							continue;
 						}
 
 						if (paramDecl->hasDefaultArg() && !skippedDefaultArg)
 						{
-							if (!evaluateExpression(paramDecl->getDefaultArg(), paramInfo.defaultValue, paramInfo.defaultValueType))
+							if (!evaluateExpression(paramDecl->getDefaultArg(), paramInfo.DefaultValue, paramInfo.DefaultValueType))
 							{
 								outs() << "Error: Constructor parameter \"" << paramDecl->getName().str() << "\" has a default "
 									<< "argument that cannot be constantly evaluated, ignoring it.\n";
@@ -1931,7 +1943,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 							}
 						}
 
-						parseParamOrFieldAttribute(paramDecl, false, paramInfo.flags);
+						parseParamOrFieldAttribute(paramDecl, false, paramInfo.flags, paramInfo.TypeInformation);
 						methodInfo.paramInfos.push_back(paramInfo);
 					}
 
@@ -2023,7 +2035,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 							continue;
 						}
 
-						parseParamOrFieldAttribute(methodDecl, false, returnInfo.flags);
+						parseParamOrFieldAttribute(methodDecl, false, returnInfo.flags, returnInfo.TypeInformation);
 						methodInfo.returnInfo = returnInfo;
 					}
 				}
@@ -2053,7 +2065,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 							continue;
 						}
 
-						parseParamOrFieldAttribute(methodDecl, false, methodInfo.returnInfo.flags);
+						parseParamOrFieldAttribute(methodDecl, false, methodInfo.returnInfo.flags, methodInfo.returnInfo.TypeInformation);
 					}
 					else // Must be setter
 					{
@@ -2074,8 +2086,8 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 
 						ParmVarDecl* paramDecl = methodDecl->getParamDecl(0);
 
-						VarInfo paramInfo;
-						paramInfo.name = paramDecl->getName().str();
+						VariableInformation paramInfo;
+						paramInfo.Name = paramDecl->getName().str();
 
 						if (!parseType(paramDecl->getType(), paramInfo))
 						{
@@ -2092,8 +2104,8 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 					ParmVarDecl* paramDecl = *J;
 					QualType paramType = paramDecl->getType();
 
-					VarInfo paramInfo;
-					paramInfo.name = paramDecl->getName().str();
+					VariableInformation paramInfo;
+					paramInfo.Name = paramDecl->getName().str();
 
 					if (!parseType(paramType, paramInfo))
 					{
@@ -2110,7 +2122,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 						else
 							defaultArg = paramDecl->getDefaultArg();
 
-						if (!evaluateExpression(defaultArg, paramInfo.defaultValue, paramInfo.defaultValueType))
+						if (!evaluateExpression(defaultArg, paramInfo.DefaultValue, paramInfo.DefaultValueType))
 						{
 							outs() << "Error: Method parameter \"" << paramDecl->getName().str() << "\" has a default "
 								<< "argument that cannot be constantly evaluated, ignoring it.\n";
@@ -2118,7 +2130,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 						}
 					}
 
-					parseParamOrFieldAttribute(paramDecl, false, paramInfo.flags);
+					parseParamOrFieldAttribute(paramDecl, false, paramInfo.flags, paramInfo.TypeInformation);
 					methodInfo.paramInfos.push_back(paramInfo);
 				}
 
@@ -2150,7 +2162,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 				else
 				{
 					FieldInfo fieldInfo;
-					fieldInfo.name = fieldDecl->getName().str();
+					fieldInfo.Name = fieldDecl->getName().str();
 
 					ScriptExportInformation parsedFieldInfo;
 					bool foundExportAttrib = false;
@@ -2158,7 +2170,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 					{
 						if(ScriptExportUtility::IsExportAttribute(entry))
 						{
-							if (ScriptExportUtility::ParseExportAttribute(entry, fieldInfo.name, parsedFieldInfo))
+							if (ScriptExportUtility::ParseExportAttribute(entry, fieldInfo.Name, parsedFieldInfo))
 								foundExportAttrib = true;
 
 							break;
@@ -2177,7 +2189,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 					}
 
 					if (fieldDecl->getAccess() != AS_public)
-						outs() << "Error: Exported field \"" + fieldInfo.name + "\" isn't public. This will likely result in invalid code generation.";
+						outs() << "Error: Exported field \"" + fieldInfo.Name + "\" isn't public. This will likely result in invalid code generation.";
 
 					fieldInfo.style = parsedFieldInfo.style;
 
@@ -2188,7 +2200,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 
 					// Register wrapper methods, this way we can re-use much of the same logic for method/property generation
 					MethodInfo getterInfo;
-					getterInfo.sourceName = "Get" + fieldInfo.name;
+					getterInfo.sourceName = "Get" + fieldInfo.Name;
 					getterInfo.scriptName = parsedFieldInfo.ExportedTypeName;
 					getterInfo.visibility = parsedFieldInfo.Visibility;
 					getterInfo.api = apiFromExportFlags(parsedFieldInfo.ExportFlags);
@@ -2198,21 +2210,24 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 					getterInfo.returnInfo.flags = fieldInfo.flags;
 					getterInfo.returnInfo.arraySize = fieldInfo.arraySize;
 					getterInfo.returnInfo.typeName = fieldInfo.typeName;
-					parseParamOrFieldAttribute(fieldDecl, true, getterInfo.returnInfo.flags);
+
+					getterInfo.returnInfo.TypeInformation = fieldInfo.TypeInformation;
+					parseParamOrFieldAttribute(fieldDecl, true, getterInfo.returnInfo.flags, getterInfo.returnInfo.TypeInformation);
 
 					if ((parsedFieldInfo.ExportFlags & (int)ExportFlags::InteropOnly) != 0)
 						getterInfo.flags |= (int)MethodFlags::InteropOnly;
 
-					VarInfo paramInfo;
+					VariableInformation paramInfo;
 					paramInfo.flags = fieldInfo.flags;
 					paramInfo.arraySize = fieldInfo.arraySize;
 					paramInfo.typeName = fieldInfo.typeName;
-					paramInfo.name = "value";
+					paramInfo.TypeInformation = fieldInfo.TypeInformation;
+					paramInfo.Name = "value";
 
-					parseParamOrFieldAttribute(fieldDecl, true, paramInfo.flags);
+					parseParamOrFieldAttribute(fieldDecl, true, paramInfo.flags, paramInfo.TypeInformation);
 
 					MethodInfo setterInfo;
-					setterInfo.sourceName = "Set" + fieldInfo.name;
+					setterInfo.sourceName = "Set" + fieldInfo.Name;
 					setterInfo.scriptName = parsedFieldInfo.ExportedTypeName;
 					setterInfo.documentation = fieldInfo.documentation;
 					setterInfo.paramInfos.push_back(paramInfo);

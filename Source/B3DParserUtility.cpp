@@ -262,12 +262,14 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 					propertyInfo.getter = methodInfo.interopName;
 					propertyInfo.type = methodInfo.returnInfo.typeName;
 					propertyInfo.typeFlags = methodInfo.returnInfo.flags;
+					propertyInfo.TypeInformation = methodInfo.returnInfo.TypeInformation;
 				}
 				else // Setter
 				{
 					propertyInfo.setter = methodInfo.interopName;
 					propertyInfo.type = methodInfo.paramInfos[0].typeName;
 					propertyInfo.typeFlags = methodInfo.paramInfos[0].flags;
+					propertyInfo.TypeInformation = methodInfo.paramInfos[0].TypeInformation;
 				}
 
 				auto iterFind = std::find_if(classInfo.propertyInfos.begin(), classInfo.propertyInfos.end(),
@@ -330,36 +332,36 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 	}
 
 	// Properly generate enum default values
-	auto parseDefaultValue = [&](VarInfo& paramInfo)
+	auto parseDefaultValue = [&](VariableInformation& paramInfo)
 	{
-		if (paramInfo.defaultValue.empty())
+		if (paramInfo.DefaultValue.empty())
 			return;
 
-		TypeMappingInformation typeInfo = getTypeInfo(paramInfo.typeName, paramInfo.flags);
+		TypeMappingInformation typeInfo = GetNativeToScriptTypeMapping(paramInfo.TypeInformation);
 
 		if (typeInfo.TypeCategory != ::ExportedClassTypeCategory::Enum)
 			return;
 
-		int enumIdx = atoi(paramInfo.defaultValue.c_str());
+		int enumIdx = atoi(paramInfo.DefaultValue.c_str());
 		EnumInfo* enumInfo = findEnumInfo(paramInfo.typeName);
 		if(enumInfo == nullptr)
 		{
-			outs() << "Error: Cannot map default value of \"" + paramInfo.name + 
+			outs() << "Error: Cannot map default value of \"" + paramInfo.Name + 
 				"\" to enum entry for enum type \"" + paramInfo.typeName + "\". Ignoring.";
-			paramInfo.defaultValue = "";
+			paramInfo.DefaultValue = "";
 			return;
 		}
 
 		auto iterFind = enumInfo->entries.find(enumIdx);
 		if(iterFind == enumInfo->entries.end())
 		{
-			outs() << "Error: Cannot map default value of \"" + paramInfo.name + 
+			outs() << "Error: Cannot map default value of \"" + paramInfo.Name + 
 				"\" to enum entry for enum type \"" + paramInfo.typeName + "\". Ignoring.";
-			paramInfo.defaultValue = "";
+			paramInfo.DefaultValue = "";
 			return;
 		}
 
-		paramInfo.defaultValue = enumInfo->scriptName + "." + iterFind->second.ScriptName;
+		paramInfo.DefaultValue = enumInfo->scriptName + "." + iterFind->second.ScriptName;
 	};
 
 	for (auto& fileInfo : outputFileInfos)
@@ -399,7 +401,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 		{
 			for(auto& fieldInfo : structInfo.fields)
 			{
-				TypeMappingInformation typeInfo = getTypeInfo(fieldInfo.typeName, fieldInfo.flags);
+				TypeMappingInformation typeInfo = GetNativeToScriptTypeMapping(fieldInfo.TypeInformation);
 
 				if(isArrayOrVector(fieldInfo.flags) || !(typeInfo.TypeCategory == ::ExportedClassTypeCategory::Primitive || typeInfo.TypeCategory == ::ExportedClassTypeCategory::Enum))
 				{
@@ -418,20 +420,23 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 	// Mark parameters referencing complex structs and base types
 	for (auto& fileInfo : outputFileInfos)
 	{
-		auto markComplexType = [](const std::string& type, int& flags)
+		auto markComplexType = [](const std::string& type, int& flags, VariableTypeInformation& typeInformation)
 		{
-			TypeMappingInformation typeInfo = getTypeInfo(type, flags);
+			TypeMappingInformation typeInfo = GetNativeToScriptTypeMapping(typeInformation);
 			if (typeInfo.TypeCategory != ::ExportedClassTypeCategory::Struct)
 				return;
 
 			StructInfo* structInfo = findStructInfo(type);
 			if (structInfo != nullptr && structInfo->requiresInterop)
+			{
 				flags |= (int)TypeFlags::IsStructWrapperUsed;
+				typeInformation.PostProcessFlags |= (uint32_t)VariablePostProcessFlags::IsStructWrapperUsed;
+			}
 		};
 
-		auto markBaseType = [&findClassInfo](const std::string& type, int& flags)
+		auto markBaseType = [&findClassInfo](const std::string& type, int& flags, VariableTypeInformation& typeInformation)
 		{
-			TypeMappingInformation typeInfo = getTypeInfo(type, flags);
+			TypeMappingInformation typeInfo = GetNativeToScriptTypeMapping(typeInformation);
 			if (typeInfo.TypeCategory != ::ExportedClassTypeCategory::Class && typeInfo.TypeCategory != ::ExportedClassTypeCategory::ReflectableClass &&
 				typeInfo.TypeCategory != ::ExportedClassTypeCategory::GUIElement && !isHandleType(typeInfo.TypeCategory))
 				return;
@@ -441,14 +446,17 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 			{
 				bool isBase = (classInfo->flags & (int)ClassFlags::IsBase) != 0;
 				if (isBase)
+				{
 					flags |= (int)TypeFlags::IsReferencingBaseClass;
+					typeInformation.PostProcessFlags |= (uint32_t)VariablePostProcessFlags::IsReferencingBaseClass;
+				}
 			}
 		};
 
-		auto markParam = [&markComplexType,&markBaseType](VarInfo& paramInfo)
+		auto markParam = [&markComplexType,&markBaseType](VariableInformation& paramInfo)
 		{
-			markComplexType(paramInfo.typeName, paramInfo.flags);
-			markBaseType(paramInfo.typeName, paramInfo.flags);
+			markComplexType(paramInfo.typeName, paramInfo.flags, paramInfo.TypeInformation);
+			markBaseType(paramInfo.typeName, paramInfo.flags, paramInfo.TypeInformation);
 		};
 
 		for (auto& classInfo : fileInfo.second.classInfos)
@@ -460,8 +468,8 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 
 				if (methodInfo.returnInfo.typeName.size() != 0)
 				{
-					markComplexType(methodInfo.returnInfo.typeName, methodInfo.returnInfo.flags);
-					markBaseType(methodInfo.returnInfo.typeName, methodInfo.returnInfo.flags);
+					markComplexType(methodInfo.returnInfo.typeName, methodInfo.returnInfo.flags, methodInfo.returnInfo.TypeInformation);
+					markBaseType(methodInfo.returnInfo.typeName, methodInfo.returnInfo.flags, methodInfo.returnInfo.TypeInformation);
 				}
 			}
 
@@ -482,7 +490,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 		{
 			for(auto& fieldInfo : structInfo.fields)
 			{
-				markComplexType(fieldInfo.typeName, fieldInfo.flags);
+				markComplexType(fieldInfo.typeName, fieldInfo.flags, fieldInfo.TypeInformation);
 				markParam(fieldInfo);
 			}
 		}
@@ -650,9 +658,9 @@ void ParserUtility::PostProcessDefaultParameters(MethodInfo& methodInfo, std::ve
 	int lastInvalidParam = -1;
 	for (int i = 0; i < methodInfo.paramInfos.size(); i++)
 	{
-		const VarInfo& param = methodInfo.paramInfos[i];
+		const VariableInformation& param = methodInfo.paramInfos[i];
 
-		if (!param.defaultValue.empty())
+		if (!param.DefaultValue.empty())
 		{
 			firstDefaultParam = i;
 			break;
@@ -661,9 +669,9 @@ void ParserUtility::PostProcessDefaultParameters(MethodInfo& methodInfo, std::ve
 
 	for (int i = 0; i < methodInfo.paramInfos.size(); i++)
 	{
-		const VarInfo& param = methodInfo.paramInfos[i];
+		const VariableInformation& param = methodInfo.paramInfos[i];
 
-		if (!param.defaultValueType.empty() && !isFlagsEnum(param.flags))
+		if (!param.DefaultValueType.empty() && !isFlagsEnum(param.flags))
 			lastInvalidParam = i;
 	}
 
@@ -675,10 +683,10 @@ void ParserUtility::PostProcessDefaultParameters(MethodInfo& methodInfo, std::ve
 	// must follow them, which they can't because at least one is complex)
 	for (int i = firstDefaultParam; i <= lastInvalidParam; i++)
 	{
-		VarInfo& param = methodInfo.paramInfos[i];
+		VariableInformation& param = methodInfo.paramInfos[i];
 
-		if (param.defaultValueType.empty())
-			param.defaultValueType = "null";
+		if (param.DefaultValueType.empty())
+			param.DefaultValueType = "null";
 	}
 
 	// Generate a method for each default param
@@ -689,16 +697,16 @@ void ParserUtility::PostProcessDefaultParameters(MethodInfo& methodInfo, std::ve
 		// Clear all param default values
 		for (int j = firstDefaultParam; j < i; j++)
 		{
-			VarInfo& param = copyMethodInfo.paramInfos[j];
-			param.defaultValue = "";
-			param.defaultValueType = "";
+			VariableInformation& param = copyMethodInfo.paramInfos[j];
+			param.DefaultValue = "";
+			param.DefaultValueType = "";
 		}
 
 		// Erase docs for the params we'll skip during generation
 		CommentEntry& docs = copyMethodInfo.documentation;
 		for (int j = i; j <= lastInvalidParam; j++)
 		{
-			const std::string& paramName = copyMethodInfo.paramInfos[j].name;
+			const std::string& paramName = copyMethodInfo.paramInfos[j].Name;
 
 			for (auto iter = docs.params.begin(); iter != docs.params.end();)
 			{
@@ -716,15 +724,15 @@ void ParserUtility::PostProcessDefaultParameters(MethodInfo& methodInfo, std::ve
 	// Clear default params from this method
 	for (int i = firstDefaultParam; i <= lastInvalidParam; i++)
 	{
-		VarInfo& param = methodInfo.paramInfos[i];
-		param.defaultValue = "";
-		param.defaultValueType = "";
+		VariableInformation& param = methodInfo.paramInfos[i];
+		param.DefaultValue = "";
+		param.DefaultValueType = "";
 	}
 }
 
-void ParserUtility::GatherIncludes(const std::string& typeName, int flags, bool isEditor, IncludesInfo& output)
+void ParserUtility::GatherIncludes(const VariableTypeInformation& typeInformation, const std::string& typeName, int flags, bool isEditor, IncludesInfo& output)
 {
-	TypeMappingInformation typeInfo = getTypeInfo(typeName, flags);
+	TypeMappingInformation typeInfo = GetNativeToScriptTypeMapping(typeInformation);
 	if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Class || typeInfo.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass ||
 		typeInfo.TypeCategory == ::ExportedClassTypeCategory::Struct || typeInfo.TypeCategory == ::ExportedClassTypeCategory::Component ||
 		typeInfo.TypeCategory == ::ExportedClassTypeCategory::SceneObject || typeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource ||
@@ -770,7 +778,7 @@ void ParserUtility::GatherIncludes(const std::string& typeName, int flags, bool 
 				getDerivedClasses(typeName, derivedClasses);
 
 				for (auto& entry : derivedClasses)
-					output.includes[entry] = IncludeInfo(entry, getTypeInfo(entry, 0), IT_IMPL, IT_IMPL, false, isEditor);
+					output.includes[entry] = IncludeInfo(entry, GetNativeToScriptTypeMapping(entry), IT_IMPL, IT_IMPL, false, isEditor);
 
 				output.requiresRTTI = true;
 			}
@@ -798,17 +806,17 @@ void ParserUtility::GatherIncludes(const MethodInfo& methodInfo, bool isEditor, 
 {
 	bool returnAsParameter = false;
 	if (!methodInfo.returnInfo.typeName.empty())
-		GatherIncludes(methodInfo.returnInfo.typeName, methodInfo.returnInfo.flags, isEditor, output);
+		GatherIncludes(methodInfo.returnInfo.TypeInformation, methodInfo.returnInfo.typeName, methodInfo.returnInfo.flags, isEditor, output);
 
 	for (auto I = methodInfo.paramInfos.begin(); I != methodInfo.paramInfos.end(); ++I)
-		GatherIncludes(I->typeName, I->flags, isEditor, output);
+		GatherIncludes(I->TypeInformation, I->typeName, I->flags, isEditor, output);
 
 	if ((methodInfo.flags & (int)MethodFlags::External) != 0)
 	{
 		auto iterFind = output.includes.find(methodInfo.externalClass);
 		if (iterFind == output.includes.end())
 		{
-			TypeMappingInformation typeInfo = getTypeInfo(methodInfo.externalClass, 0);
+			TypeMappingInformation typeInfo = GetNativeToScriptTypeMapping(methodInfo.externalClass);
 			output.includes[methodInfo.externalClass] = IncludeInfo(methodInfo.externalClass, typeInfo, IT_FWD_AND_IMPL, 0, false, isEditor);
 		}
 	}
@@ -816,7 +824,7 @@ void ParserUtility::GatherIncludes(const MethodInfo& methodInfo, bool isEditor, 
 
 void ParserUtility::GatherIncludes(const FieldInfo& fieldInfo, bool isEditor, IncludesInfo& output)
 {
-	TypeMappingInformation fieldTypeInfo = getTypeInfo(fieldInfo.typeName, fieldInfo.flags);
+	TypeMappingInformation fieldTypeInfo = GetNativeToScriptTypeMapping(fieldInfo.TypeInformation);
 
 	// These types never require additional includes
 	if (fieldTypeInfo.TypeCategory == ::ExportedClassTypeCategory::Primitive || fieldTypeInfo.TypeCategory == ::ExportedClassTypeCategory::String ||
@@ -861,7 +869,7 @@ void ParserUtility::GatherIncludes(const FieldInfo& fieldInfo, bool isEditor, In
 				getDerivedClasses(fieldInfo.typeName, derivedClasses);
 
 				for (auto& entry : derivedClasses)
-					output.includes[entry] = IncludeInfo(entry, getTypeInfo(entry, 0), IT_IMPL, IT_IMPL, false, isEditor);
+					output.includes[entry] = IncludeInfo(entry, GetNativeToScriptTypeMapping(entry), IT_IMPL, IT_IMPL, false, isEditor);
 
 				output.requiresRTTI = true;
 			}
