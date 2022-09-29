@@ -10,13 +10,13 @@ std::string getDefaultValue(const std::string& typeName, int flags, const TypeMa
 	if(isArrayOrVector(flags))
 		return "null";
 
-	if (typeInfo.TypeCategory == ::TypeCategory::Primitive)
+	if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Primitive)
 		return "0";
-	else if (typeInfo.TypeCategory == ::TypeCategory::Enum)
+	else if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Enum)
 		return "(" + typeInfo.ScriptTypeName + ")0";
-	else if (typeInfo.TypeCategory == ::TypeCategory::Struct)
+	else if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Struct)
 		return typeInfo.ScriptTypeName + ".Default()";
-	else if (typeInfo.TypeCategory == ::TypeCategory::String || typeInfo.TypeCategory == ::TypeCategory::WString || typeInfo.TypeCategory == ::TypeCategory::Path)
+	else if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::String || typeInfo.TypeCategory == ::ExportedClassTypeCategory::WString || typeInfo.TypeCategory == ::ExportedClassTypeCategory::Path)
 		return "\"\"";
 	else // Some class type
 		return "null";
@@ -59,7 +59,7 @@ std::string getRelativeTo(const StringRef& path, const StringRef& relativeTo)
 	return std::string(output.data(), output.size());
 }
 
-std::string getInteropCppVarType(const std::string& typeName, ::TypeCategory type, int flags, bool forStruct = false)
+std::string getInteropCppVarType(const std::string& typeName, ::ExportedClassTypeCategory type, int flags, bool forStruct = false)
 {
 	if (isArrayOrVector(flags))
 	{
@@ -71,12 +71,12 @@ std::string getInteropCppVarType(const std::string& typeName, ::TypeCategory typ
 
 	switch (type)
 	{
-	case ::TypeCategory::Primitive:
+	case ::ExportedClassTypeCategory::Primitive:
 		if (isOutput(flags) && !forStruct)
 			return typeName + "*";
 		else
 			return typeName;
-	case ::TypeCategory::Enum:
+	case ::ExportedClassTypeCategory::Enum:
 		if (isFlagsEnum(flags) && forStruct)
 			return "Flags<" + typeName + ">";
 		else
@@ -86,7 +86,7 @@ std::string getInteropCppVarType(const std::string& typeName, ::TypeCategory typ
 			else
 				return typeName;
 		}
-	case ::TypeCategory::Struct:
+	case ::ExportedClassTypeCategory::Struct:
 		if(isComplexStruct(flags))
 		{
 			if (forStruct)
@@ -101,9 +101,9 @@ std::string getInteropCppVarType(const std::string& typeName, ::TypeCategory typ
 			else
 				return typeName + "*";
 		}
-	case ::TypeCategory::String:
-	case ::TypeCategory::WString:
-	case ::TypeCategory::Path:
+	case ::ExportedClassTypeCategory::String:
+	case ::ExportedClassTypeCategory::WString:
+	case ::ExportedClassTypeCategory::Path:
 		if (isOutput(flags) && !forStruct)
 			return "MonoString**";
 		else
@@ -116,11 +116,11 @@ std::string getInteropCppVarType(const std::string& typeName, ::TypeCategory typ
 	}
 }
 
-std::string getCppVarType(const std::string& typeName, ::TypeCategory type, int flags = 0, bool assumeDefaultTypes = true)
+std::string getCppVarType(const std::string& typeName, ::ExportedClassTypeCategory type, int flags = 0, bool assumeDefaultTypes = true)
 {
-	if (type == ::TypeCategory::Resource)
+	if (type == ::ExportedClassTypeCategory::Resource)
 		return "ResourceHandle<" + typeName + ">";
-	else if (type == ::TypeCategory::SceneObject || type == ::TypeCategory::Component)
+	else if (type == ::ExportedClassTypeCategory::SceneObject || type == ::ExportedClassTypeCategory::Component)
 		return "GameObjectHandle<" + typeName + ">";
 	else if (isClassType(type))
 	{
@@ -136,21 +136,21 @@ std::string getCppVarType(const std::string& typeName, ::TypeCategory type, int 
 				return typeName;
 		}
 	}
-	else if (type == ::TypeCategory::String)
+	else if (type == ::ExportedClassTypeCategory::String)
 		return "String";
-	else if (type == ::TypeCategory::WString)
+	else if (type == ::ExportedClassTypeCategory::WString)
 		return "WString";
-	else if (type == ::TypeCategory::Path)
+	else if (type == ::ExportedClassTypeCategory::Path)
 		return "Path";
-	else if (type == ::TypeCategory::Enum && isFlagsEnum(flags))
+	else if (type == ::ExportedClassTypeCategory::Enum && isFlagsEnum(flags))
 		return "Flags<" + typeName + ">";
-	else if(type == ::TypeCategory::GUIElement)
+	else if(type == ::ExportedClassTypeCategory::GUIElement)
 		return typeName + "*";
 	else
 		return typeName;
 }
 
-std::string getCSVarType(const std::string& typeName, ::TypeCategory type, int flags, bool paramPrefixes,
+std::string getCSVarType(const std::string& typeName, ::ExportedClassTypeCategory type, int flags, bool paramPrefixes,
 	bool arraySuffixes, bool forceStructAsRef, bool forSignature = false)
 {
 	std::stringstream output;
@@ -179,7 +179,7 @@ std::string getCSVarType(const std::string& typeName, ::TypeCategory type, int f
 	return output.str();
 }
 
-std::string generateGetInternalLine(const std::string& sourceClassName, const std::string& obj, ::TypeCategory classType, int flags)
+std::string generateGetInternalLine(const std::string& sourceClassName, const std::string& obj, ::ExportedClassTypeCategory classType, int flags)
 {
 	bool isRRef = getPassAsResourceRef(flags);
 	bool isBase = isBaseParam(flags);
@@ -187,7 +187,7 @@ std::string generateGetInternalLine(const std::string& sourceClassName, const st
 	std::stringstream output;
 	if (isClassType(classType))
 		output << obj << "->GetInternal()";
-	else if(classType == ::TypeCategory::GUIElement)
+	else if(classType == ::ExportedClassTypeCategory::GUIElement)
 		output << "static_cast<" << sourceClassName << "*>(" << obj << "->GetGuiElement())";
 	else // Must be one of the handle types
 	{
@@ -199,7 +199,7 @@ std::string generateGetInternalLine(const std::string& sourceClassName, const st
 				output << "static_resource_cast<" << sourceClassName << ">(" << obj << "->GetHandle())";
 			else
 			{
-				if(classType == ::TypeCategory::Resource && sourceClassName == "Resource")
+				if(classType == ::ExportedClassTypeCategory::Resource && sourceClassName == "Resource")
 					output << "static_resource_cast<" << sourceClassName << ">(" << obj << "->GetGenericHandle())";
 				else
 					output << obj << "->GetHandle()";
@@ -207,9 +207,9 @@ std::string generateGetInternalLine(const std::string& sourceClassName, const st
 		}
 		else
 		{
-			if (classType == ::TypeCategory::Resource)
+			if (classType == ::ExportedClassTypeCategory::Resource)
 				output << "static_resource_cast<" << sourceClassName << ">(" << obj << "->GetGenericHandle())";
-			else if (classType == ::TypeCategory::Component)
+			else if (classType == ::ExportedClassTypeCategory::Component)
 				output << "static_object_cast<" << sourceClassName << ">(" << obj << "->GetComponent())";
 		}
 	}
@@ -218,7 +218,7 @@ std::string generateGetInternalLine(const std::string& sourceClassName, const st
 }
 
 std::string generateManagedToScriptObjectLine(const std::string& indent, const std::string& scriptType, 
-	const std::string& scriptName, const std::string& name, ::TypeCategory type, int flags)
+	const std::string& scriptName, const std::string& name, ::ExportedClassTypeCategory type, int flags)
 {
 	bool isRRef = getPassAsResourceRef(flags);
 	bool isBase = isBaseParam(flags);
@@ -232,7 +232,7 @@ std::string generateManagedToScriptObjectLine(const std::string& indent, const s
 	else
 	{
 		std::string scriptBaseType;
-		if(type == ::TypeCategory::GUIElement)
+		if(type == ::ExportedClassTypeCategory::GUIElement)
 			scriptBaseType = "ScriptGUIElementBaseTBase";
 		else
 			scriptBaseType = scriptType + "Base";
@@ -254,34 +254,34 @@ std::string getAsManagedToCppArgumentPlain (const std::string& name, int flags, 
 		return name;
 }
 
-std::string getAsManagedToCppArgument(const std::string& name, ::TypeCategory type, int flags, const std::string& methodName)
+std::string getAsManagedToCppArgument(const std::string& name, ::ExportedClassTypeCategory type, int flags, const std::string& methodName)
 {
 	switch (type)
 	{
-	case ::TypeCategory::Primitive:
-	case ::TypeCategory::Enum: // Input type is either value or pointer depending if output or not
+	case ::ExportedClassTypeCategory::Primitive:
+	case ::ExportedClassTypeCategory::Enum: // Input type is either value or pointer depending if output or not
 		return getAsManagedToCppArgumentPlain(name, flags, isOutput(flags), methodName);
-	case ::TypeCategory::Struct: // Input type is always a pointer
+	case ::ExportedClassTypeCategory::Struct: // Input type is always a pointer
 		if (isComplexStruct(flags))
 			return getAsManagedToCppArgumentPlain(name, flags, false, methodName);
 		else
 			return getAsManagedToCppArgumentPlain(name, flags, true, methodName);
-	case ::TypeCategory::MonoObject: // Input type is either a pointer or a pointer to pointer, depending if output or not
+	case ::ExportedClassTypeCategory::MonoObject: // Input type is either a pointer or a pointer to pointer, depending if output or not
 		{
 			if (isOutput(flags))
 				return "&" + name;
 			else
 				return name;
 		}
-	case ::TypeCategory::String: // Input type is always a value
-	case ::TypeCategory::WString:
-	case ::TypeCategory::Path:
+	case ::ExportedClassTypeCategory::String: // Input type is always a value
+	case ::ExportedClassTypeCategory::WString:
+	case ::ExportedClassTypeCategory::Path:
 		return getAsManagedToCppArgumentPlain(name, flags, false, methodName);
-	case ::TypeCategory::GUIElement: // Input type is always a pointer
+	case ::ExportedClassTypeCategory::GUIElement: // Input type is always a pointer
 		return getAsManagedToCppArgumentPlain(name, flags, true, methodName);
-	case ::TypeCategory::Component: // Input type is always a handle
-	case ::TypeCategory::SceneObject:
-	case ::TypeCategory::Resource:
+	case ::ExportedClassTypeCategory::Component: // Input type is always a handle
+	case ::ExportedClassTypeCategory::SceneObject:
+	case ::ExportedClassTypeCategory::Resource:
 	{
 		if (isSrcRHandle(flags) || isSrcGHandle(flags))
 			return name;
@@ -297,8 +297,8 @@ std::string getAsManagedToCppArgument(const std::string& name, ::TypeCategory ty
 			return name;
 		}
 	}
-	case ::TypeCategory::Class: // Input type is always a SPtr
-	case ::TypeCategory::ReflectableClass:
+	case ::ExportedClassTypeCategory::Class: // Input type is always a SPtr
+	case ::ExportedClassTypeCategory::ReflectableClass:
 	{
 		assert(!isSrcRHandle(flags) && !isSrcGHandle(flags));
 
@@ -321,12 +321,12 @@ std::string getAsManagedToCppArgument(const std::string& name, ::TypeCategory ty
 	}
 }
 
-std::string getAsCppToManagedArgument(const std::string& name, ::TypeCategory type, int flags, const std::string& methodName)
+std::string getAsCppToManagedArgument(const std::string& name, ::ExportedClassTypeCategory type, int flags, const std::string& methodName)
 {
 	switch (type)
 	{
-	case ::TypeCategory::Primitive:
-	case ::TypeCategory::Enum: // Always passed as value type, input can be either pointer or ref/value type
+	case ::ExportedClassTypeCategory::Primitive:
+	case ::ExportedClassTypeCategory::Enum: // Always passed as value type, input can be either pointer or ref/value type
 	{
 		if (isSrcPointer(flags))
 			return "*" + name;
@@ -338,7 +338,7 @@ std::string getAsCppToManagedArgument(const std::string& name, ::TypeCategory ty
 			return name;
 		}
 	}
-	case ::TypeCategory::Struct: // Always passed as a pointer, input can be either pointer or ref/value type
+	case ::ExportedClassTypeCategory::Struct: // Always passed as a pointer, input can be either pointer or ref/value type
 	{
 		if (isSrcPointer(flags))
 			return name;
@@ -350,15 +350,15 @@ std::string getAsCppToManagedArgument(const std::string& name, ::TypeCategory ty
 			return name;
 		}
 	}
-	case ::TypeCategory::MonoObject: // Always passed as a pointer, input must always be a pointer
-	case ::TypeCategory::String:
-	case ::TypeCategory::WString:
-	case ::TypeCategory::Path:
-	case ::TypeCategory::Component:
-	case ::TypeCategory::SceneObject:
-	case ::TypeCategory::Resource:
-	case ::TypeCategory::Class:
-	case ::TypeCategory::ReflectableClass:
+	case ::ExportedClassTypeCategory::MonoObject: // Always passed as a pointer, input must always be a pointer
+	case ::ExportedClassTypeCategory::String:
+	case ::ExportedClassTypeCategory::WString:
+	case ::ExportedClassTypeCategory::Path:
+	case ::ExportedClassTypeCategory::Component:
+	case ::ExportedClassTypeCategory::SceneObject:
+	case ::ExportedClassTypeCategory::Resource:
+	case ::ExportedClassTypeCategory::Class:
+	case ::ExportedClassTypeCategory::ReflectableClass:
 			return name;
 	default: // Some object type
 		assert(false);
@@ -366,16 +366,16 @@ std::string getAsCppToManagedArgument(const std::string& name, ::TypeCategory ty
 	}
 }
 
-std::string getAsCppToInteropArgument(const std::string& name, ::TypeCategory type, int flags, const std::string& methodName)
+std::string getAsCppToInteropArgument(const std::string& name, ::ExportedClassTypeCategory type, int flags, const std::string& methodName)
 {
 	switch (type)
 	{
-	case ::TypeCategory::Primitive: // Always passed as value type, input can be either pointer or ref/value type
-	case ::TypeCategory::Enum:
-	case ::TypeCategory::String:
-	case ::TypeCategory::WString:
-	case ::TypeCategory::Path:
-	case ::TypeCategory::Struct:
+	case ::ExportedClassTypeCategory::Primitive: // Always passed as value type, input can be either pointer or ref/value type
+	case ::ExportedClassTypeCategory::Enum:
+	case ::ExportedClassTypeCategory::String:
+	case ::ExportedClassTypeCategory::WString:
+	case ::ExportedClassTypeCategory::Path:
+	case ::ExportedClassTypeCategory::Struct:
 	{
 		if (isSrcPointer(flags))
 			return "*" + name;
@@ -387,10 +387,10 @@ std::string getAsCppToInteropArgument(const std::string& name, ::TypeCategory ty
 			return name;
 		}
 	}
-	case ::TypeCategory::MonoObject: // Always passed as a pointer, input must always be a pointer
-	case ::TypeCategory::GUIElement:
+	case ::ExportedClassTypeCategory::MonoObject: // Always passed as a pointer, input must always be a pointer
+	case ::ExportedClassTypeCategory::GUIElement:
 			return name;
-	case ::TypeCategory::Component: // Always passed as a handle, input must be a handle
+	case ::ExportedClassTypeCategory::Component: // Always passed as a handle, input must be a handle
 		if (!isSrcGHandle(flags))
 			outs() << "Error: Unsure how to pass parameter \"" << name << "\" to method \"" << methodName << "\".\n";
 
@@ -398,8 +398,8 @@ std::string getAsCppToInteropArgument(const std::string& name, ::TypeCategory ty
 			return name + ".GetComponent()";
 
 		return name;
-	case ::TypeCategory::SceneObject:
-	case ::TypeCategory::Resource:
+	case ::ExportedClassTypeCategory::SceneObject:
+	case ::ExportedClassTypeCategory::Resource:
 	{
 		if (isSrcRHandle(flags) || isSrcGHandle(flags))
 			return name;
@@ -408,8 +408,8 @@ std::string getAsCppToInteropArgument(const std::string& name, ::TypeCategory ty
 			return name;
 		}
 	}
-	case ::TypeCategory::Class: // Always passed as a sptr, input can be a sptr, pointer, reference or value type
-	case ::TypeCategory::ReflectableClass:
+	case ::ExportedClassTypeCategory::Class: // Always passed as a sptr, input can be a sptr, pointer, reference or value type
+	case ::ExportedClassTypeCategory::ReflectableClass:
 	{
 		assert(!isSrcRHandle(flags) && !isSrcGHandle(flags));
 
@@ -437,11 +437,11 @@ std::string getScriptInteropType(const std::string& name, bool resourceRef = fal
 	if (iterFind == NativeToScriptTypeMap.end())
 		outs() << "Warning: Type \"" << name << "\" referenced as a script interop type, but no script interop mapping found. Assuming default type name.\n";
 
-	bool isValidInteropType = iterFind->second.TypeCategory != ::TypeCategory::Primitive &&
-		iterFind->second.TypeCategory != ::TypeCategory::Enum &&
-		iterFind->second.TypeCategory != ::TypeCategory::String &&
-		iterFind->second.TypeCategory != ::TypeCategory::WString &&
-		iterFind->second.TypeCategory != ::TypeCategory::Path;
+	bool isValidInteropType = iterFind->second.TypeCategory != ::ExportedClassTypeCategory::Primitive &&
+		iterFind->second.TypeCategory != ::ExportedClassTypeCategory::Enum &&
+		iterFind->second.TypeCategory != ::ExportedClassTypeCategory::String &&
+		iterFind->second.TypeCategory != ::ExportedClassTypeCategory::WString &&
+		iterFind->second.TypeCategory != ::ExportedClassTypeCategory::Path;
 
 	if (!isValidInteropType)
 		outs() << "Error: Type \"" << name << "\" referenced as a script interop type, but script interop object cannot be generated for this object type.\n";
@@ -450,7 +450,7 @@ std::string getScriptInteropType(const std::string& name, bool resourceRef = fal
 
 	if(resourceRef)
 	{
-		if(iterFind->second.TypeCategory != ::TypeCategory::Resource)
+		if(iterFind->second.TypeCategory != ::ExportedClassTypeCategory::Resource)
 			outs() << "Error: Type \"" << name << "\" cannot be wrapped in a resource reference.\n";
 
 		return "ScriptRRefBase";
@@ -736,7 +736,7 @@ std::string generateCppEventThunk(const MethodInfo& eventInfo, bool isModule)
 	{
 		TypeMappingInformation paramTypeInfo = getTypeInfo(I->typeName, I->flags);
 
-		if (paramTypeInfo.TypeCategory == ::TypeCategory::Struct)
+		if (paramTypeInfo.TypeCategory == ::ExportedClassTypeCategory::Struct)
 			output << "MonoObject* " << I-> name << ", ";
 		else
 			output << getInteropCppVarType(I->typeName, paramTypeInfo.TypeCategory, I->flags) << " " << I->name << ", ";
@@ -799,12 +799,12 @@ std::string generateClassNativeToScriptObjectLine(int flags, const std::string& 
 	return output.str();
 }
 
-std::string generateNativeToScriptObjectLine(::TypeCategory type, int flags, const std::string& scriptName,
+std::string generateNativeToScriptObjectLine(::ExportedClassTypeCategory type, int flags, const std::string& scriptName,
 	const std::string& argName, const std::string& indent = "\t\t")
 {
 	std::stringstream output;
 
-	if (type == ::TypeCategory::Resource)
+	if (type == ::ExportedClassTypeCategory::Resource)
 	{
 		if(getPassAsResourceRef(flags))
 		{
@@ -818,14 +818,14 @@ std::string generateNativeToScriptObjectLine(::TypeCategory type, int flags, con
 				<< ", true);\n";
 		}
 	}
-	else if (type == ::TypeCategory::Component)
+	else if (type == ::ExportedClassTypeCategory::Component)
 	{
 		output << indent << "ScriptComponentBase* " << scriptName << " = nullptr;\n";
 		output << indent << "if(" << argName << ")\n";
 		output << indent << "\t" << scriptName << " = ScriptGameObjectManager::Instance().GetBuiltinScriptComponent(" <<
 			"static_object_cast<Component>(" << argName << "));\n";
 	}
-	else if (type == ::TypeCategory::SceneObject)
+	else if (type == ::ExportedClassTypeCategory::SceneObject)
 	{
 		output << indent << "ScriptSceneObject* " << scriptName << " = nullptr;\n";
 		output << indent << "if(" << argName << ")\n";
@@ -851,8 +851,8 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 			return "";
 		}
 
-		if (paramTypeInfo.TypeCategory != ::TypeCategory::ReflectableClass && paramTypeInfo.TypeCategory != ::TypeCategory::Class &&
-			paramTypeInfo.TypeCategory != ::TypeCategory::Resource)
+		if (paramTypeInfo.TypeCategory != ::ExportedClassTypeCategory::ReflectableClass && paramTypeInfo.TypeCategory != ::ExportedClassTypeCategory::Class &&
+			paramTypeInfo.TypeCategory != ::ExportedClassTypeCategory::Resource)
 		{
 			outs() << "Error: Type not supported as an AsyncOp return value. \n";
 			return "";
@@ -888,7 +888,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 		if(varTypeInfo.typeName != "Any")
 		{
 			std::string scriptType = getScriptInteropType(varTypeInfo.typeName,
-				paramTypeInfo.TypeCategory == ::TypeCategory::Resource && getPassAsResourceRef(varTypeInfo.flags));
+				paramTypeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource && getPassAsResourceRef(varTypeInfo.flags));
 
 			monoType = scriptType + "::GetMetaData()->ScriptClass";
 
@@ -899,7 +899,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 
 			if (!isArrayOrVector(varTypeInfo.flags))
 			{
-				if (paramTypeInfo.TypeCategory == ::TypeCategory::ReflectableClass || paramTypeInfo.TypeCategory == ::TypeCategory::Class)
+				if (paramTypeInfo.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass || paramTypeInfo.TypeCategory == ::ExportedClassTypeCategory::Class)
 					postCallActions << generateClassNativeToScriptObjectLine(varTypeInfo.flags, varTypeInfo.typeName, "monoObj", scriptType, "nativeObj", false, "\t\t\t");
 				else // Resource
 				{
@@ -929,8 +929,8 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 
 				switch (paramTypeInfo.TypeCategory)
 				{
-				case ::TypeCategory::ReflectableClass:
-				case ::TypeCategory::Class:
+				case ::ExportedClassTypeCategory::ReflectableClass:
+				case ::ExportedClassTypeCategory::Class:
 				{
 					std::string elemName = "arrayElem" + name;
 
@@ -964,7 +964,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 					postCallActions << "\t\t\t\t" << arrayName << ".Set(i, " << elemName << ");" << std::endl;
 					break;
 				}
-				case ::TypeCategory::Resource:
+				case ::ExportedClassTypeCategory::Resource:
 				{
 					std::string scriptName = "scriptObj";
 
@@ -1005,9 +1005,9 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 
 		switch (paramTypeInfo.TypeCategory)
 		{
-		case ::TypeCategory::Primitive:
-		case ::TypeCategory::Enum:
-		case ::TypeCategory::Struct:
+		case ::ExportedClassTypeCategory::Primitive:
+		case ::ExportedClassTypeCategory::Enum:
+		case ::ExportedClassTypeCategory::Struct:
 			if (returnValue)
 			{
 				argName = "tmp" + name;
@@ -1017,7 +1017,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 				else
 					preCallActions << "\t\t" << varTypeInfo.typeName << " " << argName << ";" << std::endl;
 
-				if (paramTypeInfo.TypeCategory == ::TypeCategory::Struct)
+				if (paramTypeInfo.TypeCategory == ::ExportedClassTypeCategory::Struct)
 				{
 					if(isComplexStruct(varTypeInfo.flags))
 					{
@@ -1040,7 +1040,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 			}
 			else if (isOutput(varTypeInfo.flags))
 			{
-				if(paramTypeInfo.TypeCategory == ::TypeCategory::Struct && isComplexStruct(varTypeInfo.flags))
+				if(paramTypeInfo.TypeCategory == ::ExportedClassTypeCategory::Struct && isComplexStruct(varTypeInfo.flags))
 				{
 					argName = "tmp" + name;
 					preCallActions << "\t\t" << varTypeInfo.typeName << " " << argName << ";" << std::endl;
@@ -1066,7 +1066,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 			}
 			else
 			{
-				if(paramTypeInfo.TypeCategory == ::TypeCategory::Struct && isComplexStruct(varTypeInfo.flags))
+				if(paramTypeInfo.TypeCategory == ::ExportedClassTypeCategory::Struct && isComplexStruct(varTypeInfo.flags))
 				{
 					argName = "tmp" + name;
 					preCallActions << "\t\t" << varTypeInfo.typeName << " " << argName << ";" << std::endl;
@@ -1079,7 +1079,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 			}
 
 			break;
-		case ::TypeCategory::String:
+		case ::ExportedClassTypeCategory::String:
 		{
 			argName = "tmp" + name;
 			preCallActions << "\t\tString " << argName << ";" << std::endl;
@@ -1092,7 +1092,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 				preCallActions << "\t\t" << argName << " = MonoUtil::MonoToString(" << name << ");" << std::endl;
 		}
 		break;
-		case ::TypeCategory::Path:
+		case ::ExportedClassTypeCategory::Path:
 		{
 			argName = "tmp" + name;
 			preCallActions << "\t\tPath " << argName << ";" << std::endl;
@@ -1105,7 +1105,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 				preCallActions << "\t\t" << argName << " = MonoUtil::MonoToString(" << name << ");" << std::endl;
 		}
 		break;
-		case ::TypeCategory::WString:
+		case ::ExportedClassTypeCategory::WString:
 		{
 			argName = "tmp" + name;
 			preCallActions << "\t\tWString " << argName << ";" << std::endl;
@@ -1118,7 +1118,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 				preCallActions << "\t\t" << argName << " = MonoUtil::MonoToWString(" << name << ");" << std::endl;
 		}
 		break;
-		case ::TypeCategory::MonoObject:
+		case ::ExportedClassTypeCategory::MonoObject:
 		{
 			argName = "tmp" + name;
 			
@@ -1138,7 +1138,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 			}
 		}
 		break;
-		case ::TypeCategory::GUIElement:
+		case ::ExportedClassTypeCategory::GUIElement:
 		{
 			argName = "tmp" + name;
 			std::string tmpType = getCppVarType(varTypeInfo.typeName, paramTypeInfo.TypeCategory);
@@ -1159,8 +1159,8 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 			}
 		}
 			break;
-		case ::TypeCategory::Class:
-		case ::TypeCategory::ReflectableClass:
+		case ::ExportedClassTypeCategory::Class:
+		case ::ExportedClassTypeCategory::ReflectableClass:
 		{
 			argName = "tmp" + name;
 			std::string tmpType = getCppVarType(varTypeInfo.typeName, paramTypeInfo.TypeCategory);
@@ -1231,14 +1231,14 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 		std::string entryType;
 		switch (paramTypeInfo.TypeCategory)
 		{
-		case ::TypeCategory::Primitive:
-		case ::TypeCategory::String:
-		case ::TypeCategory::WString:
-		case ::TypeCategory::Path:
-		case ::TypeCategory::Enum:
+		case ::ExportedClassTypeCategory::Primitive:
+		case ::ExportedClassTypeCategory::String:
+		case ::ExportedClassTypeCategory::WString:
+		case ::ExportedClassTypeCategory::Path:
+		case ::ExportedClassTypeCategory::Enum:
 			entryType = varTypeInfo.typeName;
 			break;
-		case ::TypeCategory::MonoObject:
+		case ::ExportedClassTypeCategory::MonoObject:
 			entryType = "MonoObject*";
 			break;
 		default: // Some object or struct type
@@ -1279,16 +1279,16 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 
 			switch (paramTypeInfo.TypeCategory)
 			{
-			case ::TypeCategory::Primitive:
-			case ::TypeCategory::String:
-			case ::TypeCategory::WString:
-			case ::TypeCategory::Path:
+			case ::ExportedClassTypeCategory::Primitive:
+			case ::ExportedClassTypeCategory::String:
+			case ::ExportedClassTypeCategory::WString:
+			case ::ExportedClassTypeCategory::Path:
 				preCallActions << "\t\t\t\t" << argName << "[i] = " << arrayName << ".Get<" << entryType << ">(i);" << std::endl;
 				break;
-			case ::TypeCategory::MonoObject:
+			case ::ExportedClassTypeCategory::MonoObject:
 				outs() << "Error: MonoObject type not supported as input. Ignoring. \n";
 				break;
-			case ::TypeCategory::Enum:
+			case ::ExportedClassTypeCategory::Enum:
 			{
 				std::string enumType;
 				ParserUtility::MapBuiltinPrimitiveTypeToCppType(paramTypeInfo.EnumUnderlyingType, enumType);
@@ -1296,7 +1296,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 				preCallActions << "\t\t\t\t" << argName << "[i] = (" << entryType << ")" << arrayName << ".Get<" << enumType << ">(i);" << std::endl;
 				break;
 			}
-			case ::TypeCategory::Struct:
+			case ::ExportedClassTypeCategory::Struct:
 
 				preCallActions << "\t\t\t\t" << argName << "[i] = ";
 
@@ -1326,7 +1326,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 				preCallActions << "\t\t\t\t\t" << elemPtrType << " " << elemPtrName << " = " << 
 					generateGetInternalLine(varTypeInfo.typeName, scriptName, paramTypeInfo.TypeCategory, varTypeInfo.flags) << ";\n";
 
-				if(paramTypeInfo.TypeCategory == ::TypeCategory::Class || paramTypeInfo.TypeCategory == ::TypeCategory::ReflectableClass)
+				if(paramTypeInfo.TypeCategory == ::ExportedClassTypeCategory::Class || paramTypeInfo.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
 				{
 					if(isSrcPointer(varTypeInfo.flags))
 						preCallActions << "\t\t\t\t\t" << argName << "[i] = " << elemPtrName << ".Get();\n";
@@ -1371,13 +1371,13 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 
 			switch (paramTypeInfo.TypeCategory)
 			{
-			case ::TypeCategory::Primitive:
-			case ::TypeCategory::String:
-			case ::TypeCategory::WString:
-			case ::TypeCategory::Path:
+			case ::ExportedClassTypeCategory::Primitive:
+			case ::ExportedClassTypeCategory::String:
+			case ::ExportedClassTypeCategory::WString:
+			case ::ExportedClassTypeCategory::Path:
 				postCallActions << "\t\t\t" << arrayName << ".Set(i, " << argName << "[i]);" << std::endl;
 				break;
-			case ::TypeCategory::Enum:
+			case ::ExportedClassTypeCategory::Enum:
 			{
 				std::string enumType;
 				ParserUtility::MapBuiltinPrimitiveTypeToCppType(paramTypeInfo.EnumUnderlyingType, enumType);
@@ -1388,7 +1388,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 					postCallActions << "\t\t\t" << arrayName << ".Set(i, (" << enumType << ")" << argName << "[i]);" << std::endl;
 				break;
 			}
-			case ::TypeCategory::Struct:
+			case ::ExportedClassTypeCategory::Struct:
 				postCallActions << "\t\t\t" << arrayName << ".Set(i, ";
 
 				if(isComplexStruct(varTypeInfo.flags))
@@ -1402,11 +1402,11 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 				postCallActions << ");\n";
 
 				break;
-			case ::TypeCategory::MonoObject:
+			case ::ExportedClassTypeCategory::MonoObject:
 				postCallActions << "\t\t\t" << arrayName << ".Set(i, " << argName << "[i]);" << std::endl;
 				break;
-			case ::TypeCategory::Class:
-			case ::TypeCategory::ReflectableClass:
+			case ::ExportedClassTypeCategory::Class:
+			case ::ExportedClassTypeCategory::ReflectableClass:
 			{
 				std::string elemName = "arrayElem" + name;
 
@@ -1440,7 +1440,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const VarTy
 				postCallActions << "\t\t\t" << arrayName << ".Set(i, " << elemName << ");" << std::endl;
 				break;
 			}
-			case ::TypeCategory::GUIElement:
+			case ::ExportedClassTypeCategory::GUIElement:
 				outs() << "Error: GUIElement cannot be used as parameter outputs or return values. Ignoring. \n";
 				break;
 			default: // Some resource or game object type
@@ -1484,11 +1484,11 @@ std::string generateFieldConvertBlock(const std::string& name, const VarTypeInfo
 
 		switch (paramTypeInfo.TypeCategory)
 		{
-		case ::TypeCategory::Primitive:
-		case ::TypeCategory::Enum:
+		case ::ExportedClassTypeCategory::Primitive:
+		case ::ExportedClassTypeCategory::Enum:
 			arg = "value." + name;
 			break;
-		case ::TypeCategory::Struct:
+		case ::ExportedClassTypeCategory::Struct:
 			if(isComplexStruct(varTypeInfo.flags))
 			{
 				std::string interopType = getStructInteropType(varTypeInfo.typeName);
@@ -1509,7 +1509,7 @@ std::string generateFieldConvertBlock(const std::string& name, const VarTypeInfo
 			else
 				arg = "value." + name;
 			break;
-		case ::TypeCategory::String:
+		case ::ExportedClassTypeCategory::String:
 		{
 			arg = "tmp" + name;
 
@@ -1525,7 +1525,7 @@ std::string generateFieldConvertBlock(const std::string& name, const VarTypeInfo
 			}
 		}
 		break;
-		case ::TypeCategory::WString:
+		case ::ExportedClassTypeCategory::WString:
 		{
 			arg = "tmp" + name;
 
@@ -1541,7 +1541,7 @@ std::string generateFieldConvertBlock(const std::string& name, const VarTypeInfo
 			}
 		}
 		break;
-		case ::TypeCategory::Path:
+		case ::ExportedClassTypeCategory::Path:
 		{
 			arg = "tmp" + name;
 
@@ -1557,7 +1557,7 @@ std::string generateFieldConvertBlock(const std::string& name, const VarTypeInfo
 			}
 		}
 		break;
-		case ::TypeCategory::MonoObject:
+		case ::ExportedClassTypeCategory::MonoObject:
 		{
 			arg = "tmp" + name;
 
@@ -1565,7 +1565,7 @@ std::string generateFieldConvertBlock(const std::string& name, const VarTypeInfo
 			preActions << "\t\t" << arg << " = " << name << ";" << std::endl;
 		}
 		break;
-		case ::TypeCategory::GUIElement:
+		case ::ExportedClassTypeCategory::GUIElement:
 		{
 			arg = "tmp" + name;
 			std::string scriptType = getScriptInteropType(varTypeInfo.typeName);
@@ -1589,8 +1589,8 @@ std::string generateFieldConvertBlock(const std::string& name, const VarTypeInfo
 			}
 		}
 			break;
-		case ::TypeCategory::Class:
-		case ::TypeCategory::ReflectableClass:
+		case ::ExportedClassTypeCategory::Class:
+		case ::ExportedClassTypeCategory::ReflectableClass:
 		{
 			arg = "tmp" + name;
 			std::string scriptType = getScriptInteropType(varTypeInfo.typeName);
@@ -1690,14 +1690,14 @@ std::string generateFieldConvertBlock(const std::string& name, const VarTypeInfo
 		std::string entryType;
 		switch (paramTypeInfo.TypeCategory)
 		{
-		case ::TypeCategory::Primitive:
-		case ::TypeCategory::String:
-		case ::TypeCategory::WString:
-		case ::TypeCategory::Path:
-		case ::TypeCategory::Enum:
+		case ::ExportedClassTypeCategory::Primitive:
+		case ::ExportedClassTypeCategory::String:
+		case ::ExportedClassTypeCategory::WString:
+		case ::ExportedClassTypeCategory::Path:
+		case ::ExportedClassTypeCategory::Enum:
 			entryType = varTypeInfo.typeName;
 			break;
-		case ::TypeCategory::MonoObject:
+		case ::ExportedClassTypeCategory::MonoObject:
 			entryType = "MonoObject*";
 			break;
 		default: // Some object or struct type
@@ -1735,16 +1735,16 @@ std::string generateFieldConvertBlock(const std::string& name, const VarTypeInfo
 
 			switch (paramTypeInfo.TypeCategory)
 			{
-			case ::TypeCategory::Primitive:
-			case ::TypeCategory::String:
-			case ::TypeCategory::WString:
-			case ::TypeCategory::Path:
+			case ::ExportedClassTypeCategory::Primitive:
+			case ::ExportedClassTypeCategory::String:
+			case ::ExportedClassTypeCategory::WString:
+			case ::ExportedClassTypeCategory::Path:
 				preActions << "\t\t\t\t" << argName << "[i] = " << arrayName << ".Get<" << entryType << ">(i);" << std::endl;
 				break;
-			case ::TypeCategory::MonoObject:
+			case ::ExportedClassTypeCategory::MonoObject:
 				outs() << "Error: MonoObject type not supported as input. Ignoring. \n";
 				break;
-			case ::TypeCategory::Enum:
+			case ::ExportedClassTypeCategory::Enum:
 			{
 				std::string enumType;
 				ParserUtility::MapBuiltinPrimitiveTypeToCppType(paramTypeInfo.EnumUnderlyingType, enumType);
@@ -1752,7 +1752,7 @@ std::string generateFieldConvertBlock(const std::string& name, const VarTypeInfo
 				preActions << "\t\t\t\t" << argName << "[i] = (" << entryType << ")" << arrayName << ".get<" << enumType << ">(i);" << std::endl;
 				break;
 			}
-			case ::TypeCategory::Struct:
+			case ::ExportedClassTypeCategory::Struct:
 				preActions << "\t\t\t\t" << argName << "[i] = ";
 
 				if (isComplexStruct(varTypeInfo.flags))
@@ -1780,7 +1780,7 @@ std::string generateFieldConvertBlock(const std::string& name, const VarTypeInfo
 				preActions << "\t\t\t\t\t" << elemPtrType << " " << elemPtrName << " = " << 
 					generateGetInternalLine(varTypeInfo.typeName, scriptName, paramTypeInfo.TypeCategory, varTypeInfo.flags) << ";\n";
 
-				if(paramTypeInfo.TypeCategory == ::TypeCategory::Class || paramTypeInfo.TypeCategory == ::TypeCategory::ReflectableClass)
+				if(paramTypeInfo.TypeCategory == ::ExportedClassTypeCategory::Class || paramTypeInfo.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
 				{
 					if(isSrcPointer(varTypeInfo.flags))
 						preActions << "\t\t\t\t\t" << argName << "[i] = " << elemPtrName << ".get();\n";
@@ -1822,13 +1822,13 @@ std::string generateFieldConvertBlock(const std::string& name, const VarTypeInfo
 
 			switch (paramTypeInfo.TypeCategory)
 			{
-			case ::TypeCategory::Primitive:
-			case ::TypeCategory::String:
-			case ::TypeCategory::WString:
-			case ::TypeCategory::Path:
+			case ::ExportedClassTypeCategory::Primitive:
+			case ::ExportedClassTypeCategory::String:
+			case ::ExportedClassTypeCategory::WString:
+			case ::ExportedClassTypeCategory::Path:
 				preActions << "\t\t\t" << arrayName << ".Set(i, value." << name << "[i]);" << std::endl;
 				break;
-			case ::TypeCategory::Enum:
+			case ::ExportedClassTypeCategory::Enum:
 			{
 				std::string enumType;
 				ParserUtility::MapBuiltinPrimitiveTypeToCppType(paramTypeInfo.EnumUnderlyingType, enumType);
@@ -1836,7 +1836,7 @@ std::string generateFieldConvertBlock(const std::string& name, const VarTypeInfo
 				preActions << "\t\t\t" << arrayName << ".Set(i, (" << enumType << ")value." << name << "[i]);" << std::endl;
 				break;
 			}
-			case ::TypeCategory::Struct:
+			case ::ExportedClassTypeCategory::Struct:
 				preActions << "\t\t\t" << arrayName << ".Set(i, ";
 
 				if(isComplexStruct(varTypeInfo.flags))
@@ -1849,11 +1849,11 @@ std::string generateFieldConvertBlock(const std::string& name, const VarTypeInfo
 
 				preActions << ");\n";
 				break;
-			case ::TypeCategory::MonoObject:
+			case ::ExportedClassTypeCategory::MonoObject:
 				preActions << "\t\t\t" << arrayName << ".Set(i, value." << name << "[i]);" << std::endl;
 				break;
-			case ::TypeCategory::Class:
-			case ::TypeCategory::ReflectableClass:
+			case ::ExportedClassTypeCategory::Class:
+			case ::ExportedClassTypeCategory::ReflectableClass:
 			{
 				std::string elemName = "arrayElem" + name;
 
@@ -1887,7 +1887,7 @@ std::string generateFieldConvertBlock(const std::string& name, const VarTypeInfo
 				preActions << "\t\t\t" << arrayName << ".Set(i, " << elemName << ");" << std::endl;
 			}
 			break;
-			case ::TypeCategory::GUIElement:
+			case ::ExportedClassTypeCategory::GUIElement:
 				// Unsupported as output
 				break;
 			default: // Some resource or game object type
@@ -1927,10 +1927,10 @@ std::string generateEventCallbackBodyBlockForParam(const std::string& name, cons
 
 		switch (paramTypeInfo.TypeCategory)
 		{
-		case ::TypeCategory::Primitive:
+		case ::ExportedClassTypeCategory::Primitive:
 			argName = name;
 			break;
-		case ::TypeCategory::Enum:
+		case ::ExportedClassTypeCategory::Enum:
 			if(isFlagsEnum(varTypeInfo.flags))
 			{
 				argName = "tmp" + name;
@@ -1940,7 +1940,7 @@ std::string generateEventCallbackBodyBlockForParam(const std::string& name, cons
 			else
 				argName = name;
 			break;
-		case ::TypeCategory::Struct:
+		case ::ExportedClassTypeCategory::Struct:
 			{
 				argName = "tmp" + name;
 
@@ -1961,35 +1961,35 @@ std::string generateEventCallbackBodyBlockForParam(const std::string& name, cons
 			}
 
 			break;
-		case ::TypeCategory::String:
+		case ::ExportedClassTypeCategory::String:
 		{
 			argName = "tmp" + name;
 			preCallActions << "\t\tMonoString* " << argName << ";" << std::endl;
 			preCallActions << "\t\t" << argName << " = MonoUtil::StringToMono(" << name << ");" << std::endl;
 		}
 		break;
-		case ::TypeCategory::WString:
+		case ::ExportedClassTypeCategory::WString:
 		{
 			argName = "tmp" + name;
 			preCallActions << "\t\tMonoString* " << argName << ";" << std::endl;
 			preCallActions << "\t\t" << argName << " = MonoUtil::WstringToMono(" << name << ");" << std::endl;
 		}
 		break;
-		case ::TypeCategory::Path:
+		case ::ExportedClassTypeCategory::Path:
 		{
 			argName = "tmp" + name;
 			preCallActions << "\t\tMonoString* " << argName << ";" << std::endl;
 			preCallActions << "\t\t" << argName << " = MonoUtil::StringToMono(" << name << ".ToString());" << std::endl;
 		}
 		break;
-		case ::TypeCategory::MonoObject:
+		case ::ExportedClassTypeCategory::MonoObject:
 		{
 			argName = "tmp" + name;
 			preCallActions << "\t\tMonoObject* " << argName << " = " << name << ";\n";
 		}
 		break;
-		case ::TypeCategory::Class:
-		case ::TypeCategory::ReflectableClass:
+		case ::ExportedClassTypeCategory::Class:
+		case ::ExportedClassTypeCategory::ReflectableClass:
 		{
 			argName = "tmp" + name;
 			std::string scriptType = getScriptInteropType(varTypeInfo.typeName);
@@ -2022,14 +2022,14 @@ std::string generateEventCallbackBodyBlockForParam(const std::string& name, cons
 		std::string entryType;
 		switch (paramTypeInfo.TypeCategory)
 		{
-		case ::TypeCategory::Primitive:
-		case ::TypeCategory::String:
-		case ::TypeCategory::WString:
-		case ::TypeCategory::Path:
-		case ::TypeCategory::Enum:
+		case ::ExportedClassTypeCategory::Primitive:
+		case ::ExportedClassTypeCategory::String:
+		case ::ExportedClassTypeCategory::WString:
+		case ::ExportedClassTypeCategory::Path:
+		case ::ExportedClassTypeCategory::Enum:
 			entryType = varTypeInfo.typeName;
 			break;
-		case ::TypeCategory::MonoObject:
+		case ::ExportedClassTypeCategory::MonoObject:
 			entryType = "MonoObject*";
 			break;
 		default: // Some object or struct type
@@ -2055,13 +2055,13 @@ std::string generateEventCallbackBodyBlockForParam(const std::string& name, cons
 
 		switch (paramTypeInfo.TypeCategory)
 		{
-		case ::TypeCategory::Primitive:
-		case ::TypeCategory::String:
-		case ::TypeCategory::WString:
-		case ::TypeCategory::Path:
+		case ::ExportedClassTypeCategory::Primitive:
+		case ::ExportedClassTypeCategory::String:
+		case ::ExportedClassTypeCategory::WString:
+		case ::ExportedClassTypeCategory::Path:
 			preCallActions << "\t\t\t" << arrayName << ".Set(i, " << name << "[i]);" << std::endl;
 			break;
-		case ::TypeCategory::Enum:
+		case ::ExportedClassTypeCategory::Enum:
 		{
 			std::string enumType;
 			ParserUtility::MapBuiltinPrimitiveTypeToCppType(paramTypeInfo.EnumUnderlyingType, enumType);
@@ -2072,7 +2072,7 @@ std::string generateEventCallbackBodyBlockForParam(const std::string& name, cons
 				preCallActions << "\t\t\t" << arrayName << ".Set(i, (" << enumType << ")" << name << "[i]);" << std::endl;
 			break;
 		}
-		case ::TypeCategory::Struct:
+		case ::ExportedClassTypeCategory::Struct:
 			preCallActions << "\t\t\t" << arrayName << ".Set(i, ";
 
 			if (isComplexStruct(varTypeInfo.flags))
@@ -2085,11 +2085,11 @@ std::string generateEventCallbackBodyBlockForParam(const std::string& name, cons
 
 			preCallActions << ");\n";
 			break;
-		case ::TypeCategory::MonoObject:
+		case ::ExportedClassTypeCategory::MonoObject:
 			preCallActions << "\t\t\t\t" << arrayName << ".Set(i, " << name << "[i]);" << std::endl;
 			break;
-		case ::TypeCategory::Class:
-		case ::TypeCategory::ReflectableClass:
+		case ::ExportedClassTypeCategory::Class:
+		case ::ExportedClassTypeCategory::ReflectableClass:
 		{
 			std::string elemName = "arrayElem" + name;
 			preCallActions << "\t\t\tMonoObject* " << elemName << ";\n";
@@ -2119,7 +2119,7 @@ std::string generateEventCallbackBodyBlockForParam(const std::string& name, cons
 }
 
 std::string generateCppMethodBody(const ClassInfo& classInfo, const MethodInfo& methodInfo, const std::string& sourceClassName,
-	const std::string& interopClassName, ::TypeCategory classType, bool isModule)
+	const std::string& interopClassName, ::ExportedClassTypeCategory classType, bool isModule)
 {
 	std::string returnAssignment;
 	std::string returnStmt;
@@ -2204,13 +2204,13 @@ std::string generateCppMethodBody(const ClassInfo& classInfo, const MethodInfo& 
 				output << "\t\tnew (bs_alloc<" << interopClassName << ">())" << interopClassName << "(managedInstance, instance);" << std::endl;
 				isValid = true;
 			}
-			else if (classType == ::TypeCategory::Resource)
+			else if (classType == ::ExportedClassTypeCategory::Resource)
 			{
 				output << "\t\tResourceHandle<" << sourceClassName << "> instance = " << fullMethodName << "(" << methodArgs.str() << ");" << std::endl;
 				output << "\t\tScriptResourceManager::Instance().CreateBuiltinScriptResource(instance, managedInstance);" << std::endl;
 				isValid = true;
 			}
-			else if (classType == ::TypeCategory::GUIElement)
+			else if (classType == ::ExportedClassTypeCategory::GUIElement)
 			{
 				output << "\t\t" << sourceClassName << "* instance = " << fullMethodName << "(" << methodArgs.str() << ");" << std::endl;
 				output << "\t\tnew (bs_alloc<" << interopClassName << ">())" << interopClassName << "(managedInstance, instance);" << std::endl;
@@ -2289,7 +2289,7 @@ std::string generateCppMethodBody(const ClassInfo& classInfo, const MethodInfo& 
 }
 
 std::string generateCppFieldGetterBody(const ClassInfo& classInfo, const FieldInfo& fieldInfo, const MethodInfo& methodInfo,	
-	::TypeCategory classType, bool isModule)
+	::ExportedClassTypeCategory classType, bool isModule)
 {
 	std::string returnAssignment;
 	std::string returnStmt;
@@ -2363,7 +2363,7 @@ std::string generateCppFieldGetterBody(const ClassInfo& classInfo, const FieldIn
 }
 
 std::string generateCppFieldSetterBody(const ClassInfo& classInfo, const FieldInfo& fieldInfo, const MethodInfo& methodInfo,
-	::TypeCategory classType, bool isModule)
+	::ExportedClassTypeCategory classType, bool isModule)
 {
 	std::stringstream preCallActions;
 	std::stringstream argValue;
@@ -2427,13 +2427,13 @@ std::string generateCppEventCallbackBody(const MethodInfo& eventInfo, bool isMod
 		{
 			TypeMappingInformation paramTypeInfo = getTypeInfo(I->typeName, I->flags);
 
-			if(paramTypeInfo.TypeCategory == ::TypeCategory::Struct)
-				methodArgs << getAsCppToManagedArgument(argName, ::TypeCategory::Class, I->flags, eventInfo.sourceName);
+			if(paramTypeInfo.TypeCategory == ::ExportedClassTypeCategory::Struct)
+				methodArgs << getAsCppToManagedArgument(argName, ::ExportedClassTypeCategory::Class, I->flags, eventInfo.sourceName);
 			else
 				methodArgs << getAsCppToManagedArgument(argName, paramTypeInfo.TypeCategory, I->flags, eventInfo.sourceName);
 		}
 		else
-			methodArgs << getAsCppToManagedArgument(argName, ::TypeCategory::Class, I->flags, eventInfo.sourceName);
+			methodArgs << getAsCppToManagedArgument(argName, ::ExportedClassTypeCategory::Class, I->flags, eventInfo.sourceName);
 
 		if (!isLast)
 			methodArgs << ", ";
@@ -2494,7 +2494,7 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 
 	// Generate a common base class if required
 	// (GUIElements already have one by default)
-	if(typeInfo.TypeCategory != ::TypeCategory::GUIElement)
+	if(typeInfo.TypeCategory != ::ExportedClassTypeCategory::GUIElement)
 	{
 		if (isBase)
 		{
@@ -2505,13 +2505,13 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 
 			if (isRootBase)
 			{
-				if (typeInfo.TypeCategory == ::TypeCategory::Class)
+				if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Class)
 					output << "ScriptObjectBase";
-				if (typeInfo.TypeCategory == ::TypeCategory::ReflectableClass)
+				if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
 					output << "ScriptReflectableBase";
-				else if (typeInfo.TypeCategory == ::TypeCategory::Component)
+				else if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Component)
 					output << "ScriptComponentBase";
-				else if (typeInfo.TypeCategory == ::TypeCategory::Resource)
+				else if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource)
 					output << "ScriptResourceBase";
 			}
 			else
@@ -2528,12 +2528,12 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 
 			if(!isModule)
 			{
-				if (typeInfo.TypeCategory == ::TypeCategory::ReflectableClass)
+				if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
 				{
 					output << std::endl;
 					output << "\t\t" << wrappedDataType << " GetInternal() const;\n";
 				}
-				else if (typeInfo.TypeCategory == ::TypeCategory::Class)
+				else if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Class)
 				{
 					output << std::endl;
 					output << "\t\t" << wrappedDataType << " GetInternal() const { return mInternal; }" << std::endl;
@@ -2562,13 +2562,13 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 	std::string interopClassName = getScriptInteropType(classInfo.name);
 	output << interopClassName << " : public ";
 
-	if (typeInfo.TypeCategory == ::TypeCategory::Resource)
+	if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource)
 		output << "TScriptResource<" << interopClassName << ", " << classInfo.name;
-	else if (typeInfo.TypeCategory == ::TypeCategory::Component)
+	else if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Component)
 		output << "TScriptComponent<" << interopClassName << ", " << classInfo.name;
-	else if (typeInfo.TypeCategory == ::TypeCategory::GUIElement)
+	else if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
 		output << "TScriptGUIElement<" << interopClassName;
-	else if (typeInfo.TypeCategory == ::TypeCategory::ReflectableClass)
+	else if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
 		output << "TScriptReflectable<" << interopClassName << ", " << classInfo.name;
 	else // Class
 		output << "ScriptObject<" << interopClassName;
@@ -2594,7 +2594,7 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 	{
 		output << "\t\t" << interopClassName << "(MonoObject* managedInstance, ";
 
-		if (typeInfo.TypeCategory != ::TypeCategory::GUIElement)
+		if (typeInfo.TypeCategory != ::ExportedClassTypeCategory::GUIElement)
 			output << "const " << wrappedDataType << "& value";
 		else
 			output << wrappedDataType << " value";
@@ -2606,7 +2606,7 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 
 	output << std::endl;
 
-	if (typeInfo.TypeCategory == ::TypeCategory::Class && !isModule)
+	if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Class && !isModule)
 	{
 		// getInternal() method (handle types have getHandle() implemented by their base type)
 		if (isBase || !classInfo.baseClass.empty())
@@ -2626,7 +2626,7 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 		output << std::endl;
 	}
 
-	if (typeInfo.TypeCategory == ::TypeCategory::Resource)
+	if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource)
 	{
 		// createInstance() method required by script resource manager
 		output << "\t\tstatic MonoObject* CreateInstance();" << std::endl;
@@ -2662,7 +2662,7 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 		output << std::endl;
 
 	// Data member
-	if (typeInfo.TypeCategory == ::TypeCategory::Class && !isModule && classInfo.baseClass.empty() && !isBase)
+	if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Class && !isModule && classInfo.baseClass.empty() && !isBase)
 	{
 		output << "\t\t" << wrappedDataType << " mInternal;" << std::endl;
 		output << std::endl;
@@ -2699,7 +2699,7 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 	std::string interopClassThisPtrType;
 	if (isBase)
 	{
-		if(typeInfo.TypeCategory == ::TypeCategory::GUIElement)
+		if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
 			interopClassThisPtrType = "ScriptGUIElementBaseTBase";
 		else
 			interopClassThisPtrType = interopBaseClassName;
@@ -2708,7 +2708,7 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 		interopClassThisPtrType = interopClassName;
 
 	// Internal_GetRef interop method
-	if (typeInfo.TypeCategory == ::TypeCategory::Resource)
+	if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource)
 		output << "\t\tstatic MonoObject* InternalGetRef(" << interopClassThisPtrType << "* thisPtr);\n\n";
 
 	for (auto& methodInfo : classInfo.ctorInfos)
@@ -2758,7 +2758,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 
 	std::string interopBaseClassName;
 
-	if(typeInfo.TypeCategory != ::TypeCategory::GUIElement)
+	if(typeInfo.TypeCategory != ::ExportedClassTypeCategory::GUIElement)
 	{
 		if (isBase)
 			interopBaseClassName = getScriptInteropType(classInfo.name) + "Base";
@@ -2769,7 +2769,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 	std::stringstream output;
 	output << generateCppApiCheckBegin(classInfo.api);
 
-	if (isBase && typeInfo.TypeCategory != ::TypeCategory::GUIElement)
+	if (isBase && typeInfo.TypeCategory != ::ExportedClassTypeCategory::GUIElement)
 	{
 		// Base class constructor
 		output << "\t" << interopBaseClassName << "::" << interopBaseClassName << "(MonoObject* managedInstance)\n";
@@ -2778,13 +2778,13 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 		bool isRootBase = classInfo.baseClass.empty();
 		if (isRootBase)
 		{
-			if (typeInfo.TypeCategory == ::TypeCategory::Class)
+			if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Class)
 				output << "ScriptObjectBase";
-			if (typeInfo.TypeCategory == ::TypeCategory::ReflectableClass)
+			if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
 				output << "ScriptReflectableBase";
-			else if (typeInfo.TypeCategory == ::TypeCategory::Component)
+			else if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Component)
 				output << "ScriptComponentBase";
-			else if (typeInfo.TypeCategory == ::TypeCategory::Resource)
+			else if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource)
 				output << "ScriptResourceBase";
 		}
 		else
@@ -2798,7 +2798,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 		output << "\n";
 
 		// Base class getInternal() method
-		if(typeInfo.TypeCategory == ::TypeCategory::ReflectableClass)
+		if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
 		{
 			output << "\t" << wrappedDataType << " " << interopBaseClassName << "::" << "GetInternal() const\n";
 			output << "\t{\n";
@@ -2842,7 +2842,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 	{
 		output << "\t" << interopClassName << "::" << interopClassName << "(MonoObject* managedInstance, ";
 
-		if (typeInfo.TypeCategory != ::TypeCategory::GUIElement)
+		if (typeInfo.TypeCategory != ::ExportedClassTypeCategory::GUIElement)
 			output << "const " << wrappedDataType << "& value";
 		else
 			output << wrappedDataType << " value";
@@ -2854,13 +2854,13 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 
 	output << "\t\t:";
 
-	if (typeInfo.TypeCategory == ::TypeCategory::Resource)
+	if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource)
 		output << "TScriptResource(managedInstance, value)";
-	else if (typeInfo.TypeCategory == ::TypeCategory::Component)
+	else if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Component)
 		output << "TScriptComponent(managedInstance, value)";
-	else if (typeInfo.TypeCategory == ::TypeCategory::GUIElement)
+	else if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
 		output << "TScriptGUIElement(managedInstance, value)";
-	else if (typeInfo.TypeCategory == ::TypeCategory::ReflectableClass)
+	else if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
 	{
 		if(!isModule)
 			output << "TScriptReflectable(managedInstance, value)";
@@ -2919,7 +2919,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 	output << "\t}" << std::endl;
 	output << std::endl;
 
-	if (typeInfo.TypeCategory == ::TypeCategory::Class)
+	if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Class)
 	{
 		// getInternal method
 		if (isBase || !classInfo.baseClass.empty())
@@ -2948,7 +2948,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 	output << "\t{" << std::endl;
 
 	// Internal_GetRef interop method
-	if (typeInfo.TypeCategory == ::TypeCategory::Resource)
+	if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource)
 	{
 		output << "\t\tmetaData.ScriptClass->AddInternalCall(\"Internal_GetRef\", (void*)&" <<
 			interopClassName << "::InternalGetRef);\n";
@@ -3036,7 +3036,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 	output << std::endl;
 
 	// create() or createInstance() methods
-	if ((isClassType(typeInfo.TypeCategory) && !isModule) || typeInfo.TypeCategory == ::TypeCategory::Resource)
+	if ((isClassType(typeInfo.TypeCategory) && !isModule) || typeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource)
 	{
 		std::stringstream ctorSignature;
 		std::stringstream ctorParamsInit;
@@ -3075,7 +3075,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 
 			output << "\t}" << std::endl;
 		}
-		else if (typeInfo.TypeCategory == ::TypeCategory::Resource)
+		else if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource)
 		{
 			output << "\t MonoObject*" << interopClassName << "::CreateInstance()" << std::endl;
 			output << "\t{" << std::endl;
@@ -3154,7 +3154,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 	std::string interopClassThisPtrType;
 	if (isBase)
 	{
-		if(typeInfo.TypeCategory == ::TypeCategory::GUIElement)
+		if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
 			interopClassThisPtrType = "ScriptGUIElementBaseTBase";
 		else
 			interopClassThisPtrType = interopBaseClassName;
@@ -3163,7 +3163,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 		interopClassThisPtrType = interopClassName;
 
 	// Internal_GetRef interop method
-	if (typeInfo.TypeCategory == ::TypeCategory::Resource)
+	if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource)
 	{
 		output << "\tMonoObject* " << interopClassName << "::InternalGetRef(" << interopClassThisPtrType << "* thisPtr)\n";
 		output << "\t{\n";
@@ -3471,7 +3471,7 @@ std::string generateCSDefaultValueAssignment(const VarInfo& paramInfo)
 		// Constructor or cast, assuming constructor as cast implies a constructor accepting the type exists (and we don't export cast operators anyway)
 		TypeMappingInformation defaultValTypeInfo = getTypeInfo(paramInfo.defaultValueType, 0);
 
-		if(defaultValTypeInfo.TypeCategory == ::TypeCategory::Struct && paramInfo.defaultValue.empty())
+		if(defaultValTypeInfo.TypeCategory == ::ExportedClassTypeCategory::Struct && paramInfo.defaultValue.empty())
 			return defaultValTypeInfo.ScriptTypeName + ".Default()";
 		else
 			return "new " + defaultValTypeInfo.ScriptTypeName + "(" + paramInfo.defaultValue + ")";
@@ -3722,7 +3722,7 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 	}
 
 	// 'Ref' property & conversion operator to RRef<T>
-	if(typeInfo.TypeCategory == ::TypeCategory::Resource)
+	if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource)
 	{
 		interops << "\t\t[MethodImpl(MethodImplOptions.InternalCall)]\n";
 		interops << "\t\tprivate static extern RRef<" << typeInfo.ScriptTypeName << "> Internal_GetRef(IntPtr thisPtr);\n";
@@ -4047,11 +4047,11 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 		TypeMappingInformation baseTypeInfo = getTypeInfo(input.baseClass, 0);
 		baseType = baseTypeInfo.ScriptTypeName;
 	}
-	else if (typeInfo.TypeCategory == ::TypeCategory::Resource)
+	else if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource)
 		baseType = "Resource";
-	else if (typeInfo.TypeCategory == ::TypeCategory::Component)
+	else if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Component)
 		baseType = "Component";
-	else if (typeInfo.TypeCategory == ::TypeCategory::GUIElement)
+	else if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
 		baseType = "GUIElement";
 	else
 		baseType = "ScriptObject";
@@ -4633,7 +4633,7 @@ void generateMappingXMLFile(bool editor, const std::string& outputFolder)
 	output.close();
 }
 
-void generateLookupFile(const std::string& tableName, ::TypeCategory type, bool editor,
+void generateLookupFile(const std::string& tableName, ::ExportedClassTypeCategory type, bool editor,
 	const std::string& engineOutputFolder, const std::string& editorOutputFolder)
 {
 	StringRef cppOutputFolder = editor ? editorOutputFolder : engineOutputFolder;
@@ -4943,11 +4943,11 @@ void generateAll(StringRef cppEngineOutputFolder, StringRef cppEditorOutputFolde
 	}
 
 	// Generate builtin component lookup file
-	generateLookupFile("BuiltinComponent", ::TypeCategory::Component, false, cppEngineOutputFolder.str(), cppEditorOutputFolder.str());
+	generateLookupFile("BuiltinComponent", ::ExportedClassTypeCategory::Component, false, cppEngineOutputFolder.str(), cppEditorOutputFolder.str());
 
 	// Generate C++ reflectable type lookup files
-	generateLookupFile("BuiltinReflectableTypes", ::TypeCategory::ReflectableClass, false, cppEngineOutputFolder.str(), cppEditorOutputFolder.str());
-	generateLookupFile("BuiltinReflectableTypes", ::TypeCategory::ReflectableClass, true, cppEngineOutputFolder.str(), cppEditorOutputFolder.str());
+	generateLookupFile("BuiltinReflectableTypes", ::ExportedClassTypeCategory::ReflectableClass, false, cppEngineOutputFolder.str(), cppEditorOutputFolder.str());
+	generateLookupFile("BuiltinReflectableTypes", ::ExportedClassTypeCategory::ReflectableClass, true, cppEngineOutputFolder.str(), cppEditorOutputFolder.str());
 
 	// Generate XML lookup
 	generateMappingXMLFile(false, csEngineOutputFolder.str());

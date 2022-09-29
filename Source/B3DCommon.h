@@ -42,8 +42,8 @@ extern std::string sEditorExportMacro;
 extern std::string sFrameworkCopyrightNotice;
 extern std::string sEditorCopyrightNotice;
 
-/** Determines the high level type of the exported class/struct. */
-enum class TypeCategory
+/** Determines the high level type of the exported class/struct declaration. */
+enum class ExportedClassTypeCategory
 {
 	Component, /**< Child of native builtin Component type. */
 	SceneObject,/**< Child of native builtin SceneObject type. */
@@ -60,17 +60,63 @@ enum class TypeCategory
 	MonoObject /**< Builtin MonoObject type. */
 };
 
+/** Determines the type of variable contained in VariableTypeInformation. */
+enum class VariableTypeCategory
+{
+	UserType, /**< Type is not a recognized built-in type. */
+	Primitive, /**< int, bool, float, etc. */
+	Vector, /**< Vector<T>. Will also provide an underlying type information for T. */
+	SharedPointer, /**< Shared<T>. Will also provide an underlying type information for T. */
+	ResourceHandle, /**< ResourceHandle<T>. Will also provide an underlying type information for T. */
+	GameObjectHandle, /**< GameObjectHandle<T>. Will also provide an underlying type information for T. */
+	String, /**< String. */
+	WString, /**< WString. */
+	Flags, /**< Flags<T>. Will also provide an underlying type information for T. */
+	Array,/**< Array<T>. Will also provide an underlying type information for T. */
+	MonoObject, /**< MonoObject. */
+	ComponentOrActor, /**< ComponentOrActor<T>. Will also provide an underlying type information for T. */
+	Path, /**< Path */
+	AsyncOp, /**< AsyncOp<T>. Will also provide an underlying type information for T. */
+	SmallVector, /**< SmallVector<T>. Will also provide an underlying type information for T. */
+};
+
+/** Qualifiers applied to a type in VariableTypeInformation. */
+enum class VariableQualifierFlags
+{
+	None = 0,
+	IsPointer = 1 << 0,
+	IsReference = 1 << 1,
+	IsConst = 1 << 2,
+};
+
+/** Various flags that can be added to VariableTypeInformation on post-processing. */
+enum class VariablePostProcessFlags
+{
+	None = 0,
+	IsStructWrapperUsed = 1 << 0, /**< Special flag to be set during post-processing. Signals to the user that a struct wrapper had to be generated and should be used instead of the native type. */
+	IsReferencingBaseClass = 1 << 1, /**< Special flag to be set during post-processing. Signals to the user that a parameter, return value or a field is referencing a script exported base class. */
+};
+
+/** Various flags that can be added to VariableTypeInformation, specific to method parameters. */
+enum class ParameterFlags
+{
+	None = 0,
+	VarParams = 1 << 0, /**< lets the generator know to generate a variable number of parameters in place of this parameter. */
+	AsResourceRef = 1 << 1, /**< lets the generator know to pass a resource as a resource reference, rather than directly. */
+};
+
 // TODO - Refactor type parsing to output this struct instead, replace uses of TypeFlags
 // - Move all the getters that check flags here
-struct TypeInformation
+/** Contains type information about a parameter, return value, field or local variable usage. */
+struct VariableTypeInformation
 {
-	// Type: Primitive, Vector, Array, SmallVector, AsyncOp, Path, ComponentOrActor, MonoObject, String, WString, ResourceHandle, GameObjectHandle, Shared, FlagsEnum
-	// Type name (Direct type for Primitive, Path, MonoObject, String, WString, underlying type for ComponentOrActor, ResourceHandle, GameObjectHandle, FlagsEnum)
-	// Optional<TypeInformation>: Underlying Type (For Vector, Array, SmallVector, Shared, AsyncOp)
-	// Native qualifiers: Pointer, Reference, Const
-
-	// PostProcessTypeFlags: IsReferencingComplexStruct, IsReferencingBaseClass
-	// ParameterFlags: VarParams, AsResourceRef
+	VariableTypeCategory TypeCategory = VariableTypeCategory::UserType;
+	std::string TypeName;
+	Optional<VariableTypeInformation> UnderlyingType;
+	uint32_t QualifierFlags = (uint32_t)VariableQualifierFlags::None;
+	uint32_t PostProcessFlags = (uint32_t)VariablePostProcessFlags::None;
+	uint32_t ParameterFlags = (uint32_t)ParameterFlags::None;
+	uint32_t ArraySize = 0; /**< Size of a native array, or SmallVector. */
 };
 
 enum class TypeFlags // TODO - Ideally this is split up into types and qualifiers
@@ -188,11 +234,11 @@ struct TypeMappingInformation // TODO - Add a new TypeMapping file/class. Regist
 {
 	TypeMappingInformation() {}
 
-	TypeMappingInformation(SmallVector<std::string, 4> nativeNamespace, const std::string& scriptName, ::TypeCategory typeCategory, const std::string& nativeFile, const std::string& destFile)
+	TypeMappingInformation(SmallVector<std::string, 4> nativeNamespace, const std::string& scriptName, ::ExportedClassTypeCategory typeCategory, const std::string& nativeFile, const std::string& destFile)
 		:NativeNamespace(std::move(nativeNamespace)), ScriptTypeName(scriptName), TypeCategory(typeCategory), NativeFile(nativeFile), InteropFile(destFile), EditorInteropFile(destFile)
 	{ }
 
-	TypeMappingInformation(SmallVector<std::string, 4> nativeNamespace, const std::string& scriptName, ::TypeCategory typeCategory, const std::string& nativeFile, const std::string& destFile,
+	TypeMappingInformation(SmallVector<std::string, 4> nativeNamespace, const std::string& scriptName, ::ExportedClassTypeCategory typeCategory, const std::string& nativeFile, const std::string& destFile,
 		const std::string& destFileEditor)
 		:NativeNamespace(std::move(nativeNamespace)), ScriptTypeName(scriptName), TypeCategory(typeCategory), NativeFile(nativeFile), InteropFile(destFile), EditorInteropFile(destFileEditor)
 	{ }
@@ -202,7 +248,7 @@ struct TypeMappingInformation // TODO - Add a new TypeMapping file/class. Regist
 	std::string NativeFile; /**< File in which the native type is defined in. Used for resolving includes. */
 	std::string InteropFile; /**< File in which the interop for this type is defined in. Used for resolving includes. */
 	std::string EditorInteropFile; /**< Same as @p InteropFile, but if a type is exported in both framework and editor, then we need to generate two interop files. */
-	::TypeCategory TypeCategory; /**< Determines a high level category that this type belongs to. */
+	::ExportedClassTypeCategory TypeCategory; /**< Determines a high level category that this type belongs to. */
 	BuiltinType::Kind EnumUnderlyingType; /**< Underlying primitive type for enum or enum class. */
 };
 
@@ -628,7 +674,7 @@ inline TypeMappingInformation getTypeInfo(const std::string& sourceType, int fla
 	{
 		TypeMappingInformation outType;
 		outType.ScriptTypeName = mapCppTypeToCSType(sourceType);
-		outType.TypeCategory = ::TypeCategory::Primitive;
+		outType.TypeCategory = ::ExportedClassTypeCategory::Primitive;
 
 		return outType;
 	}
@@ -637,7 +683,7 @@ inline TypeMappingInformation getTypeInfo(const std::string& sourceType, int fla
 	{
 		TypeMappingInformation outType;
 		outType.ScriptTypeName = "string";
-		outType.TypeCategory = ::TypeCategory::String;
+		outType.TypeCategory = ::ExportedClassTypeCategory::String;
 
 		return outType;
 	}
@@ -646,7 +692,7 @@ inline TypeMappingInformation getTypeInfo(const std::string& sourceType, int fla
 	{
 		TypeMappingInformation outType;
 		outType.ScriptTypeName = "string";
-		outType.TypeCategory = ::TypeCategory::WString;
+		outType.TypeCategory = ::ExportedClassTypeCategory::WString;
 
 		return outType;
 	}
@@ -655,7 +701,7 @@ inline TypeMappingInformation getTypeInfo(const std::string& sourceType, int fla
 	{
 		TypeMappingInformation outType;
 		outType.ScriptTypeName = "string";
-		outType.TypeCategory = ::TypeCategory::Path;
+		outType.TypeCategory = ::ExportedClassTypeCategory::Path;
 
 		return outType;
 	}
@@ -664,7 +710,7 @@ inline TypeMappingInformation getTypeInfo(const std::string& sourceType, int fla
 	{
 		TypeMappingInformation outType;
 		outType.ScriptTypeName = "object";
-		outType.TypeCategory = ::TypeCategory::MonoObject;
+		outType.TypeCategory = ::ExportedClassTypeCategory::MonoObject;
 
 		return outType;
 	}
@@ -690,7 +736,7 @@ inline TypeMappingInformation getTypeInfo(const std::string& sourceType, int fla
 			else
 			{
 				outType.ScriptTypeName = "RRefBase";
-				outType.TypeCategory = ::TypeCategory::Resource;
+				outType.TypeCategory = ::ExportedClassTypeCategory::Resource;
 
 				errs() << "Unable to map type \"" << sourceType << "\". Assuming generic resource.\n";
 			}
@@ -716,7 +762,7 @@ inline TypeMappingInformation getTypeInfo(const std::string& sourceType, int fla
 		{
 			TypeMappingInformation outType;
 			outType.ScriptTypeName = "AsyncOp<" + sourceType + ">";
-			outType.TypeCategory = ::TypeCategory::Class;
+			outType.TypeCategory = ::ExportedClassTypeCategory::Class;
 
 			errs() << "Unable to map type \"" << sourceType << "\". Assuming same name as source. \n";
 			return outType;
@@ -728,7 +774,7 @@ inline TypeMappingInformation getTypeInfo(const std::string& sourceType, int fla
 	{
 		TypeMappingInformation outType;
 		outType.ScriptTypeName = mapCppTypeToCSType(sourceType);
-		outType.TypeCategory = ::TypeCategory::Primitive;
+		outType.TypeCategory = ::ExportedClassTypeCategory::Primitive;
 
 		errs() << "Unable to map type \"" << sourceType << "\". Assuming same name as source.\n";
 		return outType;
@@ -785,12 +831,12 @@ inline const std::string& escapeXML(const std::string& data)
 
 inline bool isInt64(const TypeMappingInformation& typeInfo)
 {
-	return typeInfo.TypeCategory == ::TypeCategory::Primitive && (typeInfo.ScriptTypeName == "long" || typeInfo.ScriptTypeName == "ulong");
+	return typeInfo.TypeCategory == ::ExportedClassTypeCategory::Primitive && (typeInfo.ScriptTypeName == "long" || typeInfo.ScriptTypeName == "ulong");
 }
 
 inline bool isInteger(const TypeMappingInformation& typeInfo)
 {
-	return typeInfo.TypeCategory == ::TypeCategory::Primitive &&
+	return typeInfo.TypeCategory == ::ExportedClassTypeCategory::Primitive &&
 		(typeInfo.ScriptTypeName == "int" || typeInfo.ScriptTypeName == "uint" ||
 			typeInfo.ScriptTypeName == "long" || typeInfo.ScriptTypeName == "ulong" ||
 			typeInfo.ScriptTypeName == "short" || typeInfo.ScriptTypeName == "ushort" ||
@@ -799,7 +845,7 @@ inline bool isInteger(const TypeMappingInformation& typeInfo)
 
 inline bool isReal(const TypeMappingInformation& typeInfo)
 {
-	return typeInfo.TypeCategory == ::TypeCategory::Primitive &&
+	return typeInfo.TypeCategory == ::ExportedClassTypeCategory::Primitive &&
 		(typeInfo.ScriptTypeName == "float" || typeInfo.ScriptTypeName == "double");
 }
 
@@ -901,19 +947,19 @@ inline bool isStruct(int flags)
 	return (flags & (int)ClassFlags::IsStruct) != 0;
 }
 
-inline bool isHandleType(::TypeCategory type)
+inline bool isHandleType(::ExportedClassTypeCategory type)
 {
-	return type == ::TypeCategory::Resource || type == ::TypeCategory::SceneObject || type == ::TypeCategory::Component;
+	return type == ::ExportedClassTypeCategory::Resource || type == ::ExportedClassTypeCategory::SceneObject || type == ::ExportedClassTypeCategory::Component;
 }
 
-inline bool isClassType(::TypeCategory type)
+inline bool isClassType(::ExportedClassTypeCategory type)
 {
-	return type == ::TypeCategory::Class || type == ::TypeCategory::ReflectableClass;
+	return type == ::ExportedClassTypeCategory::Class || type == ::ExportedClassTypeCategory::ReflectableClass;
 }
 
-inline bool isPlainStruct(::TypeCategory type, int flags)
+inline bool isPlainStruct(::ExportedClassTypeCategory type, int flags)
 {
-	return type == ::TypeCategory::Struct && !isArrayOrVector(flags);
+	return type == ::ExportedClassTypeCategory::Struct && !isArrayOrVector(flags);
 }
 
 inline bool isPassedByValue(int flags)
@@ -945,9 +991,9 @@ inline bool willBeDereferenced(int flags)
 	return (isSrcReference(flags) || isSrcValue(flags) || isSrcPointer(flags)) && !isSrcSPtr(flags) && !isSrcRHandle(flags) && !isSrcGHandle(flags);
 }
 
-inline bool needsIntermediateArray(::TypeCategory type, int flags = 0)
+inline bool needsIntermediateArray(::ExportedClassTypeCategory type, int flags = 0)
 {
-	if(type == ::TypeCategory::Class || type == ::TypeCategory::ReflectableClass)
+	if(type == ::ExportedClassTypeCategory::Class || type == ::ExportedClassTypeCategory::ReflectableClass)
 		return !isSrcSPtr(flags);
 
 	return false;
@@ -958,7 +1004,7 @@ inline bool isCSOnly(int flags)
 	return (flags & (int)MethodFlags::CSOnly) != 0;
 }
 
-inline bool canBeReturned(::TypeCategory type, int flags)
+inline bool canBeReturned(::ExportedClassTypeCategory type, int flags)
 {
 	if (isOutput(flags))
 		return false;
@@ -966,7 +1012,7 @@ inline bool canBeReturned(::TypeCategory type, int flags)
 	if (isArrayOrVector(flags))
 		return true;
 
-	if (type == ::TypeCategory::Struct)
+	if (type == ::ExportedClassTypeCategory::Struct)
 		return false;
 
 	return true;

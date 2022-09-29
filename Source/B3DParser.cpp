@@ -3,7 +3,7 @@
 
 #include "B3DParserUtility.h"
 
-::TypeCategory getObjectType(const CXXRecordDecl* decl)
+::ExportedClassTypeCategory getObjectType(const CXXRecordDecl* decl)
 {
 	std::stack<const CXXRecordDecl*> todo;
 	todo.push(decl);
@@ -24,15 +24,15 @@
 				std::string className = baseDecl->getName().str();
 
 				if (className == kBuiltinComponentType)
-					return ::TypeCategory::Component;
+					return ::ExportedClassTypeCategory::Component;
 				else if (className == kBuiltinResourceType)
-					return ::TypeCategory::Resource;
+					return ::ExportedClassTypeCategory::Resource;
 				else if (className == kBuiltinSceneObjectType)
-					return ::TypeCategory::SceneObject;
+					return ::ExportedClassTypeCategory::SceneObject;
 				else if (className == kBuiltinGUIElementType)
-					return ::TypeCategory::GUIElement;
+					return ::ExportedClassTypeCategory::GUIElement;
 				else if (className == kBuiltinReflectableType)
-					return ::TypeCategory::ReflectableClass;
+					return ::ExportedClassTypeCategory::ReflectableClass;
 
 				todo.push(baseDecl);
 				iter++;
@@ -40,7 +40,7 @@
 		}
 	}
 
-	return ::TypeCategory::Class;
+	return ::ExportedClassTypeCategory::Class;
 }
 
 bool isGameObjectOrResource(QualType type)
@@ -54,8 +54,8 @@ bool isGameObjectOrResource(QualType type)
 	if (cxxDecl == nullptr)
 		return false;
 
-	::TypeCategory objType = getObjectType(cxxDecl);
-	return objType == ::TypeCategory::Component || objType == ::TypeCategory::SceneObject || objType == ::TypeCategory::Resource;
+	::ExportedClassTypeCategory objType = getObjectType(cxxDecl);
+	return objType == ::ExportedClassTypeCategory::Component || objType == ::ExportedClassTypeCategory::SceneObject || objType == ::ExportedClassTypeCategory::Resource;
 }
 
 std::string getNamespace(const RecordDecl* decl)
@@ -74,7 +74,7 @@ std::string getNamespace(const RecordDecl* decl)
 }
 
 void registerUserTypeInfo(const SmallVector<std::string, 4>& classNs, const std::string& className, ApiFlags api, 
-	const std::string declFile, const std::string& exportName, const std::string& exportFile, ::TypeCategory type)
+	const std::string declFile, const std::string& exportName, const std::string& exportFile, ::ExportedClassTypeCategory type)
 {
 	std::string destFile = "BsScript" + exportFile + ".generated.h";
 	std::string destFileEditor = destFile;
@@ -504,6 +504,461 @@ bool BansheeCodeGeneratorASTVisitor::parseType(QualType type, VarTypeInfo& outTy
 	}
 }
 
+bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, VariableTypeInformation& outType)
+{
+	// Note: Not supporting pointer to pointer or reference to pointer
+	QualType realType;
+	if (type->isPointerType())
+	{
+		realType = type->getPointeeType();
+		outType.QualifierFlags |= (uint32_t)VariableQualifierFlags::IsPointer;
+	}
+	else if (type->isReferenceType())
+	{
+		realType = type->getPointeeType();
+		outType.QualifierFlags |= (uint32_t)VariableQualifierFlags::IsReference;
+	}
+	else
+		realType = type;
+
+	// Note: Not checking const pointer
+	if (realType.isConstQualified())
+		outType.QualifierFlags |= (uint32_t)VariableQualifierFlags::IsConst;
+
+	// Check for arrays & core variant types
+	if (realType->isStructureOrClassType())
+	{
+		const TemplateSpecializationType* specType = realType->getAs<TemplateSpecializationType>();
+
+		int numArgs = 0;
+
+		if (specType != nullptr)
+			numArgs = specType->getNumArgs();
+
+		if (numArgs > 0)
+		{
+			const RecordType* recordType = realType->getAs<RecordType>();
+			const RecordDecl* recordDecl = recordType->getDecl();
+
+			std::string sourceTypeName = recordDecl->getName().str();
+
+			// Note: vector parsing code copied below
+			if (sourceTypeName == "vector" && recordDecl->isInStdNamespace())
+			{
+				outType.TypeName = "Vector";
+				outType.TypeCategory = VariableTypeCategory::Vector;
+
+				QualType underlyingType = specType->getArg(0).getAsType();
+				VariableTypeInformation underlyingTypeInformation;
+				if (!ParseTypeInformation(underlyingType, underlyingTypeInformation))
+				{
+					outs() << "Error: Failed parsing underlying Vector<T> type.\n";
+					return false;
+				}
+
+				outType.UnderlyingType = underlyingTypeInformation;
+				return true;
+			}
+			else if(sourceTypeName == "SmallVector")
+			{
+				outType.TypeName = "SmallVector";
+				outType.TypeCategory = VariableTypeCategory::SmallVector;
+
+				uint32_t smallVectorSize = 0;
+				if(numArgs > 1)
+				{
+					std::string tmplArgExprValue, exprType;
+					if (evaluateExpression(specType->getArg(1).getAsExpr(), tmplArgExprValue, exprType))
+					{
+						try
+						{
+							smallVectorSize = std::stoi(tmplArgExprValue);
+						}
+						catch(const std::invalid_argument& ex)
+						{
+							outs() << "Error: Cannot convert SmallVector size template argument to a number, ignoring it.\n";
+						}
+						catch(const std::out_of_range& ex)
+						{
+							outs() << "Error: Cannot convert SmallVector size template argument to a number, ignoring it.\n";
+						}
+						
+					}
+					else
+						outs() << "Error: Template argument for SmallVector cannot be constantly evaluated, ignoring it.\n";
+				}
+
+				outType.ArraySize = smallVectorSize;
+
+				QualType underlyingType = specType->getArg(0).getAsType();
+				VariableTypeInformation underlyingTypeInformation;
+				if (!ParseTypeInformation(underlyingType, underlyingTypeInformation))
+				{
+					outs() << "Error: Failed parsing underlying SmallVector<T> type.\n";
+					return false;
+				}
+
+				outType.UnderlyingType = underlyingTypeInformation;
+				return true;
+			}
+			else if(sourceTypeName == "ComponentOrActor")
+			{
+				outType.TypeName = "ComponentOrActor";
+				outType.TypeCategory = VariableTypeCategory::ComponentOrActor;
+
+				QualType underlyingType;
+				bool foundUnderlying = false;
+				const DeclContext* context = dyn_cast<DeclContext>(recordDecl);
+				for (auto I = context->decls_begin(); I != context->decls_end(); ++I)
+				{
+					if (TypeAliasDecl* typeAliasDecl = dyn_cast<TypeAliasDecl>(*I))
+					{
+						if(typeAliasDecl->getName() == "HandleType")
+						{
+							underlyingType = typeAliasDecl->getUnderlyingType();
+							foundUnderlying = true;
+							break;
+						}
+					}
+				}
+
+				if(!foundUnderlying)
+				{
+					outs() << "Error: Cannot find underlying component type for ComponentOrActor<T>.\n";
+					return false;
+				}
+
+				VariableTypeInformation underlyingTypeInformation;
+				if (!ParseTypeInformation(underlyingType, underlyingTypeInformation))
+				{
+					outs() << "Error: Failed parsing underlying ComponentOrActor<T> type.\n";
+					return false;
+				}
+
+				outType.UnderlyingType = underlyingTypeInformation;
+				return true;
+			}
+			else if(sourceTypeName == "TAsyncOp")
+			{
+				outType.TypeName = "TAsyncOp";
+				outType.TypeCategory = VariableTypeCategory::AsyncOp;
+
+				QualType underlyingType = specType->getArg(0).getAsType();
+				VariableTypeInformation underlyingTypeInformation;
+				if (!ParseTypeInformation(underlyingType, underlyingTypeInformation))
+				{
+					outs() << "Error: Failed parsing underlying TAsyncOp<T> type.\n";
+					return false;
+				}
+
+				outType.UnderlyingType = underlyingTypeInformation;
+				return true;
+			}
+			else
+			{
+				const TemplateDecl* templateDecl = specType->getTemplateName().getAsTemplateDecl();
+				if(templateDecl)
+				{
+					std::string templateDeclName = templateDecl->getName().str();
+
+					// Core variant types can be accessed transparently, so we just reference the underlying type directly
+					if ((templateDeclName == "CoreVariantType" || templateDeclName == "CoreVariantHandleType") && specType->isTypeAlias())
+					{
+						realType = specType->getAliasedType();
+						return ParseTypeInformation(realType, outType);
+					}
+				}
+			}
+		}
+	}
+	else if(realType->isArrayType())
+	{
+		const ConstantArrayType* arrayType = dyn_cast<ConstantArrayType>(astContext->getAsArrayType(realType));
+		if (arrayType)
+		{
+			outType.ArraySize = (unsigned)arrayType->getSize().getZExtValue();
+			outType.TypeCategory = VariableTypeCategory::Array;
+
+			QualType underlyingType = arrayType->getElementType();
+			VariableTypeInformation underlyingTypeInformation;
+			if (!ParseTypeInformation(underlyingType, underlyingTypeInformation))
+			{
+				outs() << "Error: Failed parsing underlying Array<T> type.\n";
+				return false;
+			}
+
+			outType.UnderlyingType = underlyingTypeInformation;
+			return true;
+		}
+	}
+
+	// Check for non-array template types
+	if (realType->isStructureOrClassType())
+	{
+		// Check for arrays & flags
+		// Note: Not supporting nested arrays
+		const TemplateSpecializationType* specType = realType->getAs<TemplateSpecializationType>();
+		int numArgs = 0;
+
+		if (specType != nullptr)
+			numArgs = specType->getNumArgs();
+
+		if (numArgs > 0)
+		{
+			const RecordType* recordType = realType->getAs<RecordType>();
+			const RecordDecl* recordDecl = recordType->getDecl();
+
+			std::string sourceTypeName = recordDecl->getName().str();
+
+			// TODO - Remove this, it shouldn't be needed
+			//if (sourceTypeName == "vector" && recordDecl->isInStdNamespace())
+			//{
+			//	realType = specType->getArg(0).getAsType();
+			//	outType.flags |= (int)TypeFlags::Vector;
+			//}
+			//else if(sourceTypeName == "SmallVector")
+			//{
+			//	realType = specType->getArg(0).getAsType();
+			//	outType.flags |= (int)TypeFlags::SmallVector;
+
+			//	uint32_t smallVectorSize = 0;
+			//	if(numArgs > 1)
+			//	{
+			//		std::string tmplArgExprValue, exprType;
+			//		if (evaluateExpression(specType->getArg(1).getAsExpr(), tmplArgExprValue, exprType))
+			//		{
+			//			try
+			//			{
+			//				smallVectorSize = std::stoi(tmplArgExprValue);
+			//			}
+			//			catch(const std::invalid_argument& ex)
+			//			{
+			//				outs() << "Error: Cannot convert SmallVector size template argument to a number, ignoring it.\n";
+			//			}
+			//			catch(const std::out_of_range& ex)
+			//			{
+			//				outs() << "Error: Cannot convert SmallVector size template argument to a number, ignoring it.\n";
+			//			}
+			//			
+			//		}
+			//		else
+			//			outs() << "Error: Template argument for SmallVector cannot be constantly evaluated, ignoring it.\n";
+			//	}
+
+			//	outType.arraySize = smallVectorSize;
+			//}
+
+			// TODO - These can be moved above
+			if(sourceTypeName == "Flags")
+			{
+				outType.TypeName = "Flags";
+				outType.TypeCategory = VariableTypeCategory::Flags;
+
+				if(numArgs > 1)
+				{
+					QualType storageType = specType->getArg(1).getAsType();
+					bool validStorageType = false;
+					if (storageType->isBuiltinType())
+					{
+						const BuiltinType* builtinType = realType->getAs<BuiltinType>();
+						std::string storageTypeStr;
+						if (ParserUtility::MapBuiltinPrimitiveTypeToCppType(builtinType->getKind(), storageTypeStr))
+						{
+							if (storageTypeStr == "uint32_t")
+								validStorageType = true;
+						}
+
+						if(!validStorageType)
+						{
+							outs() << "Error: Invalid storage type used for Flags.\n";
+							return false;
+						}
+					}
+				}
+
+				QualType underlyingType = specType->getArg(0).getAsType();
+				VariableTypeInformation underlyingTypeInformation;
+				if (!ParseTypeInformation(underlyingType, underlyingTypeInformation))
+				{
+					outs() << "Error: Failed parsing underlying Flags<T> type.\n";
+					return false;
+				}
+
+				outType.UnderlyingType = underlyingTypeInformation;
+				return true;
+			}
+			else if (sourceTypeName == "basic_string" && recordDecl->isInStdNamespace())
+			{
+				realType = specType->getArg(0).getAsType();
+
+				const BuiltinType* builtinType = realType->getAs<BuiltinType>();
+				if (builtinType->getKind() == BuiltinType::Kind::WChar_U ||
+					builtinType->getKind() == BuiltinType::Kind::WChar_S)
+				{
+					outType.TypeName = "WString";
+					outType.TypeCategory = VariableTypeCategory::WString;
+				}
+				else
+				{
+					outType.TypeName = "String";
+					outType.TypeCategory = VariableTypeCategory::String;
+				}
+
+				return true;
+			}
+			else if (sourceTypeName == "shared_ptr" && recordDecl->isInStdNamespace())
+			{
+				outType.TypeName = "Shared";
+				outType.TypeCategory = VariableTypeCategory::SharedPointer;
+
+				QualType underlyingType = specType->getArg(0).getAsType();
+				VariableTypeInformation underlyingTypeInformation;
+				if (!ParseTypeInformation(underlyingType, underlyingTypeInformation))
+				{
+					outs() << "Error: Failed parsing underlying Shared<T> type.\n";
+					return false;
+				}
+
+				outType.UnderlyingType = underlyingTypeInformation;
+
+				//if (isGameObjectOrResource(underlyingType)) // TODO - Restore this? Or check elsewhere.
+				//{
+				//	outs() << "Error: Game object and resource types are only allowed to be referenced through handles"
+				//		<< " for scripting purposes\n";
+
+				//	return false;
+				//}
+
+				return true;
+			}
+			else if (sourceTypeName == "TResourceHandle")
+			{
+				// Note: Not supporting weak resource handles
+
+				outType.TypeName = "TResourceHandle";
+				outType.TypeCategory = VariableTypeCategory::ResourceHandle;
+				outType.PostProcessFlags |= (uint32_t)TypeFlags::AsResourceRef; // Set this here, as we want to make it a default
+
+				QualType underlyingType = specType->getArg(0).getAsType();
+				VariableTypeInformation underlyingTypeInformation;
+				if (!ParseTypeInformation(underlyingType, underlyingTypeInformation))
+				{
+					outs() << "Error: Failed parsing underlying TResourceHandle<T> type.\n";
+					return false;
+				}
+
+				outType.UnderlyingType = underlyingTypeInformation;
+				return true;
+			}
+			else if (sourceTypeName == "GameObjectHandle")
+			{
+				realType = specType->getArg(0).getAsType();
+				outType.TypeName = "GameObjectHandle";
+				outType.TypeCategory = VariableTypeCategory::GameObjectHandle;
+
+				QualType underlyingType = specType->getArg(0).getAsType();
+				VariableTypeInformation underlyingTypeInformation;
+				if (!ParseTypeInformation(underlyingType, underlyingTypeInformation))
+				{
+					outs() << "Error: Failed parsing underlying TResourceHandle<T> type.\n";
+					return false;
+				}
+
+				outType.UnderlyingType = underlyingTypeInformation;
+				return true;
+			}
+		}
+	}
+
+	if (realType->isPointerType())
+	{
+		outs() << "Error: Only normal pointers are supported for parameter types.\n";
+		return false;
+	}
+
+	if (realType->isBuiltinType())
+	{
+		const BuiltinType* builtinType = realType->getAs<BuiltinType>();
+		if (!ParserUtility::MapBuiltinPrimitiveTypeToCppType(builtinType->getKind(), outType.TypeName))
+			return false;
+
+		outType.TypeCategory = VariableTypeCategory::Primitive;
+		return true;
+	}
+	else if (realType->isStructureOrClassType())
+	{
+		const RecordType* recordType = realType->getAs<RecordType>();
+		const RecordDecl* recordDecl = recordType->getDecl();
+
+		std::string sourceTypeName = recordDecl->getName().str();
+
+		// Handle special templated types
+		const TemplateSpecializationType* specType = realType->getAs<TemplateSpecializationType>();
+		if (specType != nullptr)
+		{
+			int numArgs = specType->getNumArgs();
+			if (numArgs > 0)
+			{
+				// Handle generic template specializations
+				sourceTypeName += parseTemplArguments(sourceTypeName, specType->getArgs(), specType->getNumArgs(), nullptr);
+			}
+		}
+		else
+		{
+			// Check for a direct pointer to a managed object
+			if(sourceTypeName == "_MonoObject")
+			{
+				//if (!isSrcPointer(outType.flags)) // TODO - Restore this? Or check elsewhere.
+				//{
+				//	outs() << "Error: Found an object of type MonoObject but not passed by pointer. This is not supported. \n";
+				//	return false;
+				//}
+
+				outType.TypeName = "_MonoObject";
+				outType.TypeCategory = VariableTypeCategory::MonoObject;
+
+				return true;
+			}
+			else if(sourceTypeName == "Path")
+			{
+				outType.TypeName = "Path";
+				outType.TypeCategory = VariableTypeCategory::Path;
+
+				return true;
+			}
+			else if (sourceTypeName == "StringID")
+			{
+				outType.TypeName = "StringID";
+				outType.TypeCategory = VariableTypeCategory::String;
+
+				return true;
+			}
+		}
+
+		// Its a user-defined type
+		outType.TypeName = sourceTypeName;
+		outType.TypeCategory = VariableTypeCategory::UserType;
+
+		return true;
+	}
+	else if (realType->isEnumeralType())
+	{
+		const EnumType* enumType = realType->getAs<EnumType>();
+		const EnumDecl* enumDecl = enumType->getDecl();
+
+		std::string sourceTypeName = enumDecl->getName().str();
+		outType.TypeName = sourceTypeName;
+		outType.TypeCategory = VariableTypeCategory::UserType;
+
+		return true;
+	}
+	else
+	{
+		outs() << "Error: Unrecognized type\n";
+		return false;
+	}
+}
+
 bool BansheeCodeGeneratorASTVisitor::parseEventSignature(QualType type, FunctionTypeInfo& typeInfo, bool& isCallback)
 {
 	if (type->isStructureOrClassType())
@@ -889,7 +1344,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitEnumDecl(EnumDecl* decl)
 	std::string destFileEditor = "BsScript" + parsedEnumInfo.ExportedFileName + ".editor.generated.h";
 
 	registerUserTypeInfo(enumEntry.ns, sourceClassName.str(), enumEntry.api, declFile, parsedEnumInfo.ExportedTypeName,
-		parsedEnumInfo.ExportedFileName, ::TypeCategory::Enum);
+		parsedEnumInfo.ExportedFileName, ::ExportedClassTypeCategory::Enum);
 	NativeToScriptTypeMap[sourceClassName.str()].EnumUnderlyingType = builtinType->getKind();
 
 	auto iter = decl->enumerator_begin();
@@ -1365,7 +1820,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 
 		std::string declFile = astContext->getSourceManager().getFilename(decl->getSourceRange().getBegin()).str();
 		registerUserTypeInfo(structInfo.ns, srcClassName, structInfo.api, declFile, parsedClassInfo.ExportedTypeName,
-			parsedClassInfo.ExportedFileName, ::TypeCategory::Struct);
+			parsedClassInfo.ExportedFileName, ::ExportedClassTypeCategory::Struct);
 
 		addEntryToFile<StructInfo>(fileInfo, structInfo, parsedClassInfo.ExportedFileName,
 			[](FileInfo& fileInfo, const StructInfo& structInfo) { fileInfo.structInfos.push_back(structInfo); });
@@ -1408,7 +1863,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 		if (decl->isStruct())
 			classInfo.flags |= (int)ClassFlags::IsStruct;
 
-		::TypeCategory classType = getObjectType(decl);
+		::ExportedClassTypeCategory classType = getObjectType(decl);
 
 		std::string declFile = astContext->getSourceManager().getFilename(decl->getSourceRange().getBegin()).str();
 		registerUserTypeInfo(classInfo.ns, srcClassName, classInfo.api, declFile, parsedClassInfo.ExportedTypeName,
