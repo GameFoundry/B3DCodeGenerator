@@ -4,27 +4,6 @@
 #include "B3DCommentParser.h"
 #include "B3DParserUtility.h"
 
-
-std::string getDefaultValue(const std::string& typeName, int flags, const TypeMappingInformation& typeInfo)
-{
-	if(isArrayOrVector(flags))
-		return "null";
-
-	if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Primitive)
-		return "0";
-	else if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Enum)
-		return "(" + typeInfo.ScriptTypeName + ")0";
-	else if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Struct)
-		return typeInfo.ScriptTypeName + ".Default()";
-	else if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::String || typeInfo.TypeCategory == ::ExportedClassTypeCategory::WString || typeInfo.TypeCategory == ::ExportedClassTypeCategory::Path)
-		return "\"\"";
-	else // Some class type
-		return "null";
-
-	assert(false);
-	return ""; // Shouldn't be reached
-}
-
 std::string getRelativeTo(const StringRef& path, const StringRef& relativeTo)
 {
 	SmallVector<char, 100> relativeToVector(relativeTo.begin(), relativeTo.end());
@@ -59,95 +38,173 @@ std::string getRelativeTo(const StringRef& path, const StringRef& relativeTo)
 	return std::string(output.data(), output.size());
 }
 
-std::string getInteropCppVarType(const std::string& typeName, ::ExportedClassTypeCategory type, int flags, bool forStruct = false)
+/**
+ * Returns a default value that can be used for initializing the variable, field or parameter of the provided type.
+ *
+ * @param	typeInformation				Information about the native type to generate the default value for.
+ * @param	typeMappingInformation		Mapping of the provided type in script.
+ */
+std::string GetDefaultValueForType(const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation)
 {
-	if (isArrayOrVector(flags))
-	{
-		if (isOutput(flags) && !forStruct)
-			return "MonoArray**";
-		else
-			return "MonoArray*";
-	}
+	if(typeInformation.IsArrayOrVector())
+		return "null";
 
-	switch (type)
+	if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Primitive)
+		return "0";
+	else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Enum)
+		return "(" + typeMappingInformation.ScriptTypeName + ")0";
+	else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Struct)
+		return typeMappingInformation.ScriptTypeName + ".Default()";
+	else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::String || typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::WString || typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Path)
+		return "\"\"";
+	else // Some class type
+		return "null";
+
+	assert(false);
+	return ""; // Shouldn't be reached
+}
+
+/**
+ * Returns a qualified name for the C++ interop type representing the type in @p typeInformation.
+ *
+ * @param	typeInformation				Information about the native type to generate the interop type for.
+ * @param	typeMappingInformation		Mapping of the provided type in script.
+ * @param	isGeneratingField			When true, it implies the interop type will be used for generating a field member in class or struct. If false it implies we're generating it for a parameter or a return value.
+ */
+std::string GetCppInteropQualifiedTypeName(const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation, bool isGeneratingField = false)
+{
+	const bool isOutputParameter = typeInformation.IsOutputParameter() && !isGeneratingField;
+	if (typeInformation.IsArrayOrVector())
+		return isOutputParameter ? "MonoArray**" : "MonoArray*";
+
+	const std::string& typeName = typeInformation.GetWrappedOrSelfTypeName();
+
+	switch (typeMappingInformation.TypeCategory)
 	{
-	case ::ExportedClassTypeCategory::Primitive:
-		if (isOutput(flags) && !forStruct)
-			return typeName + "*";
-		else
-			return typeName;
-	case ::ExportedClassTypeCategory::Enum:
-		if (isFlagsEnum(flags) && forStruct)
+	case ExportedClassTypeCategory::Primitive:
+		return isOutputParameter ? typeName + "*" : typeName;
+	case ExportedClassTypeCategory::Enum:
+		if (typeInformation.TypeCategory == VariableTypeCategory::Flags && isGeneratingField)
 			return "Flags<" + typeName + ">";
 		else
+			return isOutputParameter ? typeName + "*" : typeName;
+	case ExportedClassTypeCategory::Struct:
+		if(typeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsStructWrapperUsed))
 		{
-			if (isOutput(flags) && !forStruct)
-				return typeName + "*";
-			else
-				return typeName;
+			const std::string structInteropType = getStructInteropType(typeName);
+			return isGeneratingField ? structInteropType : structInteropType + "*";
 		}
-	case ::ExportedClassTypeCategory::Struct:
-		if(isComplexStruct(flags))
-		{
-			if (forStruct)
-				return getStructInteropType(typeName);
-			else
-				return getStructInteropType(typeName) + "*";
-		}
-		else
-		{
-			if (forStruct)
-				return typeName;
-			else
-				return typeName + "*";
-		}
-	case ::ExportedClassTypeCategory::String:
-	case ::ExportedClassTypeCategory::WString:
-	case ::ExportedClassTypeCategory::Path:
-		if (isOutput(flags) && !forStruct)
-			return "MonoString**";
-		else
-			return "MonoString*";
+
+		return isGeneratingField ? typeName : typeName + "*";
+	case ExportedClassTypeCategory::String:
+	case ExportedClassTypeCategory::WString:
+	case ExportedClassTypeCategory::Path:
+		return isOutputParameter ? "MonoString**" : "MonoString*";
 	default: // Class, resource, component or ScriptObject
-		if (isOutput(flags) && !forStruct)
-			return "MonoObject**";
-		else
-			return "MonoObject*";
+		return isOutputParameter ? "MonoObject**" : "MonoObject*";
 	}
 }
 
-std::string getCppVarType(const std::string& typeName, ::ExportedClassTypeCategory type, int flags = 0, bool assumeDefaultTypes = true)
+/**
+ * Returns a type name for the C++ native type representing the type in @p typeInformation.
+ *
+ * @param	typeInformation				Information about the native type to generate the type name for.
+ * @param	typeMappingInformation		Mapping of the provided type in script.
+ * @param	ignoreQualifiers			If true, pointer, reference and const qualifiers will be ignored.
+ * @param	assumeDefaultTypes			TODO - Only false for arrays, vectors and events. This should be removed and deduced from type infomration instead
+ */
+std::string GetCppNativeTypeName(const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation, bool ignoreQualifiers, bool assumeDefaultTypes = true)
 {
-	if (type == ::ExportedClassTypeCategory::Resource)
-		return "ResourceHandle<" + typeName + ">";
-	else if (type == ::ExportedClassTypeCategory::SceneObject || type == ::ExportedClassTypeCategory::Component)
-		return "GameObjectHandle<" + typeName + ">";
-	else if (isClassType(type))
+	const VariableTypeInformation* currentTypeInformation = &typeInformation;
+
+	std::stringstream output;
+	if (typeInformation.TypeCategory == VariableTypeCategory::Vector)
 	{
-		if(assumeDefaultTypes || isSrcSPtr(flags))
-			return "SPtr<" + typeName + ">";
+		output << "Vector<";
+		currentTypeInformation = &typeInformation.AssertGetUnderlyingType();
+	}
+	else if(typeInformation.TypeCategory == VariableTypeCategory::SmallVector)
+	{
+		output << "SmallVector<";
+		currentTypeInformation = &typeInformation.AssertGetUnderlyingType();
+	}
+	else if(typeInformation.TypeCategory == VariableTypeCategory::Array)
+	{
+		currentTypeInformation = &typeInformation.AssertGetUnderlyingType();
+	}
+
+	if(currentTypeInformation->TypeCategory == VariableTypeCategory::ComponentOrActor)
+	{
+		currentTypeInformation = &currentTypeInformation->AssertGetUnderlyingType();
+	}
+
+	const std::string& typeName = currentTypeInformation->GetWrappedOrSelfTypeName();
+
+	if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Resource)
+		output << "ResourceHandle<" << typeName << ">";
+	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::SceneObject || typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Component)
+		output << "GameObjectHandle<" << typeName << ">";
+	else if (isClassType(typeMappingInformation.TypeCategory))
+	{
+		if(assumeDefaultTypes || currentTypeInformation->TypeCategory == VariableTypeCategory::SharedPointer)
+			output << "SPtr<" << typeName << ">";
 		else
 		{
-			if(isSrcPointer(flags))
-				return typeName + "*";
-			else if(isSrcReference(flags))
-				return typeName + "&";
+			if(currentTypeInformation->IsQualifierFlagSet(VariableQualifierFlags::IsPointer) && !ignoreQualifiers)
+				output << typeName << "*";
+			else if(currentTypeInformation->IsQualifierFlagSet(VariableQualifierFlags::IsReference) && !ignoreQualifiers)
+				output << typeName << "&";
 			else
-				return typeName;
+				output << typeName;
 		}
 	}
-	else if (type == ::ExportedClassTypeCategory::String)
-		return "String";
-	else if (type == ::ExportedClassTypeCategory::WString)
-		return "WString";
-	else if (type == ::ExportedClassTypeCategory::Path)
-		return "Path";
-	else if (type == ::ExportedClassTypeCategory::Enum && isFlagsEnum(flags))
-		return "Flags<" + typeName + ">";
-	else if(type == ::ExportedClassTypeCategory::GUIElement)
-		return typeName + "*";
+	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::String)
+		output << "String";
+	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::WString)
+		output << "WString";
+	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Path)
+		output << "Path";
+	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Enum && currentTypeInformation->TypeCategory == VariableTypeCategory::Flags)
+		output << "Flags<" << typeName << ">";
+	else if(typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GUIElement)
+		output << typeName << "*";
 	else
-		return typeName;
+		output << typeName;
+
+	if (typeInformation.TypeCategory == VariableTypeCategory::Vector)
+		output << ">";
+	else if(typeInformation.TypeCategory == VariableTypeCategory::SmallVector)
+		output << ", " << typeInformation.ArraySize << ">";
+
+	return output.str();
+}
+
+/**
+ * Returns a qualified name for the C++ native type representing the type in @p typeInformation.
+ *
+ * @param	typeInformation				Information about the native type to generate the type name for.
+ * @param	typeMappingInformation		Mapping of the provided type in script.
+ * @param	assumeDefaultTypes			TODO - Only false for arrays, vectors and events. This should be removed and deduced from type infomration instead
+ */
+std::string GetCppNativeQualifiedTypeName(const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation, bool assumeDefaultTypes = true)
+{
+	return GetCppNativeTypeName(typeInformation, typeMappingInformation, false, assumeDefaultTypes);
+}
+
+/** Same as GetCppQualifiedTypeName, except it doesn't include any qualifiers (such as pointers, references, type wrappers, etc.) and just returns a pure type name. */
+std::string GetCppNativeUnqualifiedTypeName(const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation, bool assumeDefaultTypes = true)
+{
+	// TODO - Check is the unqualified version even necessary?
+	return GetCppNativeTypeName(typeInformation, typeMappingInformation, true, assumeDefaultTypes);
+}
+
+/** Same as GetCppQualifiedTypeName, except it doesn't include any qualifiers (such as pointers, references, type wrappers, etc.) and just returns a pure type name. */
+std::string GetCppNativeUnqualifiedTypeName(const std::string& typeName, const TypeMappingInformation& typeMappingInformation, bool assumeDefaultTypes = true)
+{
+	VariableTypeInformation typeInformation;
+	typeInformation.TypeName = typeName;
+
+	return GetCppNativeTypeName(typeInformation, typeMappingInformation, true, assumeDefaultTypes);
 }
 
 std::string getCSVarType(const std::string& typeName, ::ExportedClassTypeCategory type, int flags, bool paramPrefixes,
@@ -605,19 +662,19 @@ std::string generateCppMethodSignature(const MethodInfo& methodInfo, const std::
 	std::stringstream output;
 
 	bool returnAsParameter = false;
-	if (methodInfo.returnInfo.typeName.empty() || isCtor)
+	if (methodInfo.returnInfo.TypeInformation.TypeName.empty() || isCtor)
 		output << "void";
 	else
 	{
-		TypeMappingInformation returnTypeInfo = GetNativeToScriptTypeMapping(methodInfo.returnInfo.TypeInformation);
-		if (!canBeReturned(returnTypeInfo.TypeCategory, methodInfo.returnInfo.flags))
+		TypeMappingInformation returnTypeMappingInformation = GetNativeToScriptTypeMapping(methodInfo.returnInfo.TypeInformation);
+		if (!canBeReturned(returnTypeMappingInformation.TypeCategory, methodInfo.returnInfo.flags))
 		{
 			output << "void";
 			returnAsParameter = true;
 		}
 		else
 		{
-			output << getInteropCppVarType(methodInfo.returnInfo.typeName, returnTypeInfo.TypeCategory, methodInfo.returnInfo.flags);
+			output << GetCppInteropQualifiedTypeName(methodInfo.returnInfo.TypeInformation, returnTypeMappingInformation);
 		}
 	}
 
@@ -647,7 +704,7 @@ std::string generateCppMethodSignature(const MethodInfo& methodInfo, const std::
 	{
 		TypeMappingInformation paramTypeInfo = GetNativeToScriptTypeMapping(I->TypeInformation);
 
-		output << getInteropCppVarType(I->typeName, paramTypeInfo.TypeCategory, I->flags) << " " << I->Name;
+		output << GetCppInteropQualifiedTypeName(I->TypeInformation, paramTypeInfo) << " " << I->Name;
 
 		if ((I + 1) != methodInfo.paramInfos.end() || returnAsParameter)
 			output << ", ";
@@ -655,10 +712,8 @@ std::string generateCppMethodSignature(const MethodInfo& methodInfo, const std::
 
 	if (returnAsParameter)
 	{
-		TypeMappingInformation returnTypeInfo = GetNativeToScriptTypeMapping(methodInfo.returnInfo.TypeInformation);
-
-		output << getInteropCppVarType(methodInfo.returnInfo.typeName, returnTypeInfo.TypeCategory, methodInfo.returnInfo.flags) <<
-			" " << "__output";
+		TypeMappingInformation returnTypeMappingInformation = GetNativeToScriptTypeMapping(methodInfo.returnInfo.TypeInformation);
+		output << GetCppInteropQualifiedTypeName(methodInfo.returnInfo.TypeInformation, returnTypeMappingInformation) << " " << "__output";
 	}
 
 	output << ")";
@@ -694,7 +749,7 @@ std::string generateCppEventCallbackSignature(const MethodInfo& eventInfo, const
 		else if(isSmallVector(I->flags))
 			output << "SmallVector<";
 
-		output << getCppVarType(I->typeName, paramTypeInfo.TypeCategory, I->flags, false);
+		output << GetCppNativeQualifiedTypeName(I->TypeInformation, paramTypeInfo, false);
 
 		if(!isSrcValue(I->flags))
 		{
@@ -737,12 +792,12 @@ std::string generateCppEventThunk(const MethodInfo& eventInfo, bool isModule)
 
 	for (auto I = eventInfo.paramInfos.begin(); I != eventInfo.paramInfos.end(); ++I)
 	{
-		TypeMappingInformation paramTypeInfo = GetNativeToScriptTypeMapping(I->TypeInformation);
+		TypeMappingInformation parameterTypeMappingInformation = GetNativeToScriptTypeMapping(I->TypeInformation);
 
-		if (paramTypeInfo.TypeCategory == ::ExportedClassTypeCategory::Struct)
+		if (parameterTypeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Struct)
 			output << "MonoObject* " << I-> Name << ", ";
 		else
-			output << getInteropCppVarType(I->typeName, paramTypeInfo.TypeCategory, I->flags) << " " << I->Name << ", ";
+			output << GetCppInteropQualifiedTypeName(I->TypeInformation, parameterTypeMappingInformation) << " " << I->Name << ", ";
 	}
 
 	output << "MonoException**);" << std::endl;
@@ -844,18 +899,20 @@ std::string generateNativeToScriptObjectLine(::ExportedClassTypeCategory type, i
 std::string generateMethodBodyBlockForParam(const std::string& name, const VariableBase& varTypeInfo,
 	bool isLast, bool returnValue, std::stringstream& preCallActions, std::stringstream& postCallActions)
 {
-	TypeMappingInformation paramTypeInfo = GetNativeToScriptTypeMapping(varTypeInfo.TypeInformation);
+	TypeMappingInformation parameterTypeMappingInformation = GetNativeToScriptTypeMapping(varTypeInfo.TypeInformation);
 
 	if(getIsAsyncOp(varTypeInfo.flags))
 	{
+		const VariableTypeInformation& asyncOpUnderlyingTypeInformation = varTypeInfo.TypeInformation.AssertGetUnderlyingType();
+
 		if (!isOutput(varTypeInfo.flags) && !returnValue)
 		{
 			outs() << "Error: AsyncOp type not supported as input parameter. \n";
 			return "";
 		}
 
-		if (paramTypeInfo.TypeCategory != ::ExportedClassTypeCategory::ReflectableClass && paramTypeInfo.TypeCategory != ::ExportedClassTypeCategory::Class &&
-			paramTypeInfo.TypeCategory != ::ExportedClassTypeCategory::Resource)
+		if (parameterTypeMappingInformation.TypeCategory != ::ExportedClassTypeCategory::ReflectableClass && parameterTypeMappingInformation.TypeCategory != ::ExportedClassTypeCategory::Class &&
+			parameterTypeMappingInformation.TypeCategory != ::ExportedClassTypeCategory::Resource)
 		{
 			outs() << "Error: Type not supported as an AsyncOp return value. \n";
 			return "";
@@ -866,19 +923,13 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const Varia
 		if (!isArrayOrVector(varTypeInfo.flags))
 		{
 			argName = "tmp" + name;
-			argType = getCppVarType(varTypeInfo.typeName, paramTypeInfo.TypeCategory);
+			argType = GetCppNativeQualifiedTypeName(asyncOpUnderlyingTypeInformation, parameterTypeMappingInformation);
 
-			preCallActions << "\t\tTAsyncOp<" << argType << "> " << argName << ";\n";
+			preCallActions << "\t\tTAsyncOp<" << argType << "> " << argName << ";\n"; // TODO - Generate this directly in GetCppNativeQualifiedName?
 		}
 		else
 		{
-			if (isVector(varTypeInfo.flags))
-				argType = "Vector<" + getCppVarType(varTypeInfo.typeName, paramTypeInfo.TypeCategory, varTypeInfo.flags, false) + ">";
-			else if(isSmallVector(varTypeInfo.flags))
-				argType = "SmallVector<" + getCppVarType(varTypeInfo.typeName, paramTypeInfo.TypeCategory, varTypeInfo.flags, false) + ", " + std::to_string(varTypeInfo.arraySize) + ">";
-			else
-				argType = getCppVarType(varTypeInfo.typeName, paramTypeInfo.TypeCategory, varTypeInfo.flags, false);
-
+			argType = GetCppNativeQualifiedTypeName(asyncOpUnderlyingTypeInformation, parameterTypeMappingInformation, false);
 			argName = "vec" + name;
 
 			preCallActions << "\t\t" << argType << " " << argName;
@@ -891,7 +942,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const Varia
 		if(varTypeInfo.typeName != "Any")
 		{
 			std::string scriptType = getScriptInteropType(varTypeInfo.typeName,
-				paramTypeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource && getPassAsResourceRef(varTypeInfo.flags));
+				parameterTypeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Resource && getPassAsResourceRef(varTypeInfo.flags));
 
 			monoType = scriptType + "::GetMetaData()->ScriptClass";
 
@@ -902,11 +953,11 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const Varia
 
 			if (!isArrayOrVector(varTypeInfo.flags))
 			{
-				if (paramTypeInfo.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass || paramTypeInfo.TypeCategory == ::ExportedClassTypeCategory::Class)
+				if (parameterTypeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass || parameterTypeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Class)
 					postCallActions << generateClassNativeToScriptObjectLine(varTypeInfo.flags, varTypeInfo.typeName, "monoObj", scriptType, "nativeObj", false, "\t\t\t");
 				else // Resource
 				{
-					postCallActions << generateNativeToScriptObjectLine(paramTypeInfo.TypeCategory, varTypeInfo.flags, "scriptObj", "nativeObj", "\t\t\t");
+					postCallActions << generateNativeToScriptObjectLine(parameterTypeMappingInformation.TypeCategory, varTypeInfo.flags, "scriptObj", "nativeObj", "\t\t\t");
 					postCallActions << "\t\t\tif(scriptObj != nullptr)" << std::endl;
 					postCallActions << "\t\t\t\tmonoObj = scriptObj->GetManagedInstance();" << std::endl;
 					postCallActions << "\t\t\telse" << std::endl;
@@ -930,14 +981,16 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const Varia
 				postCallActions << "\t\t\tfor(int i = 0; i < arraySize; i++)" << std::endl;
 				postCallActions << "\t\t\t{" << std::endl;
 
-				switch (paramTypeInfo.TypeCategory)
+				const VariableTypeInformation& arrayElementTypeInformation = asyncOpUnderlyingTypeInformation.AssertGetUnderlyingType();
+
+				switch (parameterTypeMappingInformation.TypeCategory)
 				{
 				case ::ExportedClassTypeCategory::ReflectableClass:
 				case ::ExportedClassTypeCategory::Class:
 				{
 					std::string elemName = "arrayElem" + name;
 
-					std::string elemPtrType = getCppVarType(varTypeInfo.typeName, paramTypeInfo.TypeCategory, varTypeInfo.flags);
+					std::string elemPtrType = GetCppNativeQualifiedTypeName(arrayElementTypeInformation, parameterTypeMappingInformation);
 					std::string elemPtrName = "arrayElemPtr" + name;
 
 					postCallActions << "\t\t\t\t" << elemPtrType << " " << elemPtrName;
@@ -971,7 +1024,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const Varia
 				{
 					std::string scriptName = "scriptObj";
 
-					postCallActions << generateNativeToScriptObjectLine(paramTypeInfo.TypeCategory, varTypeInfo.flags, scriptName, "nativeObj[i]", "\t\t\t\t");
+					postCallActions << generateNativeToScriptObjectLine(parameterTypeMappingInformation.TypeCategory, varTypeInfo.flags, scriptName, "nativeObj[i]", "\t\t\t\t");
 					postCallActions << "\t\t\t\tif(" << scriptName << " != nullptr)" << std::endl;
 					postCallActions << "\t\t\t\t\t" << arrayName << ".Set(i, " << scriptName << "->GetManagedInstance());" << std::endl;
 					postCallActions << "\t\t\t\telse" << std::endl;
@@ -1006,7 +1059,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const Varia
 	{
 		std::string argName;
 
-		switch (paramTypeInfo.TypeCategory)
+		switch (parameterTypeMappingInformation.TypeCategory)
 		{
 		case ::ExportedClassTypeCategory::Primitive:
 		case ::ExportedClassTypeCategory::Enum:
@@ -1020,7 +1073,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const Varia
 				else
 					preCallActions << "\t\t" << varTypeInfo.typeName << " " << argName << ";" << std::endl;
 
-				if (paramTypeInfo.TypeCategory == ::ExportedClassTypeCategory::Struct)
+				if (parameterTypeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Struct)
 				{
 					if(isComplexStruct(varTypeInfo.flags))
 					{
@@ -1043,7 +1096,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const Varia
 			}
 			else if (isOutput(varTypeInfo.flags))
 			{
-				if(paramTypeInfo.TypeCategory == ::ExportedClassTypeCategory::Struct && isComplexStruct(varTypeInfo.flags))
+				if(parameterTypeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Struct && isComplexStruct(varTypeInfo.flags))
 				{
 					argName = "tmp" + name;
 					preCallActions << "\t\t" << varTypeInfo.typeName << " " << argName << ";" << std::endl;
@@ -1069,7 +1122,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const Varia
 			}
 			else
 			{
-				if(paramTypeInfo.TypeCategory == ::ExportedClassTypeCategory::Struct && isComplexStruct(varTypeInfo.flags))
+				if(parameterTypeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Struct && isComplexStruct(varTypeInfo.flags))
 				{
 					argName = "tmp" + name;
 					preCallActions << "\t\t" << varTypeInfo.typeName << " " << argName << ";" << std::endl;
@@ -1144,7 +1197,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const Varia
 		case ::ExportedClassTypeCategory::GUIElement:
 		{
 			argName = "tmp" + name;
-			std::string tmpType = getCppVarType(varTypeInfo.typeName, paramTypeInfo.TypeCategory);
+			std::string tmpType = GetCppNativeQualifiedTypeName(varTypeInfo.TypeInformation, parameterTypeMappingInformation);
 			std::string scriptType = getScriptInteropType(varTypeInfo.typeName);
 
 			preCallActions << "\t\t" << tmpType << " " << argName << ";\n";
@@ -1155,10 +1208,10 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const Varia
 				std::string scriptName = "script" + name;
 
 				preCallActions << generateManagedToScriptObjectLine("\t\t", scriptType, scriptName, name, 
-					paramTypeInfo.TypeCategory, varTypeInfo.flags);
+					parameterTypeMappingInformation.TypeCategory, varTypeInfo.flags);
 				preCallActions << "\t\tif(" << scriptName << " != nullptr)" << std::endl;
 				preCallActions << "\t\t\t" << argName << " = " << generateGetInternalLine(varTypeInfo.typeName, scriptName, 
-					paramTypeInfo.TypeCategory, varTypeInfo.flags) << ";" << std::endl;
+					parameterTypeMappingInformation.TypeCategory, varTypeInfo.flags) << ";" << std::endl;
 			}
 		}
 			break;
@@ -1166,7 +1219,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const Varia
 		case ::ExportedClassTypeCategory::ReflectableClass:
 		{
 			argName = "tmp" + name;
-			std::string tmpType = getCppVarType(varTypeInfo.typeName, paramTypeInfo.TypeCategory);
+			std::string tmpType = GetCppNativeUnqualifiedTypeName(varTypeInfo.TypeInformation, parameterTypeMappingInformation);
 			std::string scriptType = getScriptInteropType(varTypeInfo.typeName);
 
 			preCallActions << "\t\t" << tmpType << " " << argName;
@@ -1184,17 +1237,17 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const Varia
 				std::string scriptName = "script" + name;
 				
 				preCallActions << generateManagedToScriptObjectLine("\t\t", scriptType, scriptName, name, 
-					paramTypeInfo.TypeCategory, varTypeInfo.flags);
+					parameterTypeMappingInformation.TypeCategory, varTypeInfo.flags);
 				preCallActions << "\t\tif(" << scriptName << " != nullptr)" << std::endl;
 				preCallActions << "\t\t\t" << argName << " = " << generateGetInternalLine(varTypeInfo.typeName, scriptName, 
-					paramTypeInfo.TypeCategory, varTypeInfo.flags) << ";" << std::endl;
+					parameterTypeMappingInformation.TypeCategory, varTypeInfo.flags) << ";" << std::endl;
 			}
 		}
 			break;
 		default: // Some resource or game object type
 		{
 			argName = "tmp" + name;
-			std::string tmpType = getCppVarType(varTypeInfo.typeName, paramTypeInfo.TypeCategory);
+			std::string tmpType = GetCppNativeUnqualifiedTypeName(varTypeInfo.TypeInformation, parameterTypeMappingInformation);
 
 			preCallActions << "\t\t" << tmpType << " " << argName << ";" << std::endl;
 
@@ -1203,7 +1256,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const Varia
 
 			if (returnValue)
 			{
-				postCallActions << generateNativeToScriptObjectLine(paramTypeInfo.TypeCategory, varTypeInfo.flags, scriptName, argName);
+				postCallActions << generateNativeToScriptObjectLine(parameterTypeMappingInformation.TypeCategory, varTypeInfo.flags, scriptName, argName);
 				postCallActions << "\t\tif(" << scriptName << " != nullptr)" << std::endl;
 				postCallActions << "\t\t\t" << name << " = " << scriptName << "->GetManagedInstance();" << std::endl;
 				postCallActions << "\t\telse" << std::endl;
@@ -1211,7 +1264,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const Varia
 			}
 			else if (isOutput(varTypeInfo.flags))
 			{
-				postCallActions << generateNativeToScriptObjectLine(paramTypeInfo.TypeCategory, varTypeInfo.flags, scriptName, argName);
+				postCallActions << generateNativeToScriptObjectLine(parameterTypeMappingInformation.TypeCategory, varTypeInfo.flags, scriptName, argName);
 				postCallActions << "\t\tif(" << scriptName << " != nullptr)" << std::endl;
 				postCallActions << "\t\t\tMonoUtil::ReferenceCopy(" << name << ", " << scriptName << "->GetManagedInstance());" << std::endl;
 				postCallActions << "\t\telse" << std::endl;
@@ -1219,9 +1272,9 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const Varia
 			}
 			else
 			{
-				preCallActions << generateManagedToScriptObjectLine("\t\t", scriptType, scriptName, name, paramTypeInfo.TypeCategory, varTypeInfo.flags);
+				preCallActions << generateManagedToScriptObjectLine("\t\t", scriptType, scriptName, name, parameterTypeMappingInformation.TypeCategory, varTypeInfo.flags);
 				preCallActions << "\t\tif(" << scriptName << " != nullptr)" << std::endl;
-				preCallActions << "\t\t\t" << argName << " = " << generateGetInternalLine(varTypeInfo.typeName, scriptName, paramTypeInfo.TypeCategory, varTypeInfo.flags) << ";" << std::endl;
+				preCallActions << "\t\t\t" << argName << " = " << generateGetInternalLine(varTypeInfo.typeName, scriptName, parameterTypeMappingInformation.TypeCategory, varTypeInfo.flags) << ";" << std::endl;
 			}
 		}
 		break;
@@ -1232,7 +1285,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const Varia
 	else
 	{
 		std::string entryType;
-		switch (paramTypeInfo.TypeCategory)
+		switch (parameterTypeMappingInformation.TypeCategory)
 		{
 		case ::ExportedClassTypeCategory::Primitive:
 		case ::ExportedClassTypeCategory::String:
@@ -1249,16 +1302,10 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const Varia
 			break;
 		}
 
-		std::string argType;
-		
-		if (isVector(varTypeInfo.flags))
-			argType = "Vector<" + getCppVarType(varTypeInfo.typeName, paramTypeInfo.TypeCategory, varTypeInfo.flags, false) + ">";
-		else if(isSmallVector(varTypeInfo.flags))
-			argType = "SmallVector<" + getCppVarType(varTypeInfo.typeName, paramTypeInfo.TypeCategory, varTypeInfo.flags, false) + ", " + std::to_string(varTypeInfo.arraySize) + ">";
-		else
-			argType = getCppVarType(varTypeInfo.typeName, paramTypeInfo.TypeCategory, varTypeInfo.flags, false);
-
+		std::string argType = GetCppNativeQualifiedTypeName(varTypeInfo.TypeInformation, parameterTypeMappingInformation, false);
 		std::string argName = "vec" + name;
+
+		const VariableTypeInformation& arrayElementTypeInformation = varTypeInfo.TypeInformation.AssertGetUnderlyingType();
 
 		preCallActions << "\t\t" << argType << " " << argName;
 		if (isArray(varTypeInfo.flags))
@@ -1280,7 +1327,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const Varia
 			preCallActions << "\t\t\tfor(int i = 0; i < (int)" << arrayName << ".Size(); i++)" << std::endl;
 			preCallActions << "\t\t\t{" << std::endl;
 
-			switch (paramTypeInfo.TypeCategory)
+			switch (parameterTypeMappingInformation.TypeCategory)
 			{
 			case ::ExportedClassTypeCategory::Primitive:
 			case ::ExportedClassTypeCategory::String:
@@ -1294,7 +1341,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const Varia
 			case ::ExportedClassTypeCategory::Enum:
 			{
 				std::string enumType;
-				ParserUtility::MapBuiltinPrimitiveTypeToCppType(paramTypeInfo.EnumUnderlyingType, enumType);
+				ParserUtility::MapBuiltinPrimitiveTypeToCppType(parameterTypeMappingInformation.EnumUnderlyingType, enumType);
 
 				preCallActions << "\t\t\t\t" << argName << "[i] = (" << entryType << ")" << arrayName << ".Get<" << enumType << ">(i);" << std::endl;
 				break;
@@ -1319,17 +1366,17 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const Varia
 			{
 				std::string scriptName = "script" + name;
 
-				preCallActions << generateManagedToScriptObjectLine("\t\t\t\t", entryType, scriptName, arrayName + ".Get<MonoObject*>(i)", paramTypeInfo.TypeCategory, varTypeInfo.flags);
+				preCallActions << generateManagedToScriptObjectLine("\t\t\t\t", entryType, scriptName, arrayName + ".Get<MonoObject*>(i)", parameterTypeMappingInformation.TypeCategory, varTypeInfo.flags);
 				preCallActions << "\t\t\t\tif(" << scriptName << " != nullptr)\n";
 				preCallActions << "\t\t\t\t{\n";
 
-				std::string elemPtrType = getCppVarType(varTypeInfo.typeName, paramTypeInfo.TypeCategory, varTypeInfo.flags);
+				std::string elemPtrType = GetCppNativeQualifiedTypeName(arrayElementTypeInformation, parameterTypeMappingInformation);
 				std::string elemPtrName = "arrayElemPtr" + name;
 
 				preCallActions << "\t\t\t\t\t" << elemPtrType << " " << elemPtrName << " = " << 
-					generateGetInternalLine(varTypeInfo.typeName, scriptName, paramTypeInfo.TypeCategory, varTypeInfo.flags) << ";\n";
+					generateGetInternalLine(varTypeInfo.typeName, scriptName, parameterTypeMappingInformation.TypeCategory, varTypeInfo.flags) << ";\n";
 
-				if(paramTypeInfo.TypeCategory == ::ExportedClassTypeCategory::Class || paramTypeInfo.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
+				if(parameterTypeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Class || parameterTypeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
 				{
 					if(isSrcPointer(varTypeInfo.flags))
 						preCallActions << "\t\t\t\t\t" << argName << "[i] = " << elemPtrName << ".Get();\n";
@@ -1372,7 +1419,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const Varia
 			postCallActions << "\t\tfor(int i = 0; i < arraySize" << name << "; i++)" << std::endl;
 			postCallActions << "\t\t{" << std::endl;
 
-			switch (paramTypeInfo.TypeCategory)
+			switch (parameterTypeMappingInformation.TypeCategory)
 			{
 			case ::ExportedClassTypeCategory::Primitive:
 			case ::ExportedClassTypeCategory::String:
@@ -1383,7 +1430,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const Varia
 			case ::ExportedClassTypeCategory::Enum:
 			{
 				std::string enumType;
-				ParserUtility::MapBuiltinPrimitiveTypeToCppType(paramTypeInfo.EnumUnderlyingType, enumType);
+				ParserUtility::MapBuiltinPrimitiveTypeToCppType(parameterTypeMappingInformation.EnumUnderlyingType, enumType);
 
 				if(isFlagsEnum(varTypeInfo.flags))
 					postCallActions << "\t\t\t" << arrayName << ".Set(i, (" << enumType << ")(uint32_t)" << argName << "[i]);" << std::endl;
@@ -1413,7 +1460,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const Varia
 			{
 				std::string elemName = "arrayElem" + name;
 
-				std::string elemPtrType = getCppVarType(varTypeInfo.typeName, paramTypeInfo.TypeCategory, varTypeInfo.flags);
+				std::string elemPtrType = GetCppNativeQualifiedTypeName(arrayElementTypeInformation, parameterTypeMappingInformation);
 				std::string elemPtrName = "arrayElemPtr" + name;
 
 				postCallActions << "\t\t\t" << elemPtrType << " " << elemPtrName;
@@ -1450,7 +1497,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const Varia
 			{
 				std::string scriptName = "script" + name;
 
-				postCallActions << generateNativeToScriptObjectLine(paramTypeInfo.TypeCategory, varTypeInfo.flags, scriptName, argName + "[i]", "\t\t\t");
+				postCallActions << generateNativeToScriptObjectLine(parameterTypeMappingInformation.TypeCategory, varTypeInfo.flags, scriptName, argName + "[i]", "\t\t\t");
 				postCallActions << "\t\t\tif(" << scriptName << " != nullptr)" << std::endl;
 				postCallActions << "\t\t\t\t" << arrayName << ".Set(i, " << scriptName << "->GetManagedInstance());" << std::endl;
 				postCallActions << "\t\t\telse" << std::endl;
@@ -1473,7 +1520,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const Varia
 
 std::string generateFieldConvertBlock(const std::string& name, const VariableBase& varTypeInfo, bool toInterop, std::stringstream& preActions)
 {
-	TypeMappingInformation paramTypeInfo = GetNativeToScriptTypeMapping(varTypeInfo.TypeInformation);
+	TypeMappingInformation parameterTypeMappingInformation = GetNativeToScriptTypeMapping(varTypeInfo.TypeInformation);
 
 	if (getIsAsyncOp(varTypeInfo.flags))
 	{
@@ -1485,7 +1532,7 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 	{
 		std::string arg;
 
-		switch (paramTypeInfo.TypeCategory)
+		switch (parameterTypeMappingInformation.TypeCategory)
 		{
 		case ::ExportedClassTypeCategory::Primitive:
 		case ::ExportedClassTypeCategory::Enum:
@@ -1577,15 +1624,15 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 			{
 				if(isSrcPointer(varTypeInfo.flags))
 				{
-					std::string tmpType = getCppVarType(varTypeInfo.typeName, paramTypeInfo.TypeCategory);
+					std::string tmpType = GetCppNativeUnqualifiedTypeName(varTypeInfo.TypeInformation, parameterTypeMappingInformation);
 					preActions << "\t\t" << tmpType << " " << arg << ";" << std::endl;
 
 					std::string scriptName = "script" + name;
 					preActions << generateManagedToScriptObjectLine("\t\t", scriptType, scriptName, "value." + name, 
-						paramTypeInfo.TypeCategory, varTypeInfo.flags);
+						parameterTypeMappingInformation.TypeCategory, varTypeInfo.flags);
 					preActions << "\t\tif(" << scriptName << " != nullptr)" << std::endl;
 					preActions << "\t\t\t" << arg << " = " << generateGetInternalLine(varTypeInfo.typeName, scriptName,
-						paramTypeInfo.TypeCategory, varTypeInfo.flags) << ";" << std::endl;
+						parameterTypeMappingInformation.TypeCategory, varTypeInfo.flags) << ";" << std::endl;
 				}
 				else
 					outs() << "Error: Invalid struct member type for \"" << name << "\"\n";
@@ -1605,7 +1652,7 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 				// Need to copy by value
 				if(isSrcValue(varTypeInfo.flags) || isSrcPointer(varTypeInfo.flags))
 				{
-					std::string tmpType = getCppVarType(varTypeInfo.typeName, paramTypeInfo.TypeCategory);
+					std::string tmpType = GetCppNativeUnqualifiedTypeName(varTypeInfo.TypeInformation, parameterTypeMappingInformation);
 					preActions << "\t\t" << tmpType << " " << arg << "copy;\n";
 
 					// Note: Assuming a copy constructor exists
@@ -1626,11 +1673,11 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 			}
 			else
 			{
-				std::string tmpType = getCppVarType(varTypeInfo.typeName, paramTypeInfo.TypeCategory);
+				std::string tmpType = GetCppNativeUnqualifiedTypeName(varTypeInfo.TypeInformation, parameterTypeMappingInformation);
 				preActions << "\t\t" << tmpType << " " << arg << ";" << std::endl;
 
 				std::string scriptName = "script" + name;
-				preActions << generateManagedToScriptObjectLine("\t\t", scriptType, scriptName, "value." + name, paramTypeInfo.TypeCategory, varTypeInfo.flags);
+				preActions << generateManagedToScriptObjectLine("\t\t", scriptType, scriptName, "value." + name, parameterTypeMappingInformation.TypeCategory, varTypeInfo.flags);
 				preActions << "\t\tif(" << scriptName << " != nullptr)" << std::endl;
 				preActions << "\t\t\t" << arg << " = " << scriptName << "->GetInternal();" << std::endl;
 
@@ -1662,7 +1709,7 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 				else
 					argName = "value." + name + ".GetComponent()";
 
-				preActions << generateNativeToScriptObjectLine(paramTypeInfo.TypeCategory, varTypeInfo.flags, scriptName, argName);
+				preActions << generateNativeToScriptObjectLine(parameterTypeMappingInformation.TypeCategory, varTypeInfo.flags, scriptName, argName);
 
 				preActions << "\t\tMonoObject* " << arg << ";\n";
 				preActions << "\t\tif(" << scriptName << " != nullptr)\n";
@@ -1672,12 +1719,12 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 			}
 			else
 			{
-				std::string tmpType = getCppVarType(varTypeInfo.typeName, paramTypeInfo.TypeCategory);
+				std::string tmpType = GetCppNativeUnqualifiedTypeName(varTypeInfo.TypeInformation, parameterTypeMappingInformation);
 				preActions << "\t\t" << tmpType << " " << arg << ";" << std::endl;
 				
-				preActions << generateManagedToScriptObjectLine("\t\t", scriptType, scriptName, "value." + name, paramTypeInfo.TypeCategory, varTypeInfo.flags);
+				preActions << generateManagedToScriptObjectLine("\t\t", scriptType, scriptName, "value." + name, parameterTypeMappingInformation.TypeCategory, varTypeInfo.flags);
 				preActions << "\t\tif(" << scriptName << " != nullptr)\n";
-				preActions << "\t\t\t" << arg << " = " << generateGetInternalLine(varTypeInfo.typeName, scriptName, paramTypeInfo.TypeCategory, varTypeInfo.flags) << ";" << std::endl;
+				preActions << "\t\t\t" << arg << " = " << generateGetInternalLine(varTypeInfo.typeName, scriptName, parameterTypeMappingInformation.TypeCategory, varTypeInfo.flags) << ";" << std::endl;
 			}
 
 			if(!isSrcGHandle(varTypeInfo.flags) && !isSrcRHandle(varTypeInfo.flags))
@@ -1691,7 +1738,7 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 	else
 	{
 		std::string entryType;
-		switch (paramTypeInfo.TypeCategory)
+		switch (parameterTypeMappingInformation.TypeCategory)
 		{
 		case ::ExportedClassTypeCategory::Primitive:
 		case ::ExportedClassTypeCategory::String:
@@ -1708,15 +1755,10 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 			break;
 		}
 
-		std::string argType;
-		if(isVector(varTypeInfo.flags))
-			argType = "Vector<" + getCppVarType(varTypeInfo.typeName, paramTypeInfo.TypeCategory, varTypeInfo.flags, false) + ">";
-		else if(isSmallVector(varTypeInfo.flags))
-			argType = "SmallVector<" + getCppVarType(varTypeInfo.typeName, paramTypeInfo.TypeCategory, varTypeInfo.flags, false) + ", " + std::to_string(varTypeInfo.arraySize) + ">";
-		else
-			argType = getCppVarType(varTypeInfo.typeName, paramTypeInfo.TypeCategory, varTypeInfo.flags, false);
-
+		std::string argType = GetCppNativeQualifiedTypeName(varTypeInfo.TypeInformation, parameterTypeMappingInformation);
 		std::string argName = "vec" + name;
+
+		const VariableTypeInformation& arrayElementTypeInformation = varTypeInfo.TypeInformation.AssertGetUnderlyingType();
 
 		if (!toInterop)
 		{
@@ -1736,7 +1778,7 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 			preActions << "\t\t\tfor(int i = 0; i < (int)" << arrayName << ".Size(); i++)" << std::endl;
 			preActions << "\t\t\t{" << std::endl;
 
-			switch (paramTypeInfo.TypeCategory)
+			switch (parameterTypeMappingInformation.TypeCategory)
 			{
 			case ::ExportedClassTypeCategory::Primitive:
 			case ::ExportedClassTypeCategory::String:
@@ -1750,7 +1792,7 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 			case ::ExportedClassTypeCategory::Enum:
 			{
 				std::string enumType;
-				ParserUtility::MapBuiltinPrimitiveTypeToCppType(paramTypeInfo.EnumUnderlyingType, enumType);
+				ParserUtility::MapBuiltinPrimitiveTypeToCppType(parameterTypeMappingInformation.EnumUnderlyingType, enumType);
 
 				preActions << "\t\t\t\t" << argName << "[i] = (" << entryType << ")" << arrayName << ".get<" << enumType << ">(i);" << std::endl;
 				break;
@@ -1772,18 +1814,18 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 			default: // Some object type
 			{
 				std::string scriptName = "script" + name;
-				preActions << generateManagedToScriptObjectLine("\t\t\t\t", entryType, scriptName, arrayName + ".Get<MonoObject*>(i)", paramTypeInfo.TypeCategory, varTypeInfo.flags);
+				preActions << generateManagedToScriptObjectLine("\t\t\t\t", entryType, scriptName, arrayName + ".Get<MonoObject*>(i)", parameterTypeMappingInformation.TypeCategory, varTypeInfo.flags);
 				
 				preActions << "\t\t\t\tif(" << scriptName << " != nullptr)\n";
 				preActions << "\t\t\t\t{\n";
 
-				std::string elemPtrType = getCppVarType(varTypeInfo.typeName, paramTypeInfo.TypeCategory, varTypeInfo.flags);
+				std::string elemPtrType = GetCppNativeQualifiedTypeName(arrayElementTypeInformation, parameterTypeMappingInformation);
 				std::string elemPtrName = "arrayElemPtr" + name;
 
 				preActions << "\t\t\t\t\t" << elemPtrType << " " << elemPtrName << " = " << 
-					generateGetInternalLine(varTypeInfo.typeName, scriptName, paramTypeInfo.TypeCategory, varTypeInfo.flags) << ";\n";
+					generateGetInternalLine(varTypeInfo.typeName, scriptName, parameterTypeMappingInformation.TypeCategory, varTypeInfo.flags) << ";\n";
 
-				if(paramTypeInfo.TypeCategory == ::ExportedClassTypeCategory::Class || paramTypeInfo.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
+				if(parameterTypeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Class || parameterTypeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
 				{
 					if(isSrcPointer(varTypeInfo.flags))
 						preActions << "\t\t\t\t\t" << argName << "[i] = " << elemPtrName << ".get();\n";
@@ -1823,7 +1865,7 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 			preActions << "\t\tfor(int i = 0; i < arraySize" << name << "; i++)" << std::endl;
 			preActions << "\t\t{" << std::endl;
 
-			switch (paramTypeInfo.TypeCategory)
+			switch (parameterTypeMappingInformation.TypeCategory)
 			{
 			case ::ExportedClassTypeCategory::Primitive:
 			case ::ExportedClassTypeCategory::String:
@@ -1834,7 +1876,7 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 			case ::ExportedClassTypeCategory::Enum:
 			{
 				std::string enumType;
-				ParserUtility::MapBuiltinPrimitiveTypeToCppType(paramTypeInfo.EnumUnderlyingType, enumType);
+				ParserUtility::MapBuiltinPrimitiveTypeToCppType(parameterTypeMappingInformation.EnumUnderlyingType, enumType);
 
 				preActions << "\t\t\t" << arrayName << ".Set(i, (" << enumType << ")value." << name << "[i]);" << std::endl;
 				break;
@@ -1860,7 +1902,7 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 			{
 				std::string elemName = "arrayElem" + name;
 
-				std::string elemPtrType = getCppVarType(varTypeInfo.typeName, paramTypeInfo.TypeCategory, varTypeInfo.flags);
+				std::string elemPtrType = GetCppNativeQualifiedTypeName(arrayElementTypeInformation, parameterTypeMappingInformation);
 				std::string elemPtrName = "arrayElemPtr" + name;
 
 				preActions << "\t\t\t" << elemPtrType << " " << elemPtrName;
@@ -1897,7 +1939,7 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 			{
 				std::string scriptName = "script" + name;
 
-				preActions << generateNativeToScriptObjectLine(paramTypeInfo.TypeCategory, varTypeInfo.flags, scriptName, "value." + name + "[i]", "\t\t\t");
+				preActions << generateNativeToScriptObjectLine(parameterTypeMappingInformation.TypeCategory, varTypeInfo.flags, scriptName, "value." + name + "[i]", "\t\t\t");
 				preActions << "\t\t\t\tif(" << scriptName << " != nullptr)\n";
 				preActions << "\t\t\t\t" << arrayName << ".Set(i, " << scriptName << "->GetManagedInstance());" << std::endl;
 				preActions << "\t\t\telse\n";
@@ -2137,15 +2179,15 @@ std::string generateCppMethodBody(const ClassInfo& classInfo, const MethodInfo& 
 	bool isExternal = (methodInfo.flags & (int)MethodFlags::External) != 0;
 
 	bool returnAsParameter = false;
-	TypeMappingInformation returnTypeInfo;
+	TypeMappingInformation returnTypeMappingInformation;
 	if (!methodInfo.returnInfo.typeName.empty() && !isCtor)
 	{
-		returnTypeInfo = GetNativeToScriptTypeMapping(methodInfo.returnInfo.TypeInformation);
-		if (!canBeReturned(returnTypeInfo.TypeCategory, methodInfo.returnInfo.flags))
+		returnTypeMappingInformation = GetNativeToScriptTypeMapping(methodInfo.returnInfo.TypeInformation);
+		if (!canBeReturned(returnTypeMappingInformation.TypeCategory, methodInfo.returnInfo.flags))
 			returnAsParameter = true;
 		else
 		{
-			std::string returnType = getInteropCppVarType(methodInfo.returnInfo.typeName, returnTypeInfo.TypeCategory, methodInfo.returnInfo.flags);
+			std::string returnType = GetCppInteropQualifiedTypeName(methodInfo.returnInfo.TypeInformation, returnTypeMappingInformation);
 			postCallActions << "\t\t" << returnType << " __output;" << std::endl;
 
 			std::string argName = generateMethodBodyBlockForParam("__output", methodInfo.returnInfo, true, true, preCallActions, postCallActions);
@@ -2260,14 +2302,14 @@ std::string generateCppMethodBody(const ClassInfo& classInfo, const MethodInfo& 
 		if (!methodInfo.returnInfo.typeName.empty())
 		{
 			// Dereference input if needed
-			if (isClassType(returnTypeInfo.TypeCategory) && !isArrayOrVector(methodInfo.returnInfo.flags))
+			if (isClassType(returnTypeMappingInformation.TypeCategory) && !isArrayOrVector(methodInfo.returnInfo.flags))
 			{
 				if ((isSrcPointer(methodInfo.returnInfo.flags) || isSrcReference(methodInfo.returnInfo.flags) || 
 					isSrcValue(methodInfo.returnInfo.flags)) && !isSrcSPtr(methodInfo.returnInfo.flags))
 					returnAssignment = "*" + returnAssignment;
 			}
 
-			call = getAsCppToInteropArgument(methodCall.str(), returnTypeInfo.TypeCategory, methodInfo.returnInfo.flags, "return");
+			call = getAsCppToInteropArgument(methodCall.str(), returnTypeMappingInformation.TypeCategory, methodInfo.returnInfo.flags, "return");
 		}
 		else
 			call = methodCall.str();
@@ -2304,12 +2346,12 @@ std::string generateCppFieldGetterBody(const ClassInfo& classInfo, const FieldIn
 	bool isStatic = (methodInfo.flags & (int)MethodFlags::Static) != 0;
 
 	bool returnAsParameter = false;
-	TypeMappingInformation returnTypeInfo = GetNativeToScriptTypeMapping(methodInfo.returnInfo.TypeInformation);
-	if (!canBeReturned(returnTypeInfo.TypeCategory, methodInfo.returnInfo.flags))
+	TypeMappingInformation returnTypeMappingInformation = GetNativeToScriptTypeMapping(methodInfo.returnInfo.TypeInformation);
+	if (!canBeReturned(returnTypeMappingInformation.TypeCategory, methodInfo.returnInfo.flags))
 		returnAsParameter = true;
 	else
 	{
-		std::string returnType = getInteropCppVarType(methodInfo.returnInfo.typeName, returnTypeInfo.TypeCategory, methodInfo.returnInfo.flags);
+		std::string returnType = GetCppInteropQualifiedTypeName(methodInfo.returnInfo.TypeInformation, returnTypeMappingInformation);
 		postCallActions << "\t\t" << returnType << " __output;" << std::endl;
 
 		std::string argName = generateMethodBodyBlockForParam("__output", methodInfo.returnInfo, true, true, preCallActions, postCallActions);
@@ -2341,14 +2383,14 @@ std::string generateCppFieldGetterBody(const ClassInfo& classInfo, const FieldIn
 	}
 
 	// Dereference input if needed
-	if (isClassType(returnTypeInfo.TypeCategory) && !isArrayOrVector(methodInfo.returnInfo.flags))
+	if (isClassType(returnTypeMappingInformation.TypeCategory) && !isArrayOrVector(methodInfo.returnInfo.flags))
 	{
 		if ((isSrcPointer(methodInfo.returnInfo.flags) || isSrcReference(methodInfo.returnInfo.flags) || 
 			isSrcValue(methodInfo.returnInfo.flags)) && !isSrcSPtr(methodInfo.returnInfo.flags))
 			returnAssignment = "*" + returnAssignment;
 	}
 
-	std::string access = getAsCppToInteropArgument(fieldAccess.str(), returnTypeInfo.TypeCategory, methodInfo.returnInfo.flags, "return");
+	std::string access = getAsCppToInteropArgument(fieldAccess.str(), returnTypeMappingInformation.TypeCategory, methodInfo.returnInfo.flags, "return");
 
 	output << "\t\t" << returnAssignment << access << ";\n";
 
@@ -2462,7 +2504,7 @@ std::string generateCppEventCallbackBody(const MethodInfo& eventInfo, bool isMod
 	return output.str();
 }
 
-std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappingInformation& typeInfo)
+std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappingInformation& typeMappingInformation)
 {
 	bool inEditor = hasAPIBED (classInfo.api);
 	bool isBase = (classInfo.flags & (int)ClassFlags::IsBase) != 0;
@@ -2489,7 +2531,7 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 	else
 		exportAttr = sEditorExportMacro;
 
-	std::string wrappedDataType = getCppVarType(classInfo.name, typeInfo.TypeCategory);
+	std::string wrappedDataType = GetCppNativeUnqualifiedTypeName(classInfo.name, typeMappingInformation);
 	std::string interopBaseClassName;
 
 	std::stringstream output;
@@ -2497,7 +2539,7 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 
 	// Generate a common base class if required
 	// (GUIElements already have one by default)
-	if(typeInfo.TypeCategory != ::ExportedClassTypeCategory::GUIElement)
+	if(typeMappingInformation.TypeCategory != ::ExportedClassTypeCategory::GUIElement)
 	{
 		if (isBase)
 		{
@@ -2508,13 +2550,13 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 
 			if (isRootBase)
 			{
-				if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Class)
+				if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Class)
 					output << "ScriptObjectBase";
-				if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
+				if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
 					output << "ScriptReflectableBase";
-				else if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Component)
+				else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Component)
 					output << "ScriptComponentBase";
-				else if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource)
+				else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Resource)
 					output << "ScriptResourceBase";
 			}
 			else
@@ -2531,12 +2573,12 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 
 			if(!isModule)
 			{
-				if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
+				if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
 				{
 					output << std::endl;
 					output << "\t\t" << wrappedDataType << " GetInternal() const;\n";
 				}
-				else if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Class)
+				else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Class)
 				{
 					output << std::endl;
 					output << "\t\t" << wrappedDataType << " GetInternal() const { return mInternal; }" << std::endl;
@@ -2565,13 +2607,13 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 	std::string interopClassName = getScriptInteropType(classInfo.name);
 	output << interopClassName << " : public ";
 
-	if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource)
+	if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Resource)
 		output << "TScriptResource<" << interopClassName << ", " << classInfo.name;
-	else if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Component)
+	else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Component)
 		output << "TScriptComponent<" << interopClassName << ", " << classInfo.name;
-	else if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
+	else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
 		output << "TScriptGUIElement<" << interopClassName;
-	else if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
+	else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
 		output << "TScriptReflectable<" << interopClassName << ", " << classInfo.name;
 	else // Class
 		output << "ScriptObject<" << interopClassName;
@@ -2586,9 +2628,9 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 	output << "\tpublic:" << std::endl;
 
 	if (!inEditor)
-		output << "\t\tSCRIPT_OBJ(ENGINE_ASSEMBLY, ENGINE_NS, \"" << typeInfo.ScriptTypeName << "\")" << std::endl;
+		output << "\t\tSCRIPT_OBJ(ENGINE_ASSEMBLY, ENGINE_NS, \"" << typeMappingInformation.ScriptTypeName << "\")" << std::endl;
 	else
-		output << "\t\tSCRIPT_OBJ(EDITOR_ASSEMBLY, EDITOR_NS, \"" << typeInfo.ScriptTypeName << "\")" << std::endl;
+		output << "\t\tSCRIPT_OBJ(EDITOR_ASSEMBLY, EDITOR_NS, \"" << typeMappingInformation.ScriptTypeName << "\")" << std::endl;
 
 	output << std::endl;
 
@@ -2597,7 +2639,7 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 	{
 		output << "\t\t" << interopClassName << "(MonoObject* managedInstance, ";
 
-		if (typeInfo.TypeCategory != ::ExportedClassTypeCategory::GUIElement)
+		if (typeMappingInformation.TypeCategory != ::ExportedClassTypeCategory::GUIElement)
 			output << "const " << wrappedDataType << "& value";
 		else
 			output << wrappedDataType << " value";
@@ -2609,7 +2651,7 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 
 	output << std::endl;
 
-	if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Class && !isModule)
+	if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Class && !isModule)
 	{
 		// getInternal() method (handle types have getHandle() implemented by their base type)
 		if (isBase || !classInfo.baseClass.empty())
@@ -2618,7 +2660,7 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 			output << "\t\t" << wrappedDataType << " GetInternal() const { return mInternal; }" << std::endl;
 	}
 
-	if(isClassType(typeInfo.TypeCategory) && !isModule)
+	if(isClassType(typeMappingInformation.TypeCategory) && !isModule)
 	{
 		// getManagedInstance() method (needed for events)
 		if (!classInfo.eventInfos.empty())
@@ -2629,7 +2671,7 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 		output << std::endl;
 	}
 
-	if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource)
+	if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Resource)
 	{
 		// createInstance() method required by script resource manager
 		output << "\t\tstatic MonoObject* CreateInstance();" << std::endl;
@@ -2647,7 +2689,7 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 	output << "\tprivate:" << std::endl;
 
 	// Handle (if required)
-	if (isClassType(typeInfo.TypeCategory))
+	if (isClassType(typeMappingInformation.TypeCategory))
 	{
 		if (!classInfo.eventInfos.empty())
 			output << "\t\tuint32_t mGCHandle = 0;\n\n";
@@ -2665,7 +2707,7 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 		output << std::endl;
 
 	// Data member
-	if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Class && !isModule && classInfo.baseClass.empty() && !isBase)
+	if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Class && !isModule && classInfo.baseClass.empty() && !isBase)
 	{
 		output << "\t\t" << wrappedDataType << " mInternal;" << std::endl;
 		output << std::endl;
@@ -2702,7 +2744,7 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 	std::string interopClassThisPtrType;
 	if (isBase)
 	{
-		if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
+		if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
 			interopClassThisPtrType = "ScriptGUIElementBaseTBase";
 		else
 			interopClassThisPtrType = interopBaseClassName;
@@ -2711,7 +2753,7 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 		interopClassThisPtrType = interopClassName;
 
 	// Internal_GetRef interop method
-	if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource)
+	if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Resource)
 		output << "\t\tstatic MonoObject* InternalGetRef(" << interopClassThisPtrType << "* thisPtr);\n\n";
 
 	for (auto& methodInfo : classInfo.ctorInfos)
@@ -2740,7 +2782,7 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 	return output.str();
 }
 
-std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappingInformation& typeInfo)
+std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappingInformation& typeMappingInformation)
 {
 	bool isBase = (classInfo.flags & (int)ClassFlags::IsBase) != 0;
 	bool isModule = (classInfo.flags & (int)ClassFlags::IsModule) != 0;
@@ -2757,11 +2799,11 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 	}
 
 	std::string interopClassName = getScriptInteropType(classInfo.name);
-	std::string wrappedDataType = getCppVarType(classInfo.name, typeInfo.TypeCategory);
+	std::string wrappedDataType = GetCppNativeUnqualifiedTypeName(classInfo.name, typeMappingInformation);
 
 	std::string interopBaseClassName;
 
-	if(typeInfo.TypeCategory != ::ExportedClassTypeCategory::GUIElement)
+	if(typeMappingInformation.TypeCategory != ::ExportedClassTypeCategory::GUIElement)
 	{
 		if (isBase)
 			interopBaseClassName = getScriptInteropType(classInfo.name) + "Base";
@@ -2772,7 +2814,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 	std::stringstream output;
 	output << generateCppApiCheckBegin(classInfo.api);
 
-	if (isBase && typeInfo.TypeCategory != ::ExportedClassTypeCategory::GUIElement)
+	if (isBase && typeMappingInformation.TypeCategory != ::ExportedClassTypeCategory::GUIElement)
 	{
 		// Base class constructor
 		output << "\t" << interopBaseClassName << "::" << interopBaseClassName << "(MonoObject* managedInstance)\n";
@@ -2781,13 +2823,13 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 		bool isRootBase = classInfo.baseClass.empty();
 		if (isRootBase)
 		{
-			if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Class)
+			if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Class)
 				output << "ScriptObjectBase";
-			if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
+			if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
 				output << "ScriptReflectableBase";
-			else if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Component)
+			else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Component)
 				output << "ScriptComponentBase";
-			else if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource)
+			else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Resource)
 				output << "ScriptResourceBase";
 		}
 		else
@@ -2801,7 +2843,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 		output << "\n";
 
 		// Base class getInternal() method
-		if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
+		if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
 		{
 			output << "\t" << wrappedDataType << " " << interopBaseClassName << "::" << "GetInternal() const\n";
 			output << "\t{\n";
@@ -2845,7 +2887,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 	{
 		output << "\t" << interopClassName << "::" << interopClassName << "(MonoObject* managedInstance, ";
 
-		if (typeInfo.TypeCategory != ::ExportedClassTypeCategory::GUIElement)
+		if (typeMappingInformation.TypeCategory != ::ExportedClassTypeCategory::GUIElement)
 			output << "const " << wrappedDataType << "& value";
 		else
 			output << wrappedDataType << " value";
@@ -2857,13 +2899,13 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 
 	output << "\t\t:";
 
-	if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource)
+	if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Resource)
 		output << "TScriptResource(managedInstance, value)";
-	else if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Component)
+	else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Component)
 		output << "TScriptComponent(managedInstance, value)";
-	else if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
+	else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
 		output << "TScriptGUIElement(managedInstance, value)";
-	else if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
+	else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
 	{
 		if(!isModule)
 			output << "TScriptReflectable(managedInstance, value)";
@@ -2880,7 +2922,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 	output << std::endl;
 	output << "\t{" << std::endl;
 
-	if (isClassType(typeInfo.TypeCategory))
+	if (isClassType(typeMappingInformation.TypeCategory))
 	{
 		if (!classInfo.eventInfos.empty())
 			output << "\t\tmGCHandle = MonoUtil::NewWeakGcHandle(managedInstance);\n";
@@ -2922,7 +2964,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 	output << "\t}" << std::endl;
 	output << std::endl;
 
-	if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Class)
+	if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Class)
 	{
 		// getInternal method
 		if (isBase || !classInfo.baseClass.empty())
@@ -2934,7 +2976,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 		}
 	}
 
-	if (isClassType(typeInfo.TypeCategory) && !isModule)
+	if (isClassType(typeMappingInformation.TypeCategory) && !isModule)
 	{
 		// getManagedInstance() method (needed for events)
 		if (!classInfo.eventInfos.empty())
@@ -2951,7 +2993,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 	output << "\t{" << std::endl;
 
 	// Internal_GetRef interop method
-	if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource)
+	if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Resource)
 	{
 		output << "\t\tmetaData.ScriptClass->AddInternalCall(\"Internal_GetRef\", (void*)&" <<
 			interopClassName << "::InternalGetRef);\n";
@@ -3039,7 +3081,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 	output << std::endl;
 
 	// create() or createInstance() methods
-	if ((isClassType(typeInfo.TypeCategory) && !isModule) || typeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource)
+	if ((isClassType(typeMappingInformation.TypeCategory) && !isModule) || typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Resource)
 	{
 		std::stringstream ctorSignature;
 		std::stringstream ctorParamsInit;
@@ -3064,7 +3106,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 		ctorParamsInit << " };" << std::endl;
 		ctorParamsInit << std::endl;
 
-		if (isClassType(typeInfo.TypeCategory))
+		if (isClassType(typeMappingInformation.TypeCategory))
 		{
 			output << "\tMonoObject* " << interopClassName << "::Create(const " << wrappedDataType << "& value)" << std::endl;
 			output << "\t{" << std::endl;
@@ -3078,7 +3120,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 
 			output << "\t}" << std::endl;
 		}
-		else if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource)
+		else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Resource)
 		{
 			output << "\t MonoObject*" << interopClassName << "::CreateInstance()" << std::endl;
 			output << "\t{" << std::endl;
@@ -3157,7 +3199,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 	std::string interopClassThisPtrType;
 	if (isBase)
 	{
-		if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
+		if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
 			interopClassThisPtrType = "ScriptGUIElementBaseTBase";
 		else
 			interopClassThisPtrType = interopBaseClassName;
@@ -3166,7 +3208,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 		interopClassThisPtrType = interopClassName;
 
 	// Internal_GetRef interop method
-	if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource)
+	if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Resource)
 	{
 		output << "\tMonoObject* " << interopClassName << "::InternalGetRef(" << interopClassThisPtrType << "* thisPtr)\n";
 		output << "\t{\n";
@@ -3184,7 +3226,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 
 		output << generateCppApiCheckBegin(methodInfo.api);
 		output << "\t" << generateCppMethodSignature(methodInfo, interopClassThisPtrType, interopClassName, isModule) << std::endl;
-		output << generateCppMethodBody(classInfo, methodInfo, classInfo.name, interopClassName, typeInfo.TypeCategory, isModule);
+		output << generateCppMethodBody(classInfo, methodInfo, classInfo.name, interopClassName, typeMappingInformation.TypeCategory, isModule);
 		output << generateApiCheckEnd(methodInfo.api);
 
 		if ((I + 1) != classInfo.methodInfos.end())
@@ -3204,7 +3246,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 
 		output << generateCppApiCheckBegin(methodInfo.api);
 		output << "\t" << generateCppMethodSignature(methodInfo, interopClassThisPtrType, interopClassName, isModule) << std::endl;
-		output << generateCppMethodBody(classInfo, methodInfo, classInfo.name, interopClassName, typeInfo.TypeCategory, isModule);
+		output << generateCppMethodBody(classInfo, methodInfo, classInfo.name, interopClassName, typeMappingInformation.TypeCategory, isModule);
 		output << generateApiCheckEnd(methodInfo.api);
 
 		if ((I + 1) != classInfo.methodInfos.end())
@@ -3237,14 +3279,14 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 
 		output << generateCppApiCheckBegin(getterInfo->api);
 		output << "\t" << generateCppMethodSignature(*getterInfo, interopClassThisPtrType, interopClassName, isModule) << std::endl;
-		output << generateCppFieldGetterBody(classInfo, *I, *getterInfo, typeInfo.TypeCategory, isModule);
+		output << generateCppFieldGetterBody(classInfo, *I, *getterInfo, typeMappingInformation.TypeCategory, isModule);
 		output << generateApiCheckEnd(getterInfo->api);
 		
 		output << std::endl;
 
 		output << generateCppApiCheckBegin(setterInfo->api);
 		output << "\t" << generateCppMethodSignature(*setterInfo, interopClassThisPtrType, interopClassName, isModule) << std::endl;
-		output << generateCppFieldSetterBody(classInfo, *I, *setterInfo, typeInfo.TypeCategory, isModule);
+		output << generateCppFieldSetterBody(classInfo, *I, *setterInfo, typeMappingInformation.TypeCategory, isModule);
 		output << generateApiCheckEnd(setterInfo->api);
 			
 		if ((I + 1) != classInfo.fieldInfos.end())
@@ -3270,10 +3312,10 @@ std::string generateCppStructHeader(const StructInfo& structInfo)
 
 		for(auto& fieldInfo : structInfo.fields)
 		{
-			TypeMappingInformation fieldTypeInfo = GetNativeToScriptTypeMapping(fieldInfo.TypeInformation);
+			TypeMappingInformation fieldTypeMappingInformation = GetNativeToScriptTypeMapping(fieldInfo.TypeInformation);
 
 			output << "\t\t";
-			output << getInteropCppVarType(fieldInfo.typeName, fieldTypeInfo.TypeCategory, fieldInfo.flags, true);
+			output << GetCppInteropQualifiedTypeName(fieldInfo.TypeInformation, fieldTypeMappingInformation, true);
 			output << " " << fieldInfo.Name << ";\n";
 		}
 
@@ -4175,9 +4217,8 @@ std::string generateCSStruct(StructInfo& input)
 		{
 			const VariableInformation& fieldInfo = *I;
 
-			TypeMappingInformation typeInfo = GetNativeToScriptTypeMapping(fieldInfo.TypeInformation);
-
-			if (!isValidStructType(typeInfo, fieldInfo.flags))
+			TypeMappingInformation typeMappingInformation = GetNativeToScriptTypeMapping(fieldInfo.TypeInformation);
+			if (!isValidStructType(typeMappingInformation, fieldInfo.flags))
 			{
 				// We report the error during field generation, as it checks for the same condition
 				continue;
@@ -4197,7 +4238,7 @@ std::string generateCSStruct(StructInfo& input)
 				if (!fieldInfo.DefaultValue.empty())
 					defaultValue = generateCSDefaultValueAssignment(fieldInfo);
 				else
-					defaultValue = getDefaultValue(fieldInfo.typeName, fieldInfo.flags, typeInfo);
+					defaultValue = GetDefaultValueForType(fieldInfo.TypeInformation, typeMappingInformation);
 
 				output << "\t\t\t" << thisPtr << "." << fieldName << " = " << defaultValue << ";" << std::endl;
 			}

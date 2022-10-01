@@ -123,6 +123,22 @@ struct VariableTypeInformation
 	/** Returns true if the variable type is a non-const pointer or reference, which is recognized as a parameter output. */
 	bool IsOutputParameter() const { return (IsQualifierFlagSet(VariableQualifierFlags::IsPointer) || IsQualifierFlagSet(VariableQualifierFlags::IsReference)) && !IsQualifierFlagSet(VariableQualifierFlags::IsConst); }
 
+	/** Checks if the type category of the vector a native array, Vector, or SmallVector. */
+	bool IsArrayOrVector() const
+	{
+		return TypeCategory == VariableTypeCategory::Array || TypeCategory == VariableTypeCategory::SmallVector || TypeCategory == VariableTypeCategory::Vector;
+	}
+
+	/** Returns the underlying type. Asserts if the underlying type doesn't exist. */
+	const VariableTypeInformation& AssertGetUnderlyingType() const
+	{
+		assert(UnderlyingType != nullptr);
+		return *UnderlyingType;
+	}
+
+	/** If this type wraps another type, returns the wrapped type name. Otherwise, returns the name of this type. If there are multiple nested wrapped types this only returns the first one. */
+	const std::string& GetWrappedOrSelfTypeName() const;
+
 	VariableTypeCategory TypeCategory = VariableTypeCategory::UserType;
 	std::string TypeName;
 	std::unique_ptr<VariableTypeInformation> UnderlyingType;
@@ -170,6 +186,31 @@ inline void VariableTypeInformation::UnsetParameterFlag(enum ParameterFlags flag
 
 	if(recursive && UnderlyingType)
 		UnderlyingType->UnsetParameterFlag(flags, true);
+}
+
+inline const std::string& VariableTypeInformation::GetWrappedOrSelfTypeName() const
+{
+	switch(TypeCategory)
+	{
+	default:
+	case VariableTypeCategory::UserType: 
+	case VariableTypeCategory::Primitive: 
+	case VariableTypeCategory::String: 
+	case VariableTypeCategory::WString:
+	case VariableTypeCategory::MonoObject: 
+	case VariableTypeCategory::Path:
+		return TypeName;
+	case VariableTypeCategory::Vector:
+	case VariableTypeCategory::SmallVector:
+	case VariableTypeCategory::Array:
+	case VariableTypeCategory::SharedPointer:
+	case VariableTypeCategory::ResourceHandle:
+	case VariableTypeCategory::GameObjectHandle:
+	case VariableTypeCategory::Flags:
+	case VariableTypeCategory::ComponentOrActor:
+	case VariableTypeCategory::AsyncOp:
+		return AssertGetUnderlyingType().TypeName;
+	}
 }
 
 enum class TypeFlags // TODO - Ideally this is split up into types and qualifiers
