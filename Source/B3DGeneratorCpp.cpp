@@ -108,103 +108,64 @@ std::string GetCppInteropQualifiedTypeName(const VariableTypeInformation& typeIn
 /**
  * Returns a type name for the C++ native type representing the type in @p typeInformation.
  *
- * @param	typeInformation				Information about the native type to generate the type name for.
- * @param	typeMappingInformation		Mapping of the provided type in script.
- * @param	ignoreQualifiers			If true, pointer, reference and const qualifiers will be ignored.
- * @param	assumeDefaultTypes			TODO - Only false for arrays, vectors and events. This should be removed and deduced from type infomration instead
+ * @param	typeInformation					Information about the native type to generate the type name for.
+ * @param	typeMappingInformation			Mapping of the provided type in script.
+ * @param	wrapClassTypesInSharedPointer	If true, all class types will be wrapped as a Shared<T>.
  */
-std::string GetCppNativeTypeName(const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation, bool ignoreQualifiers, bool assumeDefaultTypes = true)
+std::string GetCppNativeQualifiedTypeName(const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation, bool wrapClassTypesInSharedPointer = true)
 {
 	const VariableTypeInformation* currentTypeInformation = &typeInformation;
 
-	std::stringstream output;
 	if (typeInformation.TypeCategory == VariableTypeCategory::Vector)
-	{
-		output << "Vector<";
-		currentTypeInformation = &typeInformation.AssertGetUnderlyingType();
-	}
-	else if(typeInformation.TypeCategory == VariableTypeCategory::SmallVector)
-	{
-		output << "SmallVector<";
-		currentTypeInformation = &typeInformation.AssertGetUnderlyingType();
-	}
-	else if(typeInformation.TypeCategory == VariableTypeCategory::Array)
-	{
-		currentTypeInformation = &typeInformation.AssertGetUnderlyingType();
-	}
-
-	if(currentTypeInformation->TypeCategory == VariableTypeCategory::ComponentOrActor)
-	{
-		currentTypeInformation = &currentTypeInformation->AssertGetUnderlyingType();
-	}
+		return "Vector<" + GetCppNativeQualifiedTypeName(typeInformation.AssertGetUnderlyingType(), typeMappingInformation, wrapClassTypesInSharedPointer) + ">";
+	else if (typeInformation.TypeCategory == VariableTypeCategory::SmallVector)
+		return "SmallVector<" + GetCppNativeQualifiedTypeName(typeInformation.AssertGetUnderlyingType(), typeMappingInformation, wrapClassTypesInSharedPointer) + ", " + std::to_string(typeInformation.ArraySize) + ">";
+	if (typeInformation.TypeCategory == VariableTypeCategory::AsyncOp)
+		return "TAsyncOp<" + GetCppNativeQualifiedTypeName(typeInformation.AssertGetUnderlyingType(), typeMappingInformation, wrapClassTypesInSharedPointer) + ">";
+	else if (typeInformation.TypeCategory == VariableTypeCategory::Array || typeInformation.TypeCategory == VariableTypeCategory::ComponentOrActor)
+		return GetCppNativeQualifiedTypeName(typeInformation.AssertGetUnderlyingType(), typeMappingInformation, wrapClassTypesInSharedPointer);
 
 	const std::string& typeName = currentTypeInformation->GetWrappedOrSelfTypeName();
 
 	if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Resource)
-		output << "ResourceHandle<" << typeName << ">";
+		return "ResourceHandle<" + typeName + ">";
 	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::SceneObject || typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Component)
-		output << "GameObjectHandle<" << typeName << ">";
+		return "GameObjectHandle<" + typeName + ">";
 	else if (isClassType(typeMappingInformation.TypeCategory))
 	{
-		if(assumeDefaultTypes || currentTypeInformation->TypeCategory == VariableTypeCategory::SharedPointer)
-			output << "SPtr<" << typeName << ">";
+		if(wrapClassTypesInSharedPointer || currentTypeInformation->TypeCategory == VariableTypeCategory::SharedPointer)
+			return "SPtr<" + typeName + ">";
 		else
 		{
-			if(currentTypeInformation->IsQualifierFlagSet(VariableQualifierFlags::IsPointer) && !ignoreQualifiers)
-				output << typeName << "*";
-			else if(currentTypeInformation->IsQualifierFlagSet(VariableQualifierFlags::IsReference) && !ignoreQualifiers)
-				output << typeName << "&";
+			if(currentTypeInformation->IsQualifierFlagSet(VariableQualifierFlags::IsPointer))
+				return typeName + "*";
+			else if(currentTypeInformation->IsQualifierFlagSet(VariableQualifierFlags::IsReference))
+				return typeName + "&";
 			else
-				output << typeName;
+				return typeName;
 		}
 	}
 	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::String)
-		output << "String";
+		return "String";
 	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::WString)
-		output << "WString";
+		return "WString";
 	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Path)
-		output << "Path";
+		return "Path";
 	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Enum && currentTypeInformation->TypeCategory == VariableTypeCategory::Flags)
-		output << "Flags<" << typeName << ">";
+		return "Flags<" + typeName + ">";
 	else if(typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GUIElement)
-		output << typeName << "*";
+		return typeName + "*";
 	else
-		output << typeName;
-
-	if (typeInformation.TypeCategory == VariableTypeCategory::Vector)
-		output << ">";
-	else if(typeInformation.TypeCategory == VariableTypeCategory::SmallVector)
-		output << ", " << typeInformation.ArraySize << ">";
-
-	return output.str();
+		return typeName;
 }
 
-/**
- * Returns a qualified name for the C++ native type representing the type in @p typeInformation.
- *
- * @param	typeInformation				Information about the native type to generate the type name for.
- * @param	typeMappingInformation		Mapping of the provided type in script.
- * @param	assumeDefaultTypes			TODO - Only false for arrays, vectors and events. This should be removed and deduced from type infomration instead
- */
-std::string GetCppNativeQualifiedTypeName(const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation, bool assumeDefaultTypes = true)
-{
-	return GetCppNativeTypeName(typeInformation, typeMappingInformation, false, assumeDefaultTypes);
-}
-
-/** Same as GetCppQualifiedTypeName, except it doesn't include any qualifiers (such as pointers, references, type wrappers, etc.) and just returns a pure type name. */
-std::string GetCppNativeUnqualifiedTypeName(const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation, bool assumeDefaultTypes = true)
-{
-	// TODO - Check is the unqualified version even necessary?
-	return GetCppNativeTypeName(typeInformation, typeMappingInformation, true, assumeDefaultTypes);
-}
-
-/** Same as GetCppQualifiedTypeName, except it doesn't include any qualifiers (such as pointers, references, type wrappers, etc.) and just returns a pure type name. */
-std::string GetCppNativeUnqualifiedTypeName(const std::string& typeName, const TypeMappingInformation& typeMappingInformation, bool assumeDefaultTypes = true)
+/** Same as GetCppQualifiedTypeName, except the only type information used is the type name. */
+std::string GetCppNativeQualifiedTypeName(const std::string& typeName, const TypeMappingInformation& typeMappingInformation, bool wrapClassTypesInSharedPointer = true)
 {
 	VariableTypeInformation typeInformation;
 	typeInformation.TypeName = typeName;
 
-	return GetCppNativeTypeName(typeInformation, typeMappingInformation, true, assumeDefaultTypes);
+	return GetCppNativeQualifiedTypeName(typeInformation, typeMappingInformation, wrapClassTypesInSharedPointer);
 }
 
 std::string getCSVarType(const std::string& typeName, ::ExportedClassTypeCategory type, int flags, bool paramPrefixes,
@@ -923,9 +884,10 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const Varia
 		if (!isArrayOrVector(varTypeInfo.flags))
 		{
 			argName = "tmp" + name;
+			const std::string asyncOpType = GetCppNativeQualifiedTypeName(varTypeInfo.TypeInformation, parameterTypeMappingInformation);
 			argType = GetCppNativeQualifiedTypeName(asyncOpUnderlyingTypeInformation, parameterTypeMappingInformation);
 
-			preCallActions << "\t\tTAsyncOp<" << argType << "> " << argName << ";\n"; // TODO - Generate this directly in GetCppNativeQualifiedName?
+			preCallActions << "\t\t" << asyncOpType << " " << argName << ";\n";
 		}
 		else
 		{
@@ -1219,7 +1181,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const Varia
 		case ::ExportedClassTypeCategory::ReflectableClass:
 		{
 			argName = "tmp" + name;
-			std::string tmpType = GetCppNativeUnqualifiedTypeName(varTypeInfo.TypeInformation, parameterTypeMappingInformation);
+			std::string tmpType = GetCppNativeQualifiedTypeName(varTypeInfo.TypeInformation, parameterTypeMappingInformation);
 			std::string scriptType = getScriptInteropType(varTypeInfo.typeName);
 
 			preCallActions << "\t\t" << tmpType << " " << argName;
@@ -1247,7 +1209,7 @@ std::string generateMethodBodyBlockForParam(const std::string& name, const Varia
 		default: // Some resource or game object type
 		{
 			argName = "tmp" + name;
-			std::string tmpType = GetCppNativeUnqualifiedTypeName(varTypeInfo.TypeInformation, parameterTypeMappingInformation);
+			std::string tmpType = GetCppNativeQualifiedTypeName(varTypeInfo.TypeInformation, parameterTypeMappingInformation);
 
 			preCallActions << "\t\t" << tmpType << " " << argName << ";" << std::endl;
 
@@ -1624,7 +1586,7 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 			{
 				if(isSrcPointer(varTypeInfo.flags))
 				{
-					std::string tmpType = GetCppNativeUnqualifiedTypeName(varTypeInfo.TypeInformation, parameterTypeMappingInformation);
+					std::string tmpType = GetCppNativeQualifiedTypeName(varTypeInfo.TypeInformation, parameterTypeMappingInformation);
 					preActions << "\t\t" << tmpType << " " << arg << ";" << std::endl;
 
 					std::string scriptName = "script" + name;
@@ -1652,7 +1614,7 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 				// Need to copy by value
 				if(isSrcValue(varTypeInfo.flags) || isSrcPointer(varTypeInfo.flags))
 				{
-					std::string tmpType = GetCppNativeUnqualifiedTypeName(varTypeInfo.TypeInformation, parameterTypeMappingInformation);
+					std::string tmpType = GetCppNativeQualifiedTypeName(varTypeInfo.TypeInformation, parameterTypeMappingInformation);
 					preActions << "\t\t" << tmpType << " " << arg << "copy;\n";
 
 					// Note: Assuming a copy constructor exists
@@ -1673,7 +1635,7 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 			}
 			else
 			{
-				std::string tmpType = GetCppNativeUnqualifiedTypeName(varTypeInfo.TypeInformation, parameterTypeMappingInformation);
+				std::string tmpType = GetCppNativeQualifiedTypeName(varTypeInfo.TypeInformation, parameterTypeMappingInformation);
 				preActions << "\t\t" << tmpType << " " << arg << ";" << std::endl;
 
 				std::string scriptName = "script" + name;
@@ -1719,7 +1681,7 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 			}
 			else
 			{
-				std::string tmpType = GetCppNativeUnqualifiedTypeName(varTypeInfo.TypeInformation, parameterTypeMappingInformation);
+				std::string tmpType = GetCppNativeQualifiedTypeName(varTypeInfo.TypeInformation, parameterTypeMappingInformation);
 				preActions << "\t\t" << tmpType << " " << arg << ";" << std::endl;
 				
 				preActions << generateManagedToScriptObjectLine("\t\t", scriptType, scriptName, "value." + name, parameterTypeMappingInformation.TypeCategory, varTypeInfo.flags);
@@ -2531,7 +2493,7 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 	else
 		exportAttr = sEditorExportMacro;
 
-	std::string wrappedDataType = GetCppNativeUnqualifiedTypeName(classInfo.name, typeMappingInformation);
+	std::string wrappedDataType = GetCppNativeQualifiedTypeName(classInfo.name, typeMappingInformation);
 	std::string interopBaseClassName;
 
 	std::stringstream output;
@@ -2799,7 +2761,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 	}
 
 	std::string interopClassName = getScriptInteropType(classInfo.name);
-	std::string wrappedDataType = GetCppNativeUnqualifiedTypeName(classInfo.name, typeMappingInformation);
+	std::string wrappedDataType = GetCppNativeQualifiedTypeName(classInfo.name, typeMappingInformation);
 
 	std::string interopBaseClassName;
 

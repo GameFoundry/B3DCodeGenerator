@@ -213,7 +213,7 @@ inline const std::string& VariableTypeInformation::GetWrappedOrSelfTypeName() co
 	}
 }
 
-enum class TypeFlags // TODO - Ideally this is split up into types and qualifiers
+enum class TypeFlags // TODO - To be removed
 {
 	Primitive = 1 << 0,
 	IsOutputQualifier = 1 << 1, /**< True if the type qualifiers don't contain 'const', and are a pointer or a reference type. */
@@ -980,47 +980,47 @@ inline bool isReal(const TypeMappingInformation& typeInfo)
 		(typeInfo.ScriptTypeName == "float" || typeInfo.ScriptTypeName == "double");
 }
 
-inline bool isOutput(int flags)
+inline bool isOutput(int flags) //  TODO - To be removed
 {
 	return (flags & (int)TypeFlags::IsOutputQualifier) != 0;
 }
 
-inline bool isArray(int flags)
+inline bool isArray(int flags) //  TODO - To be removed
 {
 	return (flags & (int)TypeFlags::Array) != 0;
 }
 
-inline bool isVector(int flags)
+inline bool isVector(int flags) //  TODO - To be removed
 {
 	return (flags & (int)TypeFlags::Vector) != 0;
 }
 
-inline bool isSmallVector(int flags)
+inline bool isSmallVector(int flags) //  TODO - To be removed
 {
 	return (flags & (int)TypeFlags::SmallVector) != 0;
 }
 
-inline bool isArrayOrVector(int flags)
+inline bool isArrayOrVector(int flags) //  TODO - To be removed
 {
 	return (flags & ((int)TypeFlags::Vector | (int)TypeFlags::Array | (int)TypeFlags::SmallVector)) != 0;
 }
 
-inline bool isFlagsEnum(int flags)
+inline bool isFlagsEnum(int flags) //  TODO - To be removed
 {
 	return (flags & (int)TypeFlags::FlagsEnum) != 0;
 }
 
-inline bool isSrcPointer(int flags)
+inline bool isSrcPointer(int flags) //  TODO - To be removed
 {
 	return (flags & (int)TypeFlags::IsNativePointerQualifier) != 0;
 }
 
-inline bool isSrcReference(int flags)
+inline bool isSrcReference(int flags) //  TODO - To be removed
 {
 	return (flags & (int)TypeFlags::IsReferenceQualifier) != 0;
 }
 
-inline bool isSrcValue(int flags)
+inline bool isSrcValue(int flags) //  TODO - To be removed
 {
 	int nonValueFlags = (int)TypeFlags::IsNativePointerQualifier | (int)TypeFlags::IsReferenceQualifier | (int)TypeFlags::IsSharedPointerQualifier |
 		(int)TypeFlags::IsResourceHandleQualifier | (int)TypeFlags::IsGameObjectHandleQualifier;
@@ -1028,47 +1028,47 @@ inline bool isSrcValue(int flags)
 	return (flags & nonValueFlags) == 0;
 }
 
-inline bool isSrcSPtr(int flags)
+inline bool isSrcSPtr(int flags) //  TODO - To be removed
 {
 	return (flags & (int)TypeFlags::IsSharedPointerQualifier) != 0;
 }
 
-inline bool isSrcRHandle(int flags)
+inline bool isSrcRHandle(int flags) //  TODO - To be removed
 {
 	return (flags & (int)TypeFlags::IsResourceHandleQualifier) != 0;
 }
 
-inline bool isSrcGHandle(int flags)
+inline bool isSrcGHandle(int flags) //  TODO - To be removed
 {
 	return (flags & (int)TypeFlags::IsGameObjectHandleQualifier) != 0;
 }
 
-inline bool isComplexStruct(int flags)
+inline bool isComplexStruct(int flags) //  TODO - To be removed
 {
 	return (flags & (int)TypeFlags::IsStructWrapperUsed) != 0;
 }
 
-inline bool isBaseParam(int flags)
+inline bool isBaseParam(int flags) //  TODO - To be removed
 {
 	return (flags & (int)TypeFlags::IsReferencingBaseClass) != 0;
 }
 
-inline bool isVarParam(int flags)
+inline bool isVarParam(int flags) //  TODO - To be removed
 {
 	return (flags & (int)TypeFlags::VarParams) != 0;
 }
 
-inline bool getPassAsResourceRef(int flags)
+inline bool getPassAsResourceRef(int flags) //  TODO - To be removed
 {
 	return (flags & (int)TypeFlags::AsResourceRef) != 0;
 }
 
-inline bool getIsComponentOrActor(int flags)
+inline bool getIsComponentOrActor(int flags) //  TODO - To be removed
 {
 	return (flags & (int)TypeFlags::ComponentOrActor) != 0;
 }
 
-inline bool getIsAsyncOp(int flags)
+inline bool getIsAsyncOp(int flags) //  TODO - To be removed
 {
 	return (flags & (int)TypeFlags::AsyncOp) != 0;
 }
@@ -1093,7 +1093,7 @@ inline bool isPlainStruct(::ExportedClassTypeCategory type, int flags)
 	return type == ::ExportedClassTypeCategory::Struct && !isArrayOrVector(flags);
 }
 
-inline bool isPassedByValue(int flags)
+inline bool isPassedByValue(int flags) //  TODO - To be removed
 {
 	return (isSrcReference(flags) || isSrcValue(flags)) && !isSrcSPtr(flags) && !isSrcRHandle(flags) && !isSrcGHandle(flags);
 }
@@ -1117,12 +1117,12 @@ inline ApiFlags apiFromExportFlags(int flags)
 	return (ApiFlags)output;
 }
 
-inline bool willBeDereferenced(int flags)
+inline bool willBeDereferenced(int flags) //  TODO - To be removed
 {
 	return (isSrcReference(flags) || isSrcValue(flags) || isSrcPointer(flags)) && !isSrcSPtr(flags) && !isSrcRHandle(flags) && !isSrcGHandle(flags);
 }
 
-inline bool needsIntermediateArray(::ExportedClassTypeCategory type, int flags = 0)
+inline bool needsIntermediateArray(::ExportedClassTypeCategory type, int flags = 0) //  TODO - To be removed
 {
 	if(type == ::ExportedClassTypeCategory::Class || type == ::ExportedClassTypeCategory::ReflectableClass)
 		return !isSrcSPtr(flags);
@@ -1135,7 +1135,7 @@ inline bool isCSOnly(int flags)
 	return (flags & (int)MethodFlags::CSOnly) != 0;
 }
 
-inline bool canBeReturned(::ExportedClassTypeCategory type, int flags)
+inline bool canBeReturned(::ExportedClassTypeCategory type, int flags) //  TODO - To be removed
 {
 	if (isOutput(flags))
 		return false;
