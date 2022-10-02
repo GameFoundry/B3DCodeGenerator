@@ -960,12 +960,12 @@ inline const std::string& escapeXML(const std::string& data)
 	return buffer;
 }
 
-inline bool isInt64(const TypeMappingInformation& typeInfo)
+inline bool isInt64(const TypeMappingInformation& typeInfo) // TODO - Make TypeMappingInformation member
 {
 	return typeInfo.TypeCategory == ::ExportedClassTypeCategory::Primitive && (typeInfo.ScriptTypeName == "long" || typeInfo.ScriptTypeName == "ulong");
 }
 
-inline bool isInteger(const TypeMappingInformation& typeInfo)
+inline bool isInteger(const TypeMappingInformation& typeInfo) // TODO - Make TypeMappingInformation member
 {
 	return typeInfo.TypeCategory == ::ExportedClassTypeCategory::Primitive &&
 		(typeInfo.ScriptTypeName == "int" || typeInfo.ScriptTypeName == "uint" ||
@@ -974,7 +974,7 @@ inline bool isInteger(const TypeMappingInformation& typeInfo)
 			typeInfo.ScriptTypeName == "byte");
 }
 
-inline bool isReal(const TypeMappingInformation& typeInfo)
+inline bool isReal(const TypeMappingInformation& typeInfo) // TODO - Make TypeMappingInformation member
 {
 	return typeInfo.TypeCategory == ::ExportedClassTypeCategory::Primitive &&
 		(typeInfo.ScriptTypeName == "float" || typeInfo.ScriptTypeName == "double");
@@ -1091,11 +1091,6 @@ inline bool isClassType(::ExportedClassTypeCategory type)
 inline bool isPlainStruct(::ExportedClassTypeCategory type, int flags)
 {
 	return type == ::ExportedClassTypeCategory::Struct && !isArrayOrVector(flags);
-}
-
-inline bool isPassedByValue(int flags) //  TODO - To be removed
-{
-	return (isSrcReference(flags) || isSrcValue(flags)) && !isSrcSPtr(flags) && !isSrcRHandle(flags) && !isSrcGHandle(flags);
 }
 
 inline ApiFlags apiFromExportFlags(int flags)

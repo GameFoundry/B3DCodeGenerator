@@ -8,7 +8,7 @@
  * @param	typeInformation				Information about the native type to generate the default value for.
  * @param	typeMappingInformation		Mapping of the provided type in script.
  */
-std::string GetDefaultValueForType(const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation)
+static std::string GetDefaultValueForType(const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation)
 {
 	if(typeInformation.IsArrayOrVector())
 		return "null";
@@ -36,7 +36,7 @@ std::string GetDefaultValueForType(const VariableTypeInformation& typeInformatio
  * @param	useOutputParameterPrefix		If true, output parameters will have the 'out' prefix.
  * @param	forceStructAsReference			If true, 'struct' types will always be passed by 'ref'.
  */
-std::string GetScriptQualifiedType(const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation, bool useOutputParameterPrefix = false, bool forceStructAsReference = false)
+static std::string GetScriptQualifiedType(const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation, bool useOutputParameterPrefix = false, bool forceStructAsReference = false)
 {
 	std::stringstream output;
 
@@ -53,7 +53,8 @@ std::string GetScriptQualifiedType(const VariableTypeInformation& typeInformatio
 	return output.str();
 }
 
-bool hasParameterlessConstructor(const ClassInfo& classInfo)
+/** Checks if the provided class has any constructors without any parameters. */
+static bool HasParameterlessConstructor(const ClassInfo& classInfo)
 {
 	// Check normal constructors
 	for (auto& entry : classInfo.ctorInfos)
@@ -76,7 +77,8 @@ bool hasParameterlessConstructor(const ClassInfo& classInfo)
 	return false;
 }
 
-static std::string generateCsApiCheckBegin(ApiFlags api)
+/** Generates a check for a preprocessor conditional depending on the API the code is currently being compiled for. */
+static std::string GenerateAPICheckBegin(ApiFlags api)
 {
 	if(api == ApiFlags::Framework)
 		return "#if !IS_B3D\n";
@@ -86,7 +88,8 @@ static std::string generateCsApiCheckBegin(ApiFlags api)
 	return "";
 }
 
-static std::string generateApiCheckEnd(ApiFlags api)
+/** Ends the preprocessor conditional started by GenerateAPICheckBegin(). These calls must match 1:1. */
+static std::string GenerateApiCheckEnd(ApiFlags api)
 {
 	if(api == ApiFlags::Framework || api == ApiFlags::Engine)
 		return "#endif\n";
@@ -94,11 +97,41 @@ static std::string generateApiCheckEnd(ApiFlags api)
 	return "";
 }
 
-std::string generateCSStyleAttributes(const ExportStyle& style, const TypeMappingInformation& typeInfo, int typeFlags, bool isStruct)
+/** Returns true if the provided type is represented as a value type in C#. */
+static bool IsValueType(const VariableTypeInformation& typeInformation)
+{
+	// Note: Purposely not checking for references here, as in C++ they are used to pass data by value
+	if (typeInformation.IsQualifierFlagSet(VariableQualifierFlags::IsPointer))
+		return false;
+
+	switch(typeInformation.TypeCategory)
+	{
+	case VariableTypeCategory::SharedPointer:
+	case VariableTypeCategory::ResourceHandle: 
+	case VariableTypeCategory::GameObjectHandle:
+		return false;
+	case VariableTypeCategory::Vector:
+	case VariableTypeCategory::SmallVector:
+	case VariableTypeCategory::Array:
+		return IsValueType(typeInformation.AssertGetUnderlyingType());
+	default: 
+		return true;
+	}
+}
+
+/**
+ * Generates C# attributes that control property or field style.
+ *
+ * @param	style						Information about the style attributes to generate.
+ * @param	typeInformation				Native type we're generating the attributes for.
+ * @param	typeMappingInformation		Mapping of the provided type in script.
+ * @param	isGeneratingStructFields	True if we're generating struct fields, false if generating properties.
+ */
+static std::string GenerateCSharpStyleAttributes(const ExportStyle& style, const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation, bool isGeneratingStructFields)
 {
 	std::stringstream output;
 
-	if(((style.flags & (int)StyleFlags::AsLayerMask) != 0) && isInt64(typeInfo))
+	if(((style.flags & (int)StyleFlags::AsLayerMask) != 0) && isInt64(typeMappingInformation))
 		output << "\t\t[LayerMask]\n";
 
 	if ((style.flags & (int)StyleFlags::Step) != 0)
@@ -124,7 +157,8 @@ std::string generateCSStyleAttributes(const ExportStyle& style, const TypeMappin
 	bool notNull = (style.flags & (int)StyleFlags::NotNull) != 0;
 	bool passByCopy = (style.flags & (int)StyleFlags::PassByCopy) != 0;
 
-	if(!isStruct && (isClassType(typeInfo.TypeCategory) && isPassedByValue(typeFlags)))
+	const bool isPassedByValue = IsValueType(typeInformation);
+	if(!isGeneratingStructFields && (isClassType(typeMappingInformation.TypeCategory) && isPassedByValue))
 	{
 		notNull = true;
 		passByCopy = true;
@@ -359,7 +393,7 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 	ctors << "\t\tprivate " << typeInfo.ScriptTypeName << "(" << generateCSMethodParams(pvtCtor, false) << ") { }" << std::endl;
 
 	// Parameterless constructor in case anything derives from this class
-	if (!hasParameterlessConstructor(input))
+	if (!HasParameterlessConstructor(input))
 		ctors << "\t\tprotected " << typeInfo.ScriptTypeName << "() { }" << std::endl;
 
 	ctors << std::endl;
@@ -370,7 +404,7 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 		if (!isCSOnly(entry.flags))
 		{
 			// Generate interop
-			interops << generateCsApiCheckBegin(entry.api);
+			interops << GenerateAPICheckBegin(entry.api);
 			interops << "\t\t[MethodImpl(MethodImplOptions.InternalCall)]" << std::endl;
 			interops << "\t\tprivate static extern void Internal_" << entry.interopName << "(" << typeInfo.ScriptTypeName << " managedInstance";
 
@@ -378,14 +412,14 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 				interops << ", " << generateCSMethodParams(entry, true);
 
 			interops << ");\n";
-			interops << generateApiCheckEnd(entry.api);
+			interops << GenerateApiCheckEnd(entry.api);
 		}
 
 		bool interopOnly = (entry.flags & (int)MethodFlags::InteropOnly) != 0;
 		if (interopOnly)
 			continue;
 
-		ctors << generateCsApiCheckBegin(entry.api);
+		ctors << GenerateAPICheckBegin(entry.api);
 		ctors << CommentParser::GenerateXMLComments(entry.documentation, "\t\t");
 
 		if (entry.visibility == CSVisibility::Internal)
@@ -405,7 +439,7 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 
 		ctors << ");" << std::endl;
 		ctors << "\t\t}" << std::endl;
-		ctors << generateApiCheckEnd(entry.api);
+		ctors << GenerateApiCheckEnd(entry.api);
 		ctors << std::endl;
 	}
 
@@ -438,11 +472,11 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 		// Generate interop
 		if (!isCSOnly(entry.flags))
 		{
-			interops << generateCsApiCheckBegin(entry.api);
+			interops << GenerateAPICheckBegin(entry.api);
 			interops << "\t\t[MethodImpl(MethodImplOptions.InternalCall)]" << std::endl;
 			interops << "\t\tprivate static extern " << generateCSInteropMethodSignature(entry, typeInfo.ScriptTypeName, isModule) << ";";
 			interops << std::endl;
-			interops << generateApiCheckEnd(entry.api);
+			interops << GenerateApiCheckEnd(entry.api);
 		}
 
 		bool interopOnly = (entry.flags & (int)MethodFlags::InteropOnly) != 0;
@@ -454,7 +488,7 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 
 		if (isConstructor)
 		{
-			ctors << generateCsApiCheckBegin(entry.api);
+			ctors << GenerateAPICheckBegin(entry.api);
 			ctors << CommentParser::GenerateXMLComments(entry.documentation, "\t\t");
 
 			if (entry.visibility == CSVisibility::Internal)
@@ -474,7 +508,7 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 
 			ctors << ");" << std::endl;
 			ctors << "\t\t}" << std::endl;
-			ctors << generateApiCheckEnd(entry.api);
+			ctors << GenerateApiCheckEnd(entry.api);
 			ctors << std::endl;
 		}
 		else
@@ -492,7 +526,7 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 					returnType = GetScriptQualifiedType(entry.returnInfo.TypeInformation, returnTypeMappingInformation);
 				}
 
-				methods << generateCsApiCheckBegin(entry.api);
+				methods << GenerateAPICheckBegin(entry.api);
 				methods << CommentParser::GenerateXMLComments(entry.documentation, "\t\t");
 
 				if (entry.visibility == CSVisibility::Internal)
@@ -548,7 +582,7 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 					methods << "\t\t\treturn temp;" << std::endl;
 
 				methods << "\t\t}" << std::endl;
-				methods << generateApiCheckEnd(entry.api);
+				methods << GenerateApiCheckEnd(entry.api);
 				methods << std::endl;
 			}
 		}
@@ -560,7 +594,7 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 		const TypeMappingInformation propertyTypeMappingInformation = GetNativeToScriptTypeMapping(entry.TypeInformation);
 		const std::string propertyQualifiedTypeName = GetScriptQualifiedType(entry.TypeInformation, propertyTypeMappingInformation);
 
-		properties << generateCsApiCheckBegin(entry.api);
+		properties << GenerateAPICheckBegin(entry.api);
 		properties << CommentParser::GenerateXMLComments(entry.documentation, "\t\t");
 
 		bool defaultVisible = entry.visibility != CSVisibility::Internal && entry.visibility != CSVisibility::Private &&
@@ -576,7 +610,7 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 				properties << "\t\t[ShowInInspector]" << std::endl;
 		}
 
-		properties << generateCSStyleAttributes(entry.style, propertyTypeMappingInformation, entry.typeFlags, false);
+		properties << GenerateCSharpStyleAttributes(entry.style, entry.TypeInformation, propertyTypeMappingInformation, false);
 
 		properties << "\t\t[NativeWrapper]\n";
 
@@ -636,7 +670,7 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 		}
 
 		properties << "\t\t}" << std::endl;
-		properties << generateApiCheckEnd(entry.api);
+		properties << GenerateApiCheckEnd(entry.api);
 		properties << std::endl;
 	}
 
@@ -647,7 +681,7 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 		bool isCallback = (entry.flags & (int)MethodFlags::Callback) != 0;
 		bool isInternal = (entry.flags & (int)MethodFlags::InteropOnly) != 0;
 
-		events << generateCsApiCheckBegin(entry.api);
+		events << GenerateAPICheckBegin(entry.api);
 		events << CommentParser::GenerateXMLComments(entry.documentation, "\t\t");
 		events << "\t\t";
 
@@ -681,12 +715,12 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 				events << generateCSMethodParams(entry, false);
 
 			events << ");\n";
-			events << generateApiCheckEnd(entry.api);
+			events << GenerateApiCheckEnd(entry.api);
 			events << "\n";
 		}
 
 		// Event interop
-		interops << generateCsApiCheckBegin(entry.api);
+		interops << GenerateAPICheckBegin(entry.api);
 
 		interops << "\t\tprivate ";
 
@@ -700,11 +734,11 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 		else
 			interops << "\t\t\tCallback_" << entry.scriptName << "(" << generateCSEventArgs(entry) << ");\n";
 		interops << "\t\t}" << std::endl;
-		interops << generateApiCheckEnd(entry.api);
+		interops << GenerateApiCheckEnd(entry.api);
 	}
 
 	std::stringstream output;
-	output << generateCsApiCheckBegin(input.api);
+	output << GenerateAPICheckBegin(input.api);
 
 	if(!input.module.empty())
 	{
@@ -763,7 +797,7 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 		output << "\t/** @} */\n";
 	}
 
-	output << generateApiCheckEnd(input.api);
+	output << GenerateApiCheckEnd(input.api);
 
 	return output.str();
 }
@@ -771,7 +805,7 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 std::string generateCSStruct(StructInfo& input)
 {
 	std::stringstream output;
-	output << generateCsApiCheckBegin(input.api);
+	output << GenerateAPICheckBegin(input.api);
 
 	if(!input.module.empty())
 	{
@@ -944,23 +978,23 @@ std::string generateCSStruct(StructInfo& input)
 	{
 		const FieldInfo& fieldInfo = *I;
 
-		TypeMappingInformation typeInfo = GetNativeToScriptTypeMapping(fieldInfo.TypeInformation);
+		TypeMappingInformation fieldTypeMappingInformation = GetNativeToScriptTypeMapping(fieldInfo.TypeInformation);
 
-		if (!isValidStructType(typeInfo, fieldInfo.flags))
+		if (!isValidStructType(fieldTypeMappingInformation, fieldInfo.flags))
 		{
 			outs() << "Error: Invalid field type found in struct \"" << scriptName << "\" for field \"" << fieldInfo.Name << "\". Skipping.\n";
 			continue;
 		}
 
 		output << CommentParser::GenerateXMLComments(fieldInfo.documentation, "\t\t");
-		output << generateCSStyleAttributes(fieldInfo.style, typeInfo, fieldInfo.flags, true);
+		output << GenerateCSharpStyleAttributes(fieldInfo.style, fieldInfo.TypeInformation, fieldTypeMappingInformation, true);
 
 		if ((fieldInfo.style.flags & (int)StyleFlags::ForceHide) != 0)
 			output << "\t\t[HideInInspector]" << std::endl;
 
 		output << "\t\tpublic ";
 
-		output << typeInfo.ScriptTypeName;
+		output << fieldTypeMappingInformation.ScriptTypeName;
 		if (isArrayOrVector(fieldInfo.flags))
 			output << "[]";
 
@@ -978,14 +1012,14 @@ std::string generateCSStruct(StructInfo& input)
 		output << "\t/** @} */\n";
 	}
 
-	output << generateApiCheckEnd(input.api);
+	output << GenerateApiCheckEnd(input.api);
 	return output.str();
 }
 
 std::string generateCSEnum(EnumInfo& input)
 {
 	std::stringstream output;
-	output << generateCsApiCheckBegin(input.api);
+	output << GenerateAPICheckBegin(input.api);
 
 	if(!input.module.empty())
 	{
@@ -1033,7 +1067,7 @@ std::string generateCSEnum(EnumInfo& input)
 		output << "\t/** @} */\n";
 	}
 
-	output << generateApiCheckEnd(input.api);
+	output << GenerateApiCheckEnd(input.api);
 	return output.str();
 }
 

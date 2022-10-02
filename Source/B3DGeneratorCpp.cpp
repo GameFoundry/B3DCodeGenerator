@@ -449,7 +449,7 @@ static std::string generateCppApiCheckBegin(ApiFlags api)
 	return "";
 }
 
-static std::string generateApiCheckEnd(ApiFlags api)
+static std::string GenerateApiCheckEnd(ApiFlags api)
 {
 	if(api == ApiFlags::Framework || api == ApiFlags::Engine)
 		return "#endif\n";
@@ -2504,7 +2504,7 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 	{
 		output << generateCppApiCheckBegin(eventInfo.api);
 		output << "\t\t" << generateCppEventCallbackSignature(eventInfo, "", isModule) << ";" << std::endl;
-		output << generateApiCheckEnd(eventInfo.api);
+		output << GenerateApiCheckEnd(eventInfo.api);
 	}
 
 	if(!classInfo.eventInfos.empty())
@@ -2522,7 +2522,7 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 	{
 		output << generateCppApiCheckBegin(eventInfo.api);
 		output << generateCppEventThunk(eventInfo, isModule);
-		output << generateApiCheckEnd(eventInfo.api);
+		output << GenerateApiCheckEnd(eventInfo.api);
 	}
 
 	if(!classInfo.eventInfos.empty())
@@ -2537,7 +2537,7 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 		{
 			output << generateCppApiCheckBegin(eventInfo.api);
 			output << "\t\tstatic HEvent " << eventInfo.sourceName << "Conn;" << std::endl;
-			output << generateApiCheckEnd(eventInfo.api);
+			output << GenerateApiCheckEnd(eventInfo.api);
 		}
 	}
 
@@ -2567,7 +2567,7 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 
 		output << generateCppApiCheckBegin(methodInfo.api);
 		output << "\t\tstatic " << generateCppMethodSignature(methodInfo, interopClassThisPtrType, "", isModule) << ";" << std::endl;
-		output << generateApiCheckEnd(methodInfo.api);
+		output << GenerateApiCheckEnd(methodInfo.api);
 	}
 
 	for (auto& methodInfo : classInfo.methodInfos)
@@ -2577,11 +2577,11 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 
 		output << generateCppApiCheckBegin(methodInfo.api);
 		output << "\t\tstatic " << generateCppMethodSignature(methodInfo, interopClassThisPtrType, "", isModule) << ";" << std::endl;
-		output << generateApiCheckEnd(methodInfo.api);
+		output << GenerateApiCheckEnd(methodInfo.api);
 	}
 
 	output << "\t};" << std::endl;
-	output << generateApiCheckEnd(classInfo.api);
+	output << GenerateApiCheckEnd(classInfo.api);
 
 	return output.str();
 }
@@ -2661,7 +2661,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 	{
 		output << generateCppApiCheckBegin(eventInfo.api);
 		output << "\t" << interopClassName << "::" << eventInfo.sourceName << "ThunkDef " << interopClassName << "::" << eventInfo.sourceName << "Thunk; \n";
-		output << generateApiCheckEnd(eventInfo.api);
+		output << GenerateApiCheckEnd(eventInfo.api);
 	}
 
 	if (!classInfo.eventInfos.empty())
@@ -2677,7 +2677,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 		{
 			output << generateCppApiCheckBegin(eventInfo.api);
 			output << "\tHEvent " << interopClassName << "::" << eventInfo.sourceName << "Conn;\n";
-			output << generateApiCheckEnd(eventInfo.api);
+			output << GenerateApiCheckEnd(eventInfo.api);
 
 			hasEventHandles = true;
 		}
@@ -2760,7 +2760,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 					output << ")";
 
 				output << ");\n";
-				output << generateApiCheckEnd(eventInfo.api);
+				output << GenerateApiCheckEnd(eventInfo.api);
 			}
 		}
 	}
@@ -2811,7 +2811,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 		output << generateCppApiCheckBegin(methodInfo.api);
 		output << "\t\tmetaData.ScriptClass->AddInternalCall(\"Internal_" << methodInfo.interopName << "\", (void*)&" <<
 			interopClassName << "::Internal" << methodInfo.interopName << ");" << std::endl;
-		output << generateApiCheckEnd(methodInfo.api);
+		output << GenerateApiCheckEnd(methodInfo.api);
 	}
 
 	for (auto& methodInfo : classInfo.methodInfos)
@@ -2822,7 +2822,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 		output << generateCppApiCheckBegin(methodInfo.api);
 		output << "\t\tmetaData.ScriptClass->AddInternalCall(\"Internal_" << methodInfo.interopName << "\", (void*)&" <<
 			interopClassName << "::Internal" << methodInfo.interopName << ");" << std::endl;
-		output << generateApiCheckEnd(methodInfo.api);
+		output << GenerateApiCheckEnd(methodInfo.api);
 	}
 
 	output << std::endl;
@@ -2848,7 +2848,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 		}
 
 		output << "\")->GetThunk();" << std::endl;
-		output << generateApiCheckEnd(eventInfo.api);
+		output << GenerateApiCheckEnd(eventInfo.api);
 	}
 
 	output << "\t}" << std::endl;
@@ -2963,7 +2963,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 		output << generateCppApiCheckBegin(eventInfo.api);
 		output << "\t" << generateCppEventCallbackSignature(eventInfo, interopClassName, isModule) << std::endl;
 		output << generateCppEventCallbackBody(eventInfo, isModule);
-		output << generateApiCheckEnd(eventInfo.api);
+		output << GenerateApiCheckEnd(eventInfo.api);
 
 		if ((I + 1) != classInfo.eventInfos.end())
 			output << std::endl;
@@ -3001,7 +3001,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 		output << generateCppApiCheckBegin(methodInfo.api);
 		output << "\t" << generateCppMethodSignature(methodInfo, interopClassThisPtrType, interopClassName, isModule) << std::endl;
 		output << generateCppMethodBody(classInfo, methodInfo, classInfo.name, interopClassName, typeMappingInformation.TypeCategory, isModule);
-		output << generateApiCheckEnd(methodInfo.api);
+		output << GenerateApiCheckEnd(methodInfo.api);
 
 		if ((I + 1) != classInfo.methodInfos.end())
 			output << std::endl;
@@ -3021,7 +3021,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 		output << generateCppApiCheckBegin(methodInfo.api);
 		output << "\t" << generateCppMethodSignature(methodInfo, interopClassThisPtrType, interopClassName, isModule) << std::endl;
 		output << generateCppMethodBody(classInfo, methodInfo, classInfo.name, interopClassName, typeMappingInformation.TypeCategory, isModule);
-		output << generateApiCheckEnd(methodInfo.api);
+		output << GenerateApiCheckEnd(methodInfo.api);
 
 		if ((I + 1) != classInfo.methodInfos.end())
 			output << std::endl;
@@ -3054,20 +3054,20 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 		output << generateCppApiCheckBegin(getterInfo->api);
 		output << "\t" << generateCppMethodSignature(*getterInfo, interopClassThisPtrType, interopClassName, isModule) << std::endl;
 		output << generateCppFieldGetterBody(classInfo, *I, *getterInfo, typeMappingInformation.TypeCategory, isModule);
-		output << generateApiCheckEnd(getterInfo->api);
+		output << GenerateApiCheckEnd(getterInfo->api);
 		
 		output << std::endl;
 
 		output << generateCppApiCheckBegin(setterInfo->api);
 		output << "\t" << generateCppMethodSignature(*setterInfo, interopClassThisPtrType, interopClassName, isModule) << std::endl;
 		output << generateCppFieldSetterBody(classInfo, *I, *setterInfo, typeMappingInformation.TypeCategory, isModule);
-		output << generateApiCheckEnd(setterInfo->api);
+		output << GenerateApiCheckEnd(setterInfo->api);
 			
 		if ((I + 1) != classInfo.fieldInfos.end())
 			output << std::endl;
 	}
 
-	output << generateApiCheckEnd(classInfo.api);
+	output << GenerateApiCheckEnd(classInfo.api);
 
 	return output.str();
 }
@@ -3135,7 +3135,7 @@ std::string generateCppStructHeader(const StructInfo& structInfo)
 	output << std::endl;
 
 	output << "\t};" << std::endl;
-	output << generateApiCheckEnd(structInfo.api);
+	output << GenerateApiCheckEnd(structInfo.api);
 
 	return output.str();
 }
@@ -3220,7 +3220,7 @@ std::string generateCppStructSource(const StructInfo& structInfo)
 		output << "\t}\n\n";
 	}
 
-	output << generateApiCheckEnd(structInfo.api);
+	output << GenerateApiCheckEnd(structInfo.api);
 	return output.str();
 }
 
@@ -3249,12 +3249,12 @@ void generateLookupFile(const std::string& tableName, ExportedClassTypeCategory 
 
 			includes << generateCppApiCheckBegin(classInfo.api);
 			includes << "#include \"" << getRelativeTo(typeInfo.NativeFile, cppOutputFolder) << "\"" << std::endl;
-			includes << generateApiCheckEnd(classInfo.api);
+			includes << GenerateApiCheckEnd(classInfo.api);
 
 			std::string interopClassName = getScriptInteropType(classInfo.name);
 			body << generateCppApiCheckBegin(classInfo.api);
 			body << "\t\tADD_ENTRY(" << classInfo.name << ", " << interopClassName << ")" << std::endl;
-			body << generateApiCheckEnd(classInfo.api);
+			body << GenerateApiCheckEnd(classInfo.api);
 
 			hasType = true;
 		}
