@@ -97,6 +97,12 @@ static std::string GenerateApiCheckEnd(ApiFlags api)
 	return "";
 }
 
+/** Returns true if the type is a struct and should be passed as a reference. */
+static bool IsStructReference(const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation)
+{
+	return typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Struct && !typeInformation.IsArrayOrVector();
+}
+
 /** Returns true if the provided type is represented as a value type in C#. */
 static bool IsValueType(const VariableTypeInformation& typeInformation)
 {
@@ -185,30 +191,43 @@ static std::string GenerateCSharpStyleAttributes(const ExportStyle& style, const
 	return output.str();
 }
 
-std::string generateCSDefaultValueAssignment(const VariableInformation& paramInfo)
+/**
+ * Generates a default value to assign to a variable, field or parameter.
+ *
+ * @param variableInformation			Information about the variable, field or parameter to assign the value to.
+ * @return								String containing the value to assign, to be placed after the '=' operator.
+ */
+std::string GenerateCSharpDefaultValueAssignment(const VariableInformation& variableInformation)
 {
-	if (paramInfo.DefaultValueType.empty() || isFlagsEnum(paramInfo.flags))
-		return paramInfo.DefaultValue;
+	if (variableInformation.DefaultValueType.empty() || variableInformation.TypeInformation.TypeCategory == VariableTypeCategory::Flags)
+		return variableInformation.DefaultValue;
 	else
 	{
 		// Constructor or cast, assuming constructor as cast implies a constructor accepting the type exists (and we don't export cast operators anyway)
-		TypeMappingInformation defaultValTypeInfo = GetNativeToScriptTypeMapping(paramInfo.DefaultValueType);
+		TypeMappingInformation defaultValueTypeMappingInformation = GetNativeToScriptTypeMapping(variableInformation.DefaultValueType);
 
-		if(defaultValTypeInfo.TypeCategory == ExportedClassTypeCategory::Struct && paramInfo.DefaultValue.empty())
-			return defaultValTypeInfo.ScriptTypeName + ".Default()";
+		if(defaultValueTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Struct && variableInformation.DefaultValue.empty())
+			return defaultValueTypeMappingInformation.ScriptTypeName + ".Default()";
 		else
-			return "new " + defaultValTypeInfo.ScriptTypeName + "(" + paramInfo.DefaultValue + ")";
+			return "new " + defaultValueTypeMappingInformation.ScriptTypeName + "(" + variableInformation.DefaultValue + ")";
 	}
 }
 
-std::string generateCSMethodParams(const MethodInfo& methodInfo, bool forInterop)
+/**
+ * Generates parameters to use when constructing a C# method signature.
+ *
+ * @param methodInfo			Structure describing the method to generate parameters for.
+ * @param forInternalMethod		True if the parameters are generated for an Internal_ method call, or false if for a regular method call.
+ * @return						String containing a comma (,) separate list of parameters.
+ */
+std::string GenerateCSharpMethodParameters(const MethodInfo& methodInfo, bool forInternalMethod)
 {
 	std::stringstream output;
 	for (auto I = methodInfo.paramInfos.begin(); I != methodInfo.paramInfos.end(); ++I)
 	{
 		const VariableInformation& paramInfo = *I;
 
-		if(!forInterop && !paramInfo.DefaultValueType.empty() && !isFlagsEnum(paramInfo.flags))
+		if(!forInternalMethod && !paramInfo.DefaultValueType.empty() && paramInfo.TypeInformation.TypeCategory != VariableTypeCategory::Flags)
 		{
 			// We don't generate parameters that have complex default values (as they're not supported in C#).
 			// Instead the post-processor has generated different versions of this method, so we can just skip
@@ -220,35 +239,42 @@ std::string generateCSMethodParams(const MethodInfo& methodInfo, bool forInterop
 			output << ", ";
 
 		const TypeMappingInformation parameterTypeMappingInformation = GetNativeToScriptTypeMapping(paramInfo.TypeInformation);
-		const std::string qualifiedType = GetScriptQualifiedType(paramInfo.TypeInformation, parameterTypeMappingInformation, true, forInterop);
+		const std::string qualifiedType = GetScriptQualifiedType(paramInfo.TypeInformation, parameterTypeMappingInformation, true, forInternalMethod);
 
-		bool isLastParam = (I + 1) == methodInfo.paramInfos.end();
-		if (isVarParam(paramInfo.flags) && isLastParam)
+		bool isLastParameter = (I + 1) == methodInfo.paramInfos.end();
+		if (paramInfo.TypeInformation.IsParameterFlagSet(ParameterFlags::VarParams) && isLastParameter)
 			output << "params ";
 
 		output << qualifiedType << " " << paramInfo.Name;
 
-		if (!forInterop && !paramInfo.DefaultValue.empty())
-			output << " = " << generateCSDefaultValueAssignment(paramInfo);
+		if (!forInternalMethod && !paramInfo.DefaultValue.empty())
+			output << " = " << GenerateCSharpDefaultValueAssignment(paramInfo);
 	}
 
 	return output.str();
 }
 
-std::string generateCSMethodArgs(const MethodInfo& methodInfo, bool forInterop)
+/**
+ * Generates arguments to use when calling a C# method.
+ *
+ * @param methodInfo			Structure describing the method to call.
+ * @param forInternalMethod		True if the arguments are generated for an Internal_ method call, or false if for a regular method call.
+ * @return						String containing a comma (,) separate list of arguments.
+ */
+std::string GenerateCSharpMethodArguments(const MethodInfo& methodInfo, bool forInternalMethod)
 {
 	std::stringstream output;
 	for (auto I = methodInfo.paramInfos.begin(); I != methodInfo.paramInfos.end(); ++I)
 	{
-		const VariableInformation& paramInfo = *I;
-		TypeMappingInformation paramTypeInfo = GetNativeToScriptTypeMapping(paramInfo.TypeInformation);
+		const VariableInformation& parameterInformation = *I;
+		const TypeMappingInformation parameterTypeMappingInformation = GetNativeToScriptTypeMapping(parameterInformation.TypeInformation);
 
-		if (isOutput(paramInfo.flags))
+		if (parameterInformation.TypeInformation.IsOutputParameter())
 			output << "out ";
-		else if (forInterop && isPlainStruct(paramTypeInfo.TypeCategory, paramInfo.flags))
+		else if (forInternalMethod && IsStructReference(parameterInformation.TypeInformation, parameterTypeMappingInformation));
 			output << "ref ";
 
-		output << paramInfo.Name;
+		output << parameterInformation.Name;
 
 		if ((I + 1) != methodInfo.paramInfos.end())
 			output << ", ";
@@ -330,7 +356,7 @@ std::string generateCSInteropMethodSignature(const MethodInfo& methodInfo, const
 	else
 	{
 		const TypeMappingInformation returnTypeMappingInformation = GetNativeToScriptTypeMapping(methodInfo.returnInfo.TypeInformation);
-		if (!canBeReturned(returnTypeMappingInformation.TypeCategory, methodInfo.returnInfo.flags))
+		if (!CanBeReturned(methodInfo.returnInfo.TypeInformation, returnTypeMappingInformation))
 		{
 			output << "void";
 			returnAsParameter = true;
@@ -361,7 +387,7 @@ std::string generateCSInteropMethodSignature(const MethodInfo& methodInfo, const
 			output << ", ";
 	}
 
-	output << generateCSMethodParams(methodInfo, true);
+	output << GenerateCSharpMethodParameters(methodInfo, true);
 
 	if (returnAsParameter)
 	{
@@ -390,7 +416,7 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 
 	// Private constructor for runtime use
 	MethodInfo pvtCtor = findUnusedCtorSignature(input);
-	ctors << "\t\tprivate " << typeInfo.ScriptTypeName << "(" << generateCSMethodParams(pvtCtor, false) << ") { }" << std::endl;
+	ctors << "\t\tprivate " << typeInfo.ScriptTypeName << "(" << GenerateCSharpMethodParameters(pvtCtor, false) << ") { }" << std::endl;
 
 	// Parameterless constructor in case anything derives from this class
 	if (!HasParameterlessConstructor(input))
@@ -409,7 +435,7 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 			interops << "\t\tprivate static extern void Internal_" << entry.interopName << "(" << typeInfo.ScriptTypeName << " managedInstance";
 
 			if (entry.paramInfos.size() > 0)
-				interops << ", " << generateCSMethodParams(entry, true);
+				interops << ", " << GenerateCSharpMethodParameters(entry, true);
 
 			interops << ");\n";
 			interops << GenerateApiCheckEnd(entry.api);
@@ -429,13 +455,13 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 		else
 			ctors << "\t\tpublic ";
 
-		ctors << typeInfo.ScriptTypeName << "(" << generateCSMethodParams(entry, false) << ")" << std::endl;
+		ctors << typeInfo.ScriptTypeName << "(" << GenerateCSharpMethodParameters(entry, false) << ")" << std::endl;
 		ctors << "\t\t{" << std::endl;
 		ctors << generateCSMethodDefaultParamAssignments(entry, "\t\t\t");
 		ctors << "\t\t\tInternal_" << entry.interopName << "(this";
 
 		if (entry.paramInfos.size() > 0)
-			ctors << ", " << generateCSMethodArgs(entry, true);
+			ctors << ", " << GenerateCSharpMethodArguments(entry, true);
 
 		ctors << ");" << std::endl;
 		ctors << "\t\t}" << std::endl;
@@ -498,13 +524,13 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 			else
 				ctors << "\t\tpublic ";
 
-			ctors << typeInfo.ScriptTypeName << "(" << generateCSMethodParams(entry, false) << ")" << std::endl;
+			ctors << typeInfo.ScriptTypeName << "(" << GenerateCSharpMethodParameters(entry, false) << ")" << std::endl;
 			ctors << "\t\t{" << std::endl;
 			ctors << generateCSMethodDefaultParamAssignments(entry, "\t\t\t");
 			ctors << "\t\t\tInternal_" << entry.interopName << "(this";
 
 			if (entry.paramInfos.size() > 0)
-				ctors << ", " << generateCSMethodArgs(entry, true);
+				ctors << ", " << GenerateCSharpMethodArguments(entry, true);
 
 			ctors << ");" << std::endl;
 			ctors << "\t\t}" << std::endl;
@@ -539,14 +565,14 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 				if (isStatic || isModule)
 					methods << "static ";
 
-				methods << returnType << " " << entry.scriptName << "(" << generateCSMethodParams(entry, false) << ")" << std::endl;
+				methods << returnType << " " << entry.scriptName << "(" << GenerateCSharpMethodParameters(entry, false) << ")" << std::endl;
 				methods << "\t\t{" << std::endl;
 				methods << generateCSMethodDefaultParamAssignments(entry, "\t\t\t");
 
 				bool returnByParam = false;
 				if (!entry.returnInfo.typeName.empty())
 				{
-					if (!canBeReturned(returnTypeMappingInformation.TypeCategory, entry.returnInfo.flags))
+					if (!CanBeReturned(entry.returnInfo.TypeInformation, returnTypeMappingInformation))
 					{
 						methods << "\t\t\t" << returnType << " temp;" << std::endl;
 						methods << "\t\t\tInternal_" << entry.interopName << "(";
@@ -566,7 +592,7 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 						methods << ", ";
 				}
 
-				methods << generateCSMethodArgs(entry, true);
+				methods << GenerateCSharpMethodArguments(entry, true);
 
 				if (returnByParam)
 				{
@@ -629,7 +655,7 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 
 		if (!entry.getter.empty())
 		{
-			if (canBeReturned(propertyTypeMappingInformation.TypeCategory, entry.typeFlags))
+			if (CanBeReturned(entry.TypeInformation, propertyTypeMappingInformation))
 			{
 				properties << "\t\t\tget { return Internal_" << entry.getter << "(";
 
@@ -663,7 +689,7 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 			if (!entry.isStatic && !isModule)
 				properties << "mCachedPtr, ";
 
-			if(isPlainStruct(propertyTypeMappingInformation.TypeCategory, entry.typeFlags))
+			if(IsStructReference(entry.TypeInformation, propertyTypeMappingInformation))
 				properties << "ref ";
 
 			properties << "value); }" << std::endl;
@@ -712,7 +738,7 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 			events << "partial void Callback_" << entry.scriptName << "(";
 
 			if (!entry.paramInfos.empty())
-				events << generateCSMethodParams(entry, false);
+				events << GenerateCSharpMethodParameters(entry, false);
 
 			events << ");\n";
 			events << GenerateApiCheckEnd(entry.api);
@@ -727,7 +753,7 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 		if (isStatic || isModule)
 			interops << "static ";
 
-		interops << "void Internal_" << entry.interopName << "(" << generateCSMethodParams(entry, true) << ")" << std::endl;
+		interops << "void Internal_" << entry.interopName << "(" << GenerateCSharpMethodParameters(entry, true) << ")" << std::endl;
 		interops << "\t\t{" << std::endl;
 		if (!isCallback && !isInternal)
 			interops << "\t\t\t" << entry.scriptName << "?.Invoke(" << generateCSEventArgs(entry) << ");\n";
@@ -872,7 +898,7 @@ std::string generateCSStruct(StructInfo& input)
 			output << typeInfo.ScriptTypeName << " " << paramInfo.Name;
 
 			if (!paramInfo.DefaultValue.empty())
-				output << " = " << generateCSDefaultValueAssignment(paramInfo);
+				output << " = " << GenerateCSharpDefaultValueAssignment(paramInfo);
 
 			if ((I + 1) != entry.params.end())
 				output << ", ";
@@ -913,7 +939,7 @@ std::string generateCSStruct(StructInfo& input)
 			{
 				std::string defaultValue;
 				if (!fieldInfo.DefaultValue.empty())
-					defaultValue = generateCSDefaultValueAssignment(fieldInfo);
+					defaultValue = GenerateCSharpDefaultValueAssignment(fieldInfo);
 				else
 					defaultValue = GetDefaultValueForType(fieldInfo.TypeInformation, typeMappingInformation);
 

@@ -429,14 +429,12 @@ struct PropertyInfo
 {
 	VariableTypeInformation TypeInformation;
 	std::string name;
-	std::string type; // TODO - Remove and replace with TypeInformation
 
 	std::string getter;
 	std::string setter;
 
 	CSVisibility visibility;
 	ApiFlags api;
-	int typeFlags; // TODO - Remove and replace with TypeInformation
 	bool isStatic;
 	ExportStyle style;
 	CommentEntry documentation;
@@ -1088,11 +1086,6 @@ inline bool isClassType(::ExportedClassTypeCategory type)
 	return type == ::ExportedClassTypeCategory::Class || type == ::ExportedClassTypeCategory::ReflectableClass;
 }
 
-inline bool isPlainStruct(::ExportedClassTypeCategory type, int flags)
-{
-	return type == ::ExportedClassTypeCategory::Struct && !isArrayOrVector(flags);
-}
-
 inline ApiFlags apiFromExportFlags(int flags)
 {
 	int output = 0;
@@ -1130,15 +1123,21 @@ inline bool isCSOnly(int flags)
 	return (flags & (int)MethodFlags::CSOnly) != 0;
 }
 
-inline bool canBeReturned(::ExportedClassTypeCategory type, int flags) //  TODO - To be removed
+/**
+ * Returns true if the provided type can be used as a return value from a C# method call.
+ *
+ * @param	typeInformation				Information about the native type to generate the interop type for.
+ * @param	typeMappingInformation		Mapping of the provided type in script.
+ */
+inline bool CanBeReturned(const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation) //  TODO - Move to generator class
 {
-	if (isOutput(flags))
+	if (typeInformation.IsOutputParameter())
 		return false;
 
-	if (isArrayOrVector(flags))
+	if (typeInformation.IsArrayOrVector())
 		return true;
 
-	if (type == ::ExportedClassTypeCategory::Struct)
+	if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Struct)
 		return false;
 
 	return true;
@@ -1152,7 +1151,8 @@ inline bool endsWith(const std::string& str, const std::string& end)
 	return false;
 }
 
-inline std::string cleanTemplParams(const std::string& name)
+/** Removes C++ templates parameters from the provided type name. */
+inline std::string CleanTemplateParameters(const std::string& name)
 {
 	std::string cleanName;
 	int lBracket = name.find_first_of('<');
@@ -1172,9 +1172,10 @@ inline std::string cleanTemplParams(const std::string& name)
 	return cleanName;
 }
 
-inline std::string getStructInteropType(const std::string& name)
+/** Returns the name for a type used for struct interop object, based on the original struct name. */
+inline std::string GetStructInteropTypeName(const std::string& name)
 {
-	return "__" + cleanTemplParams(name) + "Interop";
+	return "__" + CleanTemplateParameters(name) + "Interop";
 }
 
 inline bool isValidStructType(TypeMappingInformation& typeInfo, int flags)

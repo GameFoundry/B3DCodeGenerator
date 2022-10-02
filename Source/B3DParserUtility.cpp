@@ -260,15 +260,11 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 				if (isGetter)
 				{
 					propertyInfo.getter = methodInfo.interopName;
-					propertyInfo.type = methodInfo.returnInfo.typeName;
-					propertyInfo.typeFlags = methodInfo.returnInfo.flags;
 					propertyInfo.TypeInformation = methodInfo.returnInfo.TypeInformation;
 				}
 				else // Setter
 				{
 					propertyInfo.setter = methodInfo.interopName;
-					propertyInfo.type = methodInfo.paramInfos[0].typeName;
-					propertyInfo.typeFlags = methodInfo.paramInfos[0].flags;
 					propertyInfo.TypeInformation = methodInfo.paramInfos[0].TypeInformation;
 				}
 
@@ -283,7 +279,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 				else
 				{
 					PropertyInfo& existingInfo = *iterFind;
-					if (existingInfo.type != propertyInfo.type || existingInfo.isStatic != propertyInfo.isStatic)
+					if (existingInfo.TypeInformation.TypeName != propertyInfo.TypeInformation.TypeName || existingInfo.isStatic != propertyInfo.isStatic)
 					{
 						outs() << "Error: Getter and setter types for the property \"" << propertyInfo.name << "\" don't match. Skipping property.\n";
 						continue;
@@ -411,7 +407,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 			}
 
 			if (structInfo.requiresInterop)
-				structInfo.interopName = getStructInteropType(structInfo.name);
+				structInfo.interopName = GetStructInteropTypeName(structInfo.name);
 			else
 				structInfo.interopName = structInfo.name;
 		}
@@ -786,7 +782,7 @@ void ParserUtility::GatherIncludes(const VariableTypeInformation& typeInformatio
 	}
 
 	if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Struct && isComplexStruct(flags))
-		output.fwdDecls[typeName] = { typeInfo.NativeNamespace, getStructInteropType(typeName), true };
+		output.fwdDecls[typeName] = { typeInfo.NativeNamespace, GetStructInteropTypeName(typeName), true };
 
 	if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource)
 	{
