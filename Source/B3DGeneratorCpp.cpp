@@ -168,31 +168,78 @@ std::string GetCppNativeQualifiedTypeName(const std::string& typeName, const Typ
 	return GetCppNativeQualifiedTypeName(typeInformation, typeMappingInformation, wrapClassTypesInSharedPointer);
 }
 
-std::string getCSVarType(const std::string& typeName, ::ExportedClassTypeCategory type, int flags, bool paramPrefixes,
-	bool arraySuffixes, bool forceStructAsRef, bool forSignature = false)
+/**
+ * Returns a type name for the Mono thunk signature lookup, representing the type in @p typeInformation.
+ *
+ * @param	typeInformation					Information about the native type to generate the type name for.
+ * @param	typeMappingInformation			Mapping of the provided type in script.
+ */
+std::string GetInteropThunkSignatureQualifiedTypeName(const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation)
 {
-	std::stringstream output;
+	std::string typeName;
 
-	if (!forSignature)
+	// Generic types require `X after their name
+	StringRef inputStr(typeMappingInformation.ScriptTypeName.data(), typeMappingInformation.ScriptTypeName.length());
+	inputStr = inputStr.trim();
+
+	const size_t leftBracketIdx = inputStr.find_first_of('<');
+	const size_t rightBracketIdx = inputStr.find_last_of('>');
+	const size_t leftBracketCount = inputStr.count('<');
+	const size_t rightBracketCount = inputStr.count('>');
+
+	if (leftBracketCount > 1 || rightBracketCount > 1)
 	{
-		if (paramPrefixes && isOutput(flags))
-			output << "out ";
-		else if (forceStructAsRef && (isPlainStruct(type, flags)))
-			output << "ref ";
+		outs() << "Error: Cannot parse event signature type. Nested generic parameters are not allowed.\n";
+		typeName = typeMappingInformation.ScriptTypeName;
 	}
+	else if (leftBracketIdx != StringRef::npos && rightBracketIdx != StringRef::npos)
+	{
+		StringRef templateType = inputStr.substr(0, leftBracketIdx);
+		StringRef templateArgs = inputStr.substr(leftBracketIdx + 1, rightBracketIdx - leftBracketIdx - 1);
+		const size_t templateArgumentCount = templateArgs.count(',') + 1;
+
+		typeName = templateType.str() + "`" + std::to_string(templateArgumentCount) + "<" + templateArgs.str() + ">";
+	}
+	else
+		typeName = typeMappingInformation.ScriptTypeName;
+
+	if(typeName == "float")
+		typeName = "single";
+
+	std::stringstream output;
 
 	output << typeName;
 
-	if (arraySuffixes && isArrayOrVector(flags))
+	if (typeInformation.IsArrayOrVector())
 		output << "[]";
 
-	if (forSignature)
-	{
-		if (paramPrefixes && isOutput(flags))
-			output << "&";
-		else if (forceStructAsRef && (isPlainStruct(type, flags)))
-			output << "&";
-	}
+	if (typeInformation.IsOutputParameter() || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Struct)
+		output << "&";
+
+	return output.str();
+}
+
+/**
+ * Returns a qualified type name in C#, for use in parameters or return values, representing the type in @p typeInformation.
+ *
+ * @param	typeInformation					Information about the native type to generate the type name for.
+ * @param	typeMappingInformation			Mapping of the provided type in script.
+ * @param	useOutputParameterPrefix		If true, output parameters will have the 'out' prefix.
+ * @param	forceStructAsReference			If true, 'struct' types will always be passed by 'ref'.
+ */
+std::string GetScriptQualifiedType(const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation, bool useOutputParameterPrefix = false, bool forceStructAsReference = false)
+{
+	std::stringstream output;
+
+	if (useOutputParameterPrefix && typeInformation.IsOutputParameter())
+		output << "out ";
+	else if (forceStructAsReference && (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Struct && !typeInformation.IsArrayOrVector()))
+		output << "ref ";
+
+	output << typeMappingInformation.ScriptTypeName;
+
+	if (typeInformation.IsArrayOrVector())
+		output << "[]";
 
 	return output.str();
 }
@@ -2995,41 +3042,11 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 		for (auto I = eventInfo.paramInfos.begin(); I != eventInfo.paramInfos.end(); ++I)
 		{
 			const VariableInformation& paramInfo = *I;
-			TypeMappingInformation paramTypeInfo = GetNativeToScriptTypeMapping(paramInfo.TypeInformation);
+			TypeMappingInformation paramaterTypeMappingInformation = GetNativeToScriptTypeMapping(paramInfo.TypeInformation);
 
-			std::string typeName;
+			const std::string signatureTypeName = GetInteropThunkSignatureQualifiedTypeName(paramInfo.TypeInformation, paramaterTypeMappingInformation);
 
-			// Generic types require `X after their name
-			StringRef inputStr(paramTypeInfo.ScriptTypeName.data(), paramTypeInfo.ScriptTypeName.length());
-			inputStr = inputStr.trim();
-
-			const size_t leftBracketIdx = inputStr.find_first_of('<');
-			const size_t rightBracketIdx = inputStr.find_last_of('>');
-			const size_t numLeftBrackets = inputStr.count('<');
-			const size_t numRightBrackets = inputStr.count('>');
-
-			if (numLeftBrackets > 1 || numRightBrackets > 1)
-			{
-				outs() << "Error: Cannot parse event signature type. Nested generic parameters are not allowed.\n";
-				typeName = paramTypeInfo.ScriptTypeName;
-			}
-			else if (leftBracketIdx != StringRef::npos && rightBracketIdx != StringRef::npos)
-			{
-				StringRef templateType = inputStr.substr(0, leftBracketIdx);
-				StringRef templateArgs = inputStr.substr(leftBracketIdx + 1, rightBracketIdx - leftBracketIdx - 1);
-				const size_t numTemplateArgs = templateArgs.count(',') + 1;
-
-				typeName = templateType.str() + "`" + std::to_string(numTemplateArgs) + "<" + templateArgs.str() + ">";
-			}
-			else
-				typeName = paramTypeInfo.ScriptTypeName;
-
-			if(typeName == "float")
-				typeName = "single";
-
-			std::string csType = getCSVarType(typeName, paramTypeInfo.TypeCategory, paramInfo.flags, true, true, true, true);
-
-			output << csType;
+			output << signatureTypeName;
 
 			if ((I + 1) != eventInfo.paramInfos.end())
 				output << ",";
@@ -3503,8 +3520,8 @@ std::string generateCSMethodParams(const MethodInfo& methodInfo, bool forInterop
 		if (I != methodInfo.paramInfos.begin())
 			output << ", ";
 
-		TypeMappingInformation paramTypeInfo = GetNativeToScriptTypeMapping(paramInfo.TypeInformation);
-		std::string qualifiedType = getCSVarType(paramTypeInfo.ScriptTypeName, paramTypeInfo.TypeCategory, paramInfo.flags, true, true, forInterop);
+		const TypeMappingInformation parameterTypeMappingInformation = GetNativeToScriptTypeMapping(paramInfo.TypeInformation);
+		const std::string qualifiedType = GetScriptQualifiedType(paramInfo.TypeInformation, parameterTypeMappingInformation, true, forInterop);
 
 		bool isLastParam = (I + 1) == methodInfo.paramInfos.end();
 		if (isVarParam(paramInfo.flags) && isLastParam)
@@ -3574,8 +3591,8 @@ std::string generateCSEventSignature(const MethodInfo& methodInfo)
 	for (auto I = methodInfo.paramInfos.begin(); I != methodInfo.paramInfos.end(); ++I)
 	{
 		const VariableInformation& paramInfo = *I;
-		TypeMappingInformation paramTypeInfo = GetNativeToScriptTypeMapping(paramInfo.TypeInformation);
-		std::string type = getCSVarType(paramTypeInfo.ScriptTypeName, paramTypeInfo.TypeCategory, paramInfo.flags, false, true, false);
+		TypeMappingInformation parameterTypeMappingInformation = GetNativeToScriptTypeMapping(paramInfo.TypeInformation);
+		std::string type = GetScriptQualifiedType(paramInfo.TypeInformation, parameterTypeMappingInformation);
 
 		output << type;
 
@@ -3613,16 +3630,15 @@ std::string generateCSInteropMethodSignature(const MethodInfo& methodInfo, const
 		output << "void";
 	else
 	{
-		TypeMappingInformation returnTypeInfo = GetNativeToScriptTypeMapping(methodInfo.returnInfo.TypeInformation);
-		if (!canBeReturned(returnTypeInfo.TypeCategory, methodInfo.returnInfo.flags))
+		const TypeMappingInformation returnTypeMappingInformation = GetNativeToScriptTypeMapping(methodInfo.returnInfo.TypeInformation);
+		if (!canBeReturned(returnTypeMappingInformation.TypeCategory, methodInfo.returnInfo.flags))
 		{
 			output << "void";
 			returnAsParameter = true;
 		}
 		else
 		{
-			std::string qualifiedType = getCSVarType(returnTypeInfo.ScriptTypeName, returnTypeInfo.TypeCategory,
-				methodInfo.returnInfo.flags, false, true, false);
+			const std::string qualifiedType = GetScriptQualifiedType(methodInfo.returnInfo.TypeInformation, returnTypeMappingInformation);
 			output << qualifiedType;
 		}
 	}
@@ -3650,8 +3666,8 @@ std::string generateCSInteropMethodSignature(const MethodInfo& methodInfo, const
 
 	if (returnAsParameter)
 	{
-		TypeMappingInformation returnTypeInfo = GetNativeToScriptTypeMapping(methodInfo.returnInfo.TypeInformation);
-		std::string qualifiedType = getCSVarType(returnTypeInfo.ScriptTypeName, returnTypeInfo.TypeCategory, methodInfo.returnInfo.flags, false, true, false);
+		const TypeMappingInformation returnTypeMappingInformation = GetNativeToScriptTypeMapping(methodInfo.returnInfo.TypeInformation);
+		const std::string qualifiedType = GetScriptQualifiedType(methodInfo.returnInfo.TypeInformation, returnTypeMappingInformation);
 
 		if (methodInfo.paramInfos.size() > 0)
 			output << ", ";
@@ -3801,14 +3817,14 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 			bool isProperty = entry.flags & ((int)MethodFlags::PropertyGetter | (int)MethodFlags::PropertySetter);
 			if (!isProperty)
 			{
-				TypeMappingInformation returnTypeInfo;
+				TypeMappingInformation returnTypeMappingInformation;
 				std::string returnType;
 				if (entry.returnInfo.typeName.empty())
 					returnType = "void";
 				else
 				{
-					returnTypeInfo = GetNativeToScriptTypeMapping(entry.returnInfo.TypeInformation);
-					returnType = getCSVarType(returnTypeInfo.ScriptTypeName, returnTypeInfo.TypeCategory, entry.returnInfo.flags, false, true, false);
+					returnTypeMappingInformation = GetNativeToScriptTypeMapping(entry.returnInfo.TypeInformation);
+					returnType = GetScriptQualifiedType(entry.returnInfo.TypeInformation, returnTypeMappingInformation);
 				}
 
 				methods << generateCsApiCheckBegin(entry.api);
@@ -3831,7 +3847,7 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 				bool returnByParam = false;
 				if (!entry.returnInfo.typeName.empty())
 				{
-					if (!canBeReturned(returnTypeInfo.TypeCategory, entry.returnInfo.flags))
+					if (!canBeReturned(returnTypeMappingInformation.TypeCategory, entry.returnInfo.flags))
 					{
 						methods << "\t\t\t" << returnType << " temp;" << std::endl;
 						methods << "\t\t\tInternal_" << entry.interopName << "(";
@@ -3876,8 +3892,8 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 	// Properties
 	for (auto& entry : input.propertyInfos)
 	{
-		TypeMappingInformation propTypeInfo = GetNativeToScriptTypeMapping(entry.TypeInformation);
-		std::string propTypeName = getCSVarType(propTypeInfo.ScriptTypeName, propTypeInfo.TypeCategory, entry.typeFlags, false, true, false);
+		const TypeMappingInformation propertyTypeMappingInformation = GetNativeToScriptTypeMapping(entry.TypeInformation);
+		const std::string propertyQualifiedTypeName = GetScriptQualifiedType(entry.TypeInformation, propertyTypeMappingInformation);
 
 		properties << generateCsApiCheckBegin(entry.api);
 		properties << CommentParser::GenerateXMLComments(entry.documentation, "\t\t");
@@ -3895,7 +3911,7 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 				properties << "\t\t[ShowInInspector]" << std::endl;
 		}
 
-		properties << generateCSStyleAttributes(entry.style, propTypeInfo, entry.typeFlags, false);
+		properties << generateCSStyleAttributes(entry.style, propertyTypeMappingInformation, entry.typeFlags, false);
 
 		properties << "\t\t[NativeWrapper]\n";
 
@@ -3909,12 +3925,12 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 		if (entry.isStatic || isModule)
 			properties << "static ";
 
-		properties << propTypeName << " " << entry.name << std::endl;
+		properties << propertyQualifiedTypeName << " " << entry.name << std::endl;
 		properties << "\t\t{" << std::endl;
 
 		if (!entry.getter.empty())
 		{
-			if (canBeReturned(propTypeInfo.TypeCategory, entry.typeFlags))
+			if (canBeReturned(propertyTypeMappingInformation.TypeCategory, entry.typeFlags))
 			{
 				properties << "\t\t\tget { return Internal_" << entry.getter << "(";
 
@@ -3927,7 +3943,7 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 			{
 				properties << "\t\t\tget" << std::endl;
 				properties << "\t\t\t{" << std::endl;
-				properties << "\t\t\t\t" << propTypeName << " temp;" << std::endl;
+				properties << "\t\t\t\t" << propertyQualifiedTypeName << " temp;" << std::endl;
 
 				properties << "\t\t\t\tInternal_" << entry.getter << "(";
 
@@ -3948,7 +3964,7 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 			if (!entry.isStatic && !isModule)
 				properties << "mCachedPtr, ";
 
-			if(isPlainStruct(propTypeInfo.TypeCategory, entry.typeFlags))
+			if(isPlainStruct(propertyTypeMappingInformation.TypeCategory, entry.typeFlags))
 				properties << "ref ";
 
 			properties << "value); }" << std::endl;
