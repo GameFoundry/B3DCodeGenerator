@@ -1205,5 +1205,152 @@ inline void getDerivedClasses(const std::string& typeName, std::vector<std::stri
 	}
 }
 
-void generateAll(StringRef cppEngineOutputFolder, StringRef cppEditorOutputFolder, StringRef csEngineOutputFolder, 
-	StringRef csEditorOutputFolder, bool genEditor);
+inline MethodInfo findUnusedCtorSignature(const ClassInfo& classInfo) // TODO - Move to GeneratorUtility
+{
+	auto checkSignature = [](int numParams, const MethodInfo& info)
+	{
+		if ((int)info.paramInfos.size() != numParams)
+			return true;
+
+		for (auto& paramInfo : info.paramInfos)
+		{
+			if (paramInfo.TypeInformation.TypeName != "bool")
+				return true;
+		}
+
+		return false;
+	};
+
+	int numBools = 1;
+	while (true)
+	{
+		bool isSignatureValid = true;
+
+		// Check normal constructors
+		for (auto& entry : classInfo.ctorInfos)
+		{
+			if(!checkSignature(numBools, entry))
+			{
+				isSignatureValid = false;
+				break;
+			}
+		}
+
+		// Check external constructors
+		if(isSignatureValid)
+		{
+			for (auto& entry : classInfo.methodInfos)
+			{
+				bool isConstructor = (entry.flags & (int)MethodFlags::Constructor) != 0;
+				if (!isConstructor)
+					continue;
+
+				if(!checkSignature(numBools, entry))
+				{
+					isSignatureValid = false;
+					break;
+				}
+			}
+		}
+
+		if (isSignatureValid)
+			break;
+
+		numBools++;
+	}
+
+	MethodInfo output;
+	output.sourceName = classInfo.cleanName;
+	output.scriptName = classInfo.cleanName;
+	output.flags = (int)MethodFlags::Constructor;
+	output.visibility = CSVisibility::Private;
+
+	for (int i = 0; i < numBools; i++)
+	{
+		VariableInformation paramInfo;
+		paramInfo.Name = "__dummy" + std::to_string(i);
+		paramInfo.typeName = "bool";
+		paramInfo.flags = (int)TypeFlags::Primitive;
+
+		paramInfo.TypeInformation.TypeName = "bool";
+		paramInfo.TypeInformation.TypeCategory = VariableTypeCategory::Primitive;
+
+		output.paramInfos.push_back(paramInfo);
+	}
+
+	return output;
+}
+
+inline void cleanAndPrepareFolder(const StringRef& folder) // TODO - Move to Generator common
+{
+	if (sys::fs::exists(folder))
+	{
+		std::error_code ec;
+		for (sys::fs::directory_iterator file(folder, ec), fileEnd; file != fileEnd && !ec; file.increment(ec))
+			sys::fs::remove(file->path());
+	}
+
+	sys::fs::create_directories(folder);
+}
+
+inline std::string getRelativeTo(const StringRef& path, const StringRef& relativeTo) // TODO - Move to Generator common
+{
+	SmallVector<char, 100> relativeToVector(relativeTo.begin(), relativeTo.end());
+
+	vfs::getRealFileSystem()->makeAbsolute(relativeToVector);
+	StringRef absRelativeTo(relativeToVector.data(), relativeToVector.size());
+
+	SmallVector<char, 100> output;
+
+	auto iterPath = sys::path::begin(path);
+	auto iterRelativePath = sys::path::begin(absRelativeTo);
+
+	bool foundRelative = false;
+	for(; iterPath != sys::path::end(path) && iterRelativePath != sys::path::end(absRelativeTo); ++iterPath, ++iterRelativePath)
+	{
+		if (*iterPath != *iterRelativePath)
+			break;
+
+		foundRelative = true;
+	}
+
+	if (!foundRelative)
+		return path.str();
+
+	for(; iterRelativePath != sys::path::end(absRelativeTo); ++iterRelativePath)
+		sys::path::append(output, "..");
+
+	for (; iterPath != sys::path::end(path); ++iterPath)
+		sys::path::append(output, *iterPath);
+
+	sys::path::native(output, sys::path::Style::posix);
+	return std::string(output.data(), output.size());
+}
+
+inline std::ofstream createFile(const std::string& filename, StringRef outputFolder) // TODO - Move to generator common
+{
+	std::string relativePath = "/" + filename;
+	StringRef filenameRef(relativePath.data(), relativePath.size());
+
+	SmallString<128> filepath = outputFolder;
+	sys::path::append(filepath, filenameRef);
+
+	std::ofstream output;
+	output.open(filepath.str().str(), std::ios::out);
+
+	return output;
+}
+
+inline std::string generateFileHeader(bool isBanshee) // TODO - Move to generator common
+{
+	std::stringstream output;
+	if (isBanshee)
+		output << sEditorCopyrightNotice;
+	else
+		output << sFrameworkCopyrightNotice;
+
+	return output.str();
+}
+
+void GenerateCpp(StringRef engineOutputFolder, StringRef editorOutputFolder, bool generateEditorCode);
+void GenerateCSharp(StringRef engineOutputFolder, StringRef editorOutputFolder, bool generateEditorCode);

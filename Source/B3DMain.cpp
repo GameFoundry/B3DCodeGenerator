@@ -243,12 +243,8 @@ int main(int argc, const char** argv)
 	bool genEditor = GenerateEditorOption.getValue();
 
 	// Generate code
-	generateAll(
-		OutputCppEngineOption.getValue(), 
-		OutputCppEditorOption.getValue(),
-		OutputCSEngineOption.getValue(),
-		OutputCSEditorOption.getValue(),
-		genEditor);
+	GenerateCpp(OutputCppEngineOption.getValue(), OutputCppEditorOption.getValue(), genEditor);
+	GenerateCSharp(OutputCSEngineOption.getValue(), OutputCSEditorOption.getValue(), genEditor);
 
 	//system("pause");
 	return output;
