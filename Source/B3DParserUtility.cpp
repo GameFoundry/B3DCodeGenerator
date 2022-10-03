@@ -279,7 +279,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 				else
 				{
 					PropertyInfo& existingInfo = *iterFind;
-					if (existingInfo.TypeInformation.TypeName != propertyInfo.TypeInformation.TypeName || existingInfo.isStatic != propertyInfo.isStatic)
+					if (existingInfo.TypeInformation.GetWrappedOrSelfTypeName() != propertyInfo.TypeInformation.GetWrappedOrSelfTypeName() || existingInfo.isStatic != propertyInfo.isStatic)
 					{
 						outs() << "Error: Getter and setter types for the property \"" << propertyInfo.name << "\" don't match. Skipping property.\n";
 						continue;

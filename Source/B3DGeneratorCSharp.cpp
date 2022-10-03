@@ -271,7 +271,7 @@ std::string GenerateCSharpMethodArguments(const MethodInfo& methodInfo, bool for
 
 		if (parameterInformation.TypeInformation.IsOutputParameter())
 			output << "out ";
-		else if (forInternalMethod && IsStructReference(parameterInformation.TypeInformation, parameterTypeMappingInformation));
+		else if (forInternalMethod && IsStructReference(parameterInformation.TypeInformation, parameterTypeMappingInformation))
 			output << "ref ";
 
 		output << parameterInformation.Name;
