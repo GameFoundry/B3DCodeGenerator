@@ -1800,7 +1800,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 							if (iterFindParam != ctorInfo.params.end())
 							{
 								iterFindParam->flags &= ~(int)TypeFlags::AsResourceRef;
-								iterFindParam->TypeInformation.ParameterFlags &= ~(uint32_t)ParameterFlags::AsResourceRef;
+								iterFindParam->TypeInformation.UnsetParameterFlag(ParameterFlags::AsResourceRef, true);
 							}
 						}
 					}
@@ -2084,7 +2084,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 							continue;
 						}
 
-						ParmVarDecl* paramDecl = methodDecl->getParamDecl(0);
+						ParmVarDecl* paramDecl = methodDecl->getParamDecl(isExternal ? 1 : 0);
 
 						VariableInformation paramInfo;
 						paramInfo.Name = paramDecl->getName().str();

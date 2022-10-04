@@ -119,6 +119,7 @@ struct VariableTypeInformation
 	bool IsQualifierFlagSet(VariableQualifierFlags flags) const { return (QualifierFlags & (uint32_t)flags) != 0; }
 
 	void UnsetParameterFlag(enum ParameterFlags flags, bool recursive);
+	void SetPostProcessFlag(VariablePostProcessFlags flags, bool recursive);
 
 	/** Returns true if the variable type is a non-const pointer or reference, which is recognized as a parameter output. */
 	bool IsOutputParameter() const { return (IsQualifierFlagSet(VariableQualifierFlags::IsPointer) || IsQualifierFlagSet(VariableQualifierFlags::IsReference)) && !IsQualifierFlagSet(VariableQualifierFlags::IsConst); }
@@ -137,7 +138,10 @@ struct VariableTypeInformation
 	}
 
 	/** If this type wraps another type, returns the wrapped type name. Otherwise, returns the name of this type. If there are multiple nested wrapped types this only returns the first one. */
-	const std::string& GetWrappedOrSelfTypeName() const;
+	const std::string& GetFirstWrappedOrSelfTypeName() const;
+
+	/** If this type wraps another type, returns the wrapped type name. Otherwise, returns the name of this type. If there are multiple nested wrapped types this returns the last one. */
+	const std::string& GetLastWrappedOrSelfTypeName() const;
 
 	VariableTypeCategory TypeCategory = VariableTypeCategory::UserType;
 	std::string TypeName;
@@ -176,6 +180,10 @@ inline VariableTypeInformation& VariableTypeInformation::operator=(const Variabl
 	{
 		UnderlyingType = std::make_unique<VariableTypeInformation>(*other.UnderlyingType);
 	}
+	else
+	{
+		UnderlyingType = nullptr;
+	}
 
 	return *this;
 }
@@ -188,7 +196,15 @@ inline void VariableTypeInformation::UnsetParameterFlag(enum ParameterFlags flag
 		UnderlyingType->UnsetParameterFlag(flags, true);
 }
 
-inline const std::string& VariableTypeInformation::GetWrappedOrSelfTypeName() const
+inline void VariableTypeInformation::SetPostProcessFlag(VariablePostProcessFlags flags, bool recursive)
+{
+	PostProcessFlags |= (uint32_t)flags;
+
+	if (recursive && UnderlyingType)
+		UnderlyingType->SetPostProcessFlag(flags, true);
+}
+
+inline const std::string& VariableTypeInformation::GetFirstWrappedOrSelfTypeName() const
 {
 	switch(TypeCategory)
 	{
@@ -211,6 +227,14 @@ inline const std::string& VariableTypeInformation::GetWrappedOrSelfTypeName() co
 	case VariableTypeCategory::AsyncOp:
 		return AssertGetUnderlyingType().TypeName;
 	}
+}
+
+inline const std::string& VariableTypeInformation::GetLastWrappedOrSelfTypeName() const
+{
+	if (UnderlyingType)
+		return UnderlyingType->GetLastWrappedOrSelfTypeName();
+
+	return TypeName;
 }
 
 enum class TypeFlags // TODO - To be removed
@@ -1103,11 +1127,6 @@ inline ApiFlags apiFromExportFlags(int flags)
 		output = (int)ApiFlags::Any;
 
 	return (ApiFlags)output;
-}
-
-inline bool willBeDereferenced(int flags) //  TODO - To be removed
-{
-	return (isSrcReference(flags) || isSrcValue(flags) || isSrcPointer(flags)) && !isSrcSPtr(flags) && !isSrcRHandle(flags) && !isSrcGHandle(flags);
 }
 
 inline bool needsIntermediateArray(::ExportedClassTypeCategory type, int flags = 0) //  TODO - To be removed

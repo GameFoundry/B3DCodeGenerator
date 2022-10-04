@@ -279,9 +279,9 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 				else
 				{
 					PropertyInfo& existingInfo = *iterFind;
-					if (existingInfo.TypeInformation.GetWrappedOrSelfTypeName() != propertyInfo.TypeInformation.GetWrappedOrSelfTypeName() || existingInfo.isStatic != propertyInfo.isStatic)
+					if (existingInfo.TypeInformation.GetLastWrappedOrSelfTypeName() != propertyInfo.TypeInformation.GetLastWrappedOrSelfTypeName() || existingInfo.isStatic != propertyInfo.isStatic)
 					{
-						outs() << "Error: Getter and setter types for the property \"" << propertyInfo.name << "\" don't match. Skipping property.\n";
+						outs() << "Error: Getter and setter types for the property \"" << propertyInfo.name << "\" don't match. Skipping property." << existingInfo.TypeInformation.GetLastWrappedOrSelfTypeName() << " " << propertyInfo.TypeInformation.GetLastWrappedOrSelfTypeName() << "\n";
 						continue;
 					}
 
@@ -426,7 +426,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 			if (structInfo != nullptr && structInfo->requiresInterop)
 			{
 				flags |= (int)TypeFlags::IsStructWrapperUsed;
-				typeInformation.PostProcessFlags |= (uint32_t)VariablePostProcessFlags::IsStructWrapperUsed;
+				typeInformation.SetPostProcessFlag(VariablePostProcessFlags::IsStructWrapperUsed, true);
 			}
 		};
 
@@ -444,7 +444,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 				if (isBase)
 				{
 					flags |= (int)TypeFlags::IsReferencingBaseClass;
-					typeInformation.PostProcessFlags |= (uint32_t)VariablePostProcessFlags::IsReferencingBaseClass;
+					typeInformation.SetPostProcessFlag(VariablePostProcessFlags::IsReferencingBaseClass, true);
 				}
 			}
 		};
