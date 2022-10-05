@@ -20,6 +20,24 @@ static bool IsDereferenceRequired(const VariableTypeInformation& typeInformation
 	return typeInformation.TypeCategory != VariableTypeCategory::SharedPointer;
 }
 
+/** Returns true if the provided type is passed as value type to an internal method parameter. */
+static bool IsInternalMethodParameterValueType(const VariableTypeInformation& typeInformation)
+{
+	if (typeInformation.IsQualifierFlagSet(VariableQualifierFlags::IsPointer))
+		return false;
+
+	switch(typeInformation.TypeCategory)
+	{
+	case VariableTypeCategory::SharedPointer:
+	case VariableTypeCategory::ResourceHandle: 
+	case VariableTypeCategory::GameObjectHandle:
+	case VariableTypeCategory::MonoObject:
+		return false;
+	default: 
+		return true;
+	}
+}
+
 /**
  * Returns a qualified name for the C++ interop type representing the type in @p typeInformation.
  *
@@ -250,76 +268,102 @@ std::string generateManagedToScriptObjectLine(const std::string& indent, const s
 	return output.str();
 }
 
-std::string getAsManagedToCppArgumentPlain (const std::string& name, int flags, bool isPtr, const std::string& methodName)
+/**
+ * Returns an argument that can be used for call into a native method. The argument is expected to have been received through
+ * an internal interop call.
+ *
+ * @param	methodInfo				Information about the method being called.
+ * @param	argumentName			Name of the argument.
+ * @param	typeInformation			Information about the native type the argument represents.
+ * @param	typeMappingInformation	Mapping of the provided argument type in script.
+ * @return							Code to retrieves the appropriate argument type from the expected internal argument storage type.
+ */
+std::string GetArgumentForInternalToNativeCall(const MethodInfo& methodInfo, const std::string& argumentName, const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation)
 {
-	if (isSrcPointer(flags))
-		return (isPtr ? "" : "&") + name;
-	else if (isSrcReference(flags) || isSrcValue(flags))
-		return (isPtr ? "*" : "") + name;
-	else
-		return name;
-}
+	// Performs the conversion for arguments whose source type is either a value type or pointer type.
+	auto fnGetPlainArgument = [&methodInfo, &argumentName, &typeInformation](bool isInputPointerType)
+	{
+		if (IsInternalMethodParameterValueType(typeInformation))
+			return (isInputPointerType ? "*" : "") + argumentName;
 
-std::string getAsManagedToCppArgument(const std::string& name, ::ExportedClassTypeCategory type, int flags, const std::string& methodName)
-{
-	switch (type)
+		if (typeInformation.IsQualifierFlagSet(VariableQualifierFlags::IsPointer))
+			return (isInputPointerType ? "" : "&") + argumentName;
+
+		errs() << "Error: Invalid type for method argument " << argumentName << " on method " << methodInfo.sourceName << ".\n";
+		return argumentName;
+	};
+
+	enum class HandleType
 	{
-	case ::ExportedClassTypeCategory::Primitive:
-	case ::ExportedClassTypeCategory::Enum: // Input type is either value or pointer depending if output or not
-		return getAsManagedToCppArgumentPlain(name, flags, isOutput(flags), methodName);
-	case ::ExportedClassTypeCategory::Struct: // Input type is always a pointer
-		if (isComplexStruct(flags))
-			return getAsManagedToCppArgumentPlain(name, flags, false, methodName);
-		else
-			return getAsManagedToCppArgumentPlain(name, flags, true, methodName);
-	case ::ExportedClassTypeCategory::MonoObject: // Input type is either a pointer or a pointer to pointer, depending if output or not
+		ResourceHandle,
+		GameObjectHandle
+	};
+
+	// Performs the conversion for arguments whose source type is a handle type.
+	auto fnGetHandleArgument = [&argumentName, &typeInformation](HandleType handleType)
+	{
+		if (handleType == HandleType::ResourceHandle)
 		{
-			if (isOutput(flags))
-				return "&" + name;
-			else
-				return name;
+			assert(typeInformation.TypeCategory == VariableTypeCategory::SharedPointer || typeInformation.TypeCategory == VariableTypeCategory::ResourceHandle || typeInformation.TypeCategory == VariableTypeCategory::General);
+
+			if (typeInformation.TypeCategory == VariableTypeCategory::ResourceHandle)
+				return argumentName;
 		}
-	case ::ExportedClassTypeCategory::String: // Input type is always a value
-	case ::ExportedClassTypeCategory::WString:
-	case ::ExportedClassTypeCategory::Path:
-		return getAsManagedToCppArgumentPlain(name, flags, false, methodName);
-	case ::ExportedClassTypeCategory::GUIElement: // Input type is always a pointer
-		return getAsManagedToCppArgumentPlain(name, flags, true, methodName);
-	case ::ExportedClassTypeCategory::Component: // Input type is always a handle
-	case ::ExportedClassTypeCategory::SceneObject:
-	case ::ExportedClassTypeCategory::Resource:
-	{
-		if (isSrcRHandle(flags) || isSrcGHandle(flags))
-			return name;
-		else if (isSrcSPtr(flags))
-			return name + ".GetInternalPtr()";
-		else if (isSrcPointer(flags))
-			return name + ".get()";
-		else if (isSrcReference(flags) || isSrcValue(flags))
-			return "*" + name;
 		else
 		{
-			outs() << "Error: Unsure how to pass parameter \"" << name << "\" to method \"" << methodName << "\".\n";
-			return name;
+			assert(typeInformation.TypeCategory == VariableTypeCategory::SharedPointer || typeInformation.TypeCategory == VariableTypeCategory::GameObjectHandle || typeInformation.TypeCategory == VariableTypeCategory::ComponentOrActor || typeInformation.TypeCategory == VariableTypeCategory::General);
+
+			if (typeInformation.TypeCategory == VariableTypeCategory::GameObjectHandle || typeInformation.TypeCategory == VariableTypeCategory::ComponentOrActor)
+				return argumentName;
 		}
+
+		if (typeInformation.TypeCategory == VariableTypeCategory::SharedPointer)
+			return argumentName + ".GetInternalPtr()";
+
+		assert(typeInformation.TypeCategory == VariableTypeCategory::General);
+		if (typeInformation.IsQualifierFlagSet(VariableQualifierFlags::IsPointer))
+			return argumentName + ".get()";
+
+		return "*" + argumentName;
+	};
+
+	if(typeInformation.IsArrayOrVector())
+	{
+		return fnGetPlainArgument(typeInformation.IsOutputParameter());
 	}
-	case ::ExportedClassTypeCategory::Class: // Input type is always a SPtr
-	case ::ExportedClassTypeCategory::ReflectableClass:
+
+	switch (typeMappingInformation.TypeCategory)
 	{
-		assert(!isSrcRHandle(flags) && !isSrcGHandle(flags));
+	case ExportedClassTypeCategory::Primitive:
+	case ExportedClassTypeCategory::Enum: // Input type is either value or pointer depending if output or not
+		return fnGetPlainArgument(typeInformation.IsOutputParameter());
+	case ExportedClassTypeCategory::Struct: // Input type is always a pointer
+		return fnGetPlainArgument(!typeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsStructWrapperUsed));
+	case ExportedClassTypeCategory::MonoObject: // Input type is either a pointer or a pointer to pointer, depending if output or not
+		return fnGetPlainArgument(typeInformation.IsOutputParameter());
+	case ExportedClassTypeCategory::String: // Input type is always a value
+	case ExportedClassTypeCategory::WString:
+	case ExportedClassTypeCategory::Path:
+		return fnGetPlainArgument(false);
+	case ExportedClassTypeCategory::GUIElement: // Input type is always a pointer
+		return fnGetPlainArgument(true);
+	case ExportedClassTypeCategory::Component: // Input type is always a handle
+	case ExportedClassTypeCategory::SceneObject:
+		return fnGetHandleArgument(HandleType::GameObjectHandle);
+	case ExportedClassTypeCategory::Resource:
+		return fnGetHandleArgument(HandleType::ResourceHandle);
+	case ExportedClassTypeCategory::Class: // Input type is always a SPtr
+	case ExportedClassTypeCategory::ReflectableClass:
+	{
+		assert(typeInformation.TypeCategory == VariableTypeCategory::SharedPointer || typeInformation.TypeCategory == VariableTypeCategory::ComponentOrActor || typeInformation.TypeCategory == VariableTypeCategory::General);
 
-		if (isSrcPointer(flags))
-			return name + ".get()";
-		else if (isSrcSPtr(flags))
-			return name;
-		else if (isSrcReference(flags) || isSrcValue(flags))
-			return "*" + name;
-		else
-		{
-			outs() << "Error: Unsure how to pass parameter \"" << name << "\" to method \"" << methodName << "\".\n";
-			return name;
-		}
+		if(typeInformation.TypeCategory == VariableTypeCategory::SharedPointer || typeInformation.TypeCategory == VariableTypeCategory::ComponentOrActor)
+			return argumentName;
 
+		if(typeInformation.IsQualifierFlagSet(VariableQualifierFlags::IsPointer))
+			return argumentName + ".get()";
+
+		return "*" + argumentName;
 	}
 	default: // Some object type
 		assert(false);
@@ -2037,20 +2081,13 @@ std::string generateCppMethodBody(const ClassInfo& classInfo, const MethodInfo& 
 
 	for (auto I = methodInfo.paramInfos.begin(); I != methodInfo.paramInfos.end(); ++I)
 	{
-		bool isLast = (I + 1) == methodInfo.paramInfos.end();
+		const bool isLastArgument = (I + 1) == methodInfo.paramInfos.end();
+		const std::string argumentName = GenerateMethodBodyBlockForArgument(I->Name, *I, isLastArgument, false, preCallActions, postCallActions);
 
-		std::string argName = GenerateMethodBodyBlockForArgument(I->Name, *I, isLast, false, preCallActions, postCallActions);
+		TypeMappingInformation parameterTypeMappingInformation = GetNativeToScriptTypeMapping(I->TypeInformation);
+		methodArgs << GetArgumentForInternalToNativeCall(methodInfo, argumentName, I->TypeInformation, parameterTypeMappingInformation);
 
-		if (!isArrayOrVector(I->flags))
-		{
-			TypeMappingInformation paramTypeInfo = GetNativeToScriptTypeMapping(I->TypeInformation);
-
-			methodArgs << getAsManagedToCppArgument(argName, paramTypeInfo.TypeCategory, I->flags, methodInfo.sourceName);
-		}
-		else
-			methodArgs << getAsManagedToCppArgumentPlain(argName, I->flags, isOutput(I->flags), methodInfo.sourceName);
-
-		if (!isLast)
+		if (!isLastArgument)
 			methodArgs << ", ";
 	}
 
@@ -2270,21 +2307,17 @@ std::string GenerateCppFieldGetterBody(const ClassInfo& classInfo, const FieldIn
 std::string generateCppFieldSetterBody(const ClassInfo& classInfo, const FieldInfo& fieldInfo, const MethodInfo& methodInfo, const TypeMappingInformation& typeMappingInformation, bool isModule)
 {
 	std::stringstream preCallActions;
-	std::stringstream argValue;
+	std::stringstream argumentValue;
 	std::stringstream postCallActions;
 
 	bool isBase = (classInfo.flags & (int)ClassFlags::IsBase) != 0;
 	bool isStatic = (methodInfo.flags & (int)MethodFlags::Static) != 0;
 
-	const VariableInformation& paramInfo = methodInfo.paramInfos[0];
-	std::string argName = GenerateMethodBodyBlockForArgument(paramInfo.Name, paramInfo, false, false, preCallActions, postCallActions);
+	const VariableInformation& parameterInformation = methodInfo.paramInfos[0];
+	const std::string argumentName = GenerateMethodBodyBlockForArgument(parameterInformation.Name, parameterInformation, false, false, preCallActions, postCallActions);
 
-	TypeMappingInformation paramTypeInfo = GetNativeToScriptTypeMapping(paramInfo.TypeInformation);
-
-	if(!isArrayOrVector(paramInfo.flags))
-		argValue << getAsManagedToCppArgument(argName, paramTypeInfo.TypeCategory, paramInfo.flags, methodInfo.sourceName);
-	else
-		argValue << argName;
+	const TypeMappingInformation parameterTypeMappingInformation = GetNativeToScriptTypeMapping(parameterInformation.TypeInformation);
+	argumentValue << GetArgumentForInternalToNativeCall(methodInfo, argumentName, parameterInformation.TypeInformation, parameterTypeMappingInformation);
 
 	std::stringstream output;
 	output << "\t{" << std::endl;
@@ -2305,7 +2338,7 @@ std::string generateCppFieldSetterBody(const ClassInfo& classInfo, const FieldIn
 		fieldAccess << "->" << fieldInfo.Name;
 	}
 
-	output << "\t\t" << fieldAccess.str() << " = " << argValue.str() << ";\n";
+	output << "\t\t" << fieldAccess.str() << " = " << argumentValue.str() << ";\n";
 
 	std::string postCallActionsStr = postCallActions.str();
 	if (!postCallActionsStr.empty())

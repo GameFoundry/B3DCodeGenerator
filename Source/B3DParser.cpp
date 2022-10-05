@@ -942,7 +942,7 @@ bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, Variabl
 
 		// Its a user-defined type
 		outType.TypeName = sourceTypeName;
-		outType.TypeCategory = VariableTypeCategory::UserType;
+		outType.TypeCategory = VariableTypeCategory::General;
 
 		return true;
 	}
@@ -953,7 +953,7 @@ bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, Variabl
 
 		std::string sourceTypeName = enumDecl->getName().str();
 		outType.TypeName = sourceTypeName;
-		outType.TypeCategory = VariableTypeCategory::UserType;
+		outType.TypeCategory = VariableTypeCategory::General;
 
 		return true;
 	}

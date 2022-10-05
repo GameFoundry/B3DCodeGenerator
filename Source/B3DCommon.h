@@ -63,7 +63,7 @@ enum class ExportedClassTypeCategory
 /** Determines the type of variable contained in VariableTypeInformation. */
 enum class VariableTypeCategory
 {
-	UserType, /**< Type is not a recognized built-in type. */
+	General, /**< Type is not a recognized built-in type. */
 	Primitive, /**< int, bool, float, etc. */
 	Vector, /**< Vector<T>. Will also provide an underlying type information for T. */
 	SharedPointer, /**< Shared<T>. Will also provide an underlying type information for T. */
@@ -143,7 +143,7 @@ struct VariableTypeInformation
 	/** If this type wraps another type, returns the wrapped type name. Otherwise, returns the name of this type. If there are multiple nested wrapped types this returns the last one. */
 	const std::string& GetLastWrappedOrSelfTypeName() const;
 
-	VariableTypeCategory TypeCategory = VariableTypeCategory::UserType;
+	VariableTypeCategory TypeCategory = VariableTypeCategory::General;
 	std::string TypeName;
 	std::unique_ptr<VariableTypeInformation> UnderlyingType;
 	uint32_t QualifierFlags = (uint32_t)VariableQualifierFlags::None;
@@ -209,7 +209,7 @@ inline const std::string& VariableTypeInformation::GetFirstWrappedOrSelfTypeName
 	switch(TypeCategory)
 	{
 	default:
-	case VariableTypeCategory::UserType: 
+	case VariableTypeCategory::General: 
 	case VariableTypeCategory::Primitive: 
 	case VariableTypeCategory::String: 
 	case VariableTypeCategory::WString:
@@ -884,7 +884,7 @@ inline TypeMappingInformation GetNativeToScriptTypeMapping(const VariableTypeInf
 			underlyingTypeMapping.TypeCategory = ::ExportedClassTypeCategory::Class;
 
 			underlyingType.TypeName = "Unknown";
-			underlyingType.TypeCategory = VariableTypeCategory::UserType;
+			underlyingType.TypeCategory = VariableTypeCategory::General;
 		}
 		else
 		{
@@ -931,7 +931,7 @@ inline TypeMappingInformation GetNativeToScriptTypeMapping(const VariableTypeInf
 		return underlyingTypeMapping;
 	}
 	default:
-	case VariableTypeCategory::UserType:
+	case VariableTypeCategory::General:
 		return GetNativeToScriptTypeMapping(typeInformation.TypeName);
 	}
 }

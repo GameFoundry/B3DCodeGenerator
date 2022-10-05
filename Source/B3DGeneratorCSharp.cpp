@@ -104,7 +104,7 @@ static bool IsStructReference(const VariableTypeInformation& typeInformation, co
 }
 
 /** Returns true if the provided type is represented as a value type in C#. */
-static bool IsValueType(const VariableTypeInformation& typeInformation)
+static bool IsInternalMethodParameterValueType(const VariableTypeInformation& typeInformation)
 {
 	// Note: Purposely not checking for references here, as in C++ they are used to pass data by value
 	if (typeInformation.IsQualifierFlagSet(VariableQualifierFlags::IsPointer))
@@ -119,7 +119,7 @@ static bool IsValueType(const VariableTypeInformation& typeInformation)
 	case VariableTypeCategory::Vector:
 	case VariableTypeCategory::SmallVector:
 	case VariableTypeCategory::Array:
-		return IsValueType(typeInformation.AssertGetUnderlyingType());
+		return IsInternalMethodParameterValueType(typeInformation.AssertGetUnderlyingType());
 	default: 
 		return true;
 	}
@@ -163,7 +163,7 @@ static std::string GenerateCSharpStyleAttributes(const ExportStyle& style, const
 	bool notNull = (style.flags & (int)StyleFlags::NotNull) != 0;
 	bool passByCopy = (style.flags & (int)StyleFlags::PassByCopy) != 0;
 
-	const bool isPassedByValue = IsValueType(typeInformation);
+	const bool isPassedByValue = IsInternalMethodParameterValueType(typeInformation);
 	if(!isGeneratingStructFields && (isClassType(typeMappingInformation.TypeCategory) && isPassedByValue))
 	{
 		notNull = true;
