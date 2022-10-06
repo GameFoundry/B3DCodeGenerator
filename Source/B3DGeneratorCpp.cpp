@@ -241,28 +241,38 @@ static std::string GenerateGetInternalCallLine(const VariableTypeInformation& ty
 	return output.str();
 }
 
-std::string generateManagedToScriptObjectLine(const std::string& indent, const std::string& scriptType, 
-	const std::string& scriptName, const std::string& name, ::ExportedClassTypeCategory type, int flags)
+/**
+ * Returns code that converts a Mono object into its script interop type.
+ *
+ * @param indent					Indent to apply to the generated line of code.
+ * @param scriptType				Script interop type.
+ * @param scriptName				Name of the script interop variable to store the result in.
+ * @param variableName				Name of the variable containing the Mono object.
+ * @param typeInformation			Information about the native type.
+ * @param typeMappingInformation	Mapping of the provided type in script.
+ * @return							ode that converts a Mono object into its script interop type, assigning it to a variable named @p scriptName.
+ */
+std::string GenerateToNativeCall(const std::string& indent, const std::string& scriptType, const std::string& scriptName, const std::string& variableName, const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation)
 {
-	bool isRRef = getPassAsResourceRef(flags);
-	bool isBase = isBaseParam(flags);
+	const bool isRRef = typeInformation.IsParameterFlagSet(ParameterFlags::AsResourceRef);
+	const bool isBase = typeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsReferencingBaseClass);
 
 	std::stringstream output;
 	if (!isBase || isRRef)
 	{
 		output << indent << scriptType << "* " << scriptName << ";" << std::endl;
-		output << indent << scriptName << " = " << scriptType << "::ToNative(" << name << ");" << std::endl;
+		output << indent << scriptName << " = " << scriptType << "::ToNative(" << variableName << ");" << std::endl;
 	}
 	else
 	{
 		std::string scriptBaseType;
-		if(type == ::ExportedClassTypeCategory::GUIElement)
+		if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
 			scriptBaseType = "ScriptGUIElementBaseTBase";
 		else
 			scriptBaseType = scriptType + "Base";
 
 		output << indent << scriptBaseType << "* " << scriptName << ";" << std::endl;
-		output << indent << scriptName << " = (" << scriptBaseType << "*)" << scriptType << "::ToNative(" << name << ");" << std::endl;
+		output << indent << scriptName << " = (" << scriptBaseType << "*)" << scriptType << "::ToNative(" << variableName << ");" << std::endl;
 	}
 
 	return output.str();
@@ -498,11 +508,18 @@ std::string GetReturnValueForNativeCall(const std::string& access, const Variabl
 	}
 }
 
-std::string getScriptInteropType(const std::string& name, bool resourceRef = false)
+/**
+ * Returns the name of the script interop type used for the provided type name
+ *
+ * @param typeName					Type name of the type to look up.
+ * @param isResourceReference	If the type is a resource, this will return a resource reference script interop class, rather than the resource's own interop class.
+ * @return						Name of the type used for script interop for the provided type name.
+ */
+std::string GetScriptInteropTypeName(const std::string& typeName, bool isResourceReference = false)
 {
-	auto iterFind = NativeToScriptTypeMap.find(name);
+	auto iterFind = NativeToScriptTypeMap.find(typeName);
 	if (iterFind == NativeToScriptTypeMap.end())
-		outs() << "Warning: Type \"" << name << "\" referenced as a script interop type, but no script interop mapping found. Assuming default type name.\n";
+		outs() << "Warning: Type \"" << typeName << "\" referenced as a script interop type, but no script interop mapping found. Assuming default type name.\n";
 
 	bool isValidInteropType = iterFind->second.TypeCategory != ::ExportedClassTypeCategory::Primitive &&
 		iterFind->second.TypeCategory != ::ExportedClassTypeCategory::Enum &&
@@ -511,14 +528,14 @@ std::string getScriptInteropType(const std::string& name, bool resourceRef = fal
 		iterFind->second.TypeCategory != ::ExportedClassTypeCategory::Path;
 
 	if (!isValidInteropType)
-		outs() << "Error: Type \"" << name << "\" referenced as a script interop type, but script interop object cannot be generated for this object type.\n";
+		outs() << "Error: Type \"" << typeName << "\" referenced as a script interop type, but script interop object cannot be generated for this object type.\n";
 
-	std::string cleanName = CleanTemplateParameters(name);
+	std::string cleanName = CleanTemplateParameters(typeName);
 
-	if(resourceRef)
+	if(isResourceReference)
 	{
 		if(iterFind->second.TypeCategory != ::ExportedClassTypeCategory::Resource)
-			outs() << "Error: Type \"" << name << "\" cannot be wrapped in a resource reference.\n";
+			outs() << "Error: Type \"" << typeName << "\" cannot be wrapped in a resource reference.\n";
 
 		return "ScriptRRefBase";
 	}
@@ -722,13 +739,13 @@ std::string generateClassNativeToScriptObjectLine(int flags, const std::string& 
 			output << indent << "{\n";
 
 			output << indent << "\tif(rtti_is_of_type<" << derivedClasses[0] << ">(" << argName << "))\n";
-			generateCreateLine(getScriptInteropType(derivedClasses[0]), 
+			generateCreateLine(GetScriptInteropTypeName(derivedClasses[0]), 
 				"std::static_pointer_cast<" + derivedClasses[0] + ">(" + argName + ")", indent + "\t\t");
 
 			for(uint32_t i = 1; i < (uint32_t)derivedClasses.size(); i++)
 			{
 				output << indent << "\telse if(rtti_is_of_type<" << derivedClasses[i] << ">(" << argName << "))\n";
-				generateCreateLine(getScriptInteropType(derivedClasses[i]),
+				generateCreateLine(GetScriptInteropTypeName(derivedClasses[i]),
 					"std::static_pointer_cast<" + derivedClasses[i] + ">(" + argName + ")", indent + "\t\t");
 			}
 
@@ -843,7 +860,7 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 		std::string monoType;
 		if(asyncOpUnderlyingTypeInformation.GetLastWrappedOrSelfTypeName() != "Any")
 		{
-			std::string scriptType = getScriptInteropType(asyncOpUnderlyingTypeInformation.GetLastWrappedOrSelfTypeName(),
+			std::string scriptType = GetScriptInteropTypeName(asyncOpUnderlyingTypeInformation.GetLastWrappedOrSelfTypeName(),
 				parameterTypeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Resource && asyncOpUnderlyingTypeInformation.IsParameterFlagSet(ParameterFlags::AsResourceRef));
 
 			monoType = scriptType + "::GetMetaData()->ScriptClass";
@@ -979,7 +996,7 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 				{
 					if(isComplexStruct(parameterInformation.flags))
 					{
-						std::string scriptType = getScriptInteropType(parameterInformation.typeName);
+						std::string scriptType = GetScriptInteropTypeName(parameterInformation.typeName);
 
 						postCallActions << "\t\t" << GetStructInteropTypeName(parameterInformation.typeName) << " interop" << parameterName << ";\n";
 						postCallActions << "\t\tinterop" << parameterName << " = " << scriptType << "::ToInterop(" << argName << ");\n";
@@ -1003,7 +1020,7 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 					argName = "tmp" + parameterName;
 					preCallActions << "\t\t" << parameterInformation.typeName << " " << argName << ";" << std::endl;
 
-					std::string scriptType = getScriptInteropType(parameterInformation.typeName);
+					std::string scriptType = GetScriptInteropTypeName(parameterInformation.typeName);
 
 					postCallActions << "\t\t" << GetStructInteropTypeName(parameterInformation.typeName) << " interop" << parameterName << ";\n";
 					postCallActions << "\t\tinterop" << parameterName << " = " << scriptType << "::ToInterop(" << argName << ");\n";
@@ -1029,7 +1046,7 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 					argName = "tmp" + parameterName;
 					preCallActions << "\t\t" << parameterInformation.typeName << " " << argName << ";" << std::endl;
 
-					std::string scriptType = getScriptInteropType(parameterInformation.typeName);
+					std::string scriptType = GetScriptInteropTypeName(parameterInformation.typeName);
 					preCallActions << "\t\t" << argName << " = " << scriptType << "::FromInterop(*" << parameterName << ");" << std::endl;
 				}
 				else
@@ -1100,7 +1117,7 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 		{
 			argName = "tmp" + parameterName;
 			std::string tmpType = GetCppNativeQualifiedTypeName(parameterInformation.TypeInformation, parameterTypeMappingInformation);
-			std::string scriptType = getScriptInteropType(parameterInformation.typeName);
+			std::string scriptType = GetScriptInteropTypeName(parameterInformation.typeName);
 
 			preCallActions << "\t\t" << tmpType << " " << argName << ";\n";
 			if(returnValue || isOutput(parameterInformation.flags))
@@ -1109,8 +1126,7 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 			{
 				std::string scriptName = "script" + parameterName;
 
-				preCallActions << generateManagedToScriptObjectLine("\t\t", scriptType, scriptName, parameterName, 
-					parameterTypeMappingInformation.TypeCategory, parameterInformation.flags);
+				preCallActions << GenerateToNativeCall("\t\t", scriptType, scriptName, parameterName, parameterInformation.TypeInformation, parameterTypeMappingInformation);
 				preCallActions << "\t\tif(" << scriptName << " != nullptr)" << std::endl;
 				preCallActions << "\t\t\t" << argName << " = " << GenerateGetInternalCallLine(parameterInformation.TypeInformation, parameterTypeMappingInformation, scriptName) << ";" << std::endl;
 			}
@@ -1121,7 +1137,7 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 		{
 			argName = "tmp" + parameterName;
 			std::string tmpType = GetCppNativeQualifiedTypeName(parameterInformation.TypeInformation, parameterTypeMappingInformation);
-			std::string scriptType = getScriptInteropType(parameterInformation.typeName);
+			std::string scriptType = GetScriptInteropTypeName(parameterInformation.typeName);
 
 			preCallActions << "\t\t" << tmpType << " " << argName;
 			if ((returnValue || isOutput(parameterInformation.flags)) && IsDereferenceRequired(parameterInformation.TypeInformation, parameterTypeMappingInformation))
@@ -1137,8 +1153,7 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 			{
 				std::string scriptName = "script" + parameterName;
 				
-				preCallActions << generateManagedToScriptObjectLine("\t\t", scriptType, scriptName, parameterName, 
-					parameterTypeMappingInformation.TypeCategory, parameterInformation.flags);
+				preCallActions << GenerateToNativeCall("\t\t", scriptType, scriptName, parameterName, parameterInformation.TypeInformation, parameterTypeMappingInformation);
 				preCallActions << "\t\tif(" << scriptName << " != nullptr)" << std::endl;
 				preCallActions << "\t\t\t" << argName << " = " << GenerateGetInternalCallLine(parameterInformation.TypeInformation, parameterTypeMappingInformation, scriptName) << ";" << std::endl;
 			}
@@ -1152,7 +1167,7 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 			preCallActions << "\t\t" << tmpType << " " << argName << ";" << std::endl;
 
 			std::string scriptName = "script" + parameterName;
-			std::string scriptType = getScriptInteropType(parameterInformation.typeName, getPassAsResourceRef(parameterInformation.flags));
+			std::string scriptType = GetScriptInteropTypeName(parameterInformation.typeName, getPassAsResourceRef(parameterInformation.flags));
 
 			if (returnValue)
 			{
@@ -1172,7 +1187,7 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 			}
 			else
 			{
-				preCallActions << generateManagedToScriptObjectLine("\t\t", scriptType, scriptName, parameterName, parameterTypeMappingInformation.TypeCategory, parameterInformation.flags);
+				preCallActions << GenerateToNativeCall("\t\t", scriptType, scriptName, parameterName, parameterInformation.TypeInformation, parameterTypeMappingInformation);
 				preCallActions << "\t\tif(" << scriptName << " != nullptr)" << std::endl;
 				preCallActions << "\t\t\t" << argName << " = " << GenerateGetInternalCallLine(parameterInformation.TypeInformation, parameterTypeMappingInformation, scriptName) << ";" << std::endl;
 			}
@@ -1198,7 +1213,7 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 			entryType = "MonoObject*";
 			break;
 		default: // Some object or struct type
-			entryType = getScriptInteropType(parameterInformation.typeName, getPassAsResourceRef(parameterInformation.flags));
+			entryType = GetScriptInteropTypeName(parameterInformation.typeName, getPassAsResourceRef(parameterInformation.flags));
 			break;
 		}
 
@@ -1266,7 +1281,7 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 			{
 				std::string scriptName = "script" + parameterName;
 
-				preCallActions << generateManagedToScriptObjectLine("\t\t\t\t", entryType, scriptName, arrayName + ".Get<MonoObject*>(i)", parameterTypeMappingInformation.TypeCategory, parameterInformation.flags);
+				preCallActions << GenerateToNativeCall("\t\t\t\t", entryType, scriptName, arrayName + ".Get<MonoObject*>(i)",parameterInformation.TypeInformation, parameterTypeMappingInformation);
 				preCallActions << "\t\t\t\tif(" << scriptName << " != nullptr)\n";
 				preCallActions << "\t\t\t\t{\n";
 
@@ -1418,17 +1433,17 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 	}
 }
 
-std::string generateFieldConvertBlock(const std::string& name, const VariableBase& varTypeInfo, bool toInterop, std::stringstream& preActions)
+std::string generateFieldConvertBlock(const std::string& name, const VariableBase& fieldInformation, bool toInterop, std::stringstream& preActions)
 {
-	TypeMappingInformation parameterTypeMappingInformation = GetNativeToScriptTypeMapping(varTypeInfo.TypeInformation);
+	TypeMappingInformation parameterTypeMappingInformation = GetNativeToScriptTypeMapping(fieldInformation.TypeInformation);
 
-	if (getIsAsyncOp(varTypeInfo.flags))
+	if (getIsAsyncOp(fieldInformation.flags))
 	{
 		outs() << "Error: AsyncOp type not supported as a struct field. \n";
 		return "";
 	}
 
-	if (!isArrayOrVector(varTypeInfo.flags))
+	if (!isArrayOrVector(fieldInformation.flags))
 	{
 		std::string arg;
 
@@ -1439,10 +1454,10 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 			arg = "value." + name;
 			break;
 		case ::ExportedClassTypeCategory::Struct:
-			if(isComplexStruct(varTypeInfo.flags))
+			if(isComplexStruct(fieldInformation.flags))
 			{
-				std::string interopType = GetStructInteropTypeName(varTypeInfo.typeName);
-				std::string scriptType = getScriptInteropType(varTypeInfo.typeName);
+				std::string interopType = GetStructInteropTypeName(fieldInformation.typeName);
+				std::string scriptType = GetScriptInteropTypeName(fieldInformation.typeName);
 
 				arg = "tmp" + name;
 				if(toInterop)
@@ -1452,7 +1467,7 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 				}
 				else
 				{
-					preActions << "\t\t" << varTypeInfo.typeName << " " << arg << ";" << std::endl;
+					preActions << "\t\t" << fieldInformation.typeName << " " << arg << ";" << std::endl;
 					preActions << "\t\t" << arg << " = " << scriptType << "::FromInterop(value." << name << ");" << std::endl;
 				}
 			}
@@ -1518,20 +1533,19 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 		case ::ExportedClassTypeCategory::GUIElement:
 		{
 			arg = "tmp" + name;
-			std::string scriptType = getScriptInteropType(varTypeInfo.typeName);
+			std::string scriptType = GetScriptInteropTypeName(fieldInformation.typeName);
 
 			if(!toInterop)
 			{
-				if(isSrcPointer(varTypeInfo.flags))
+				if(isSrcPointer(fieldInformation.flags))
 				{
-					std::string tmpType = GetCppNativeQualifiedTypeName(varTypeInfo.TypeInformation, parameterTypeMappingInformation);
+					std::string tmpType = GetCppNativeQualifiedTypeName(fieldInformation.TypeInformation, parameterTypeMappingInformation);
 					preActions << "\t\t" << tmpType << " " << arg << ";" << std::endl;
 
 					std::string scriptName = "script" + name;
-					preActions << generateManagedToScriptObjectLine("\t\t", scriptType, scriptName, "value." + name, 
-						parameterTypeMappingInformation.TypeCategory, varTypeInfo.flags);
+					preActions << GenerateToNativeCall("\t\t", scriptType, scriptName, "value." + name, fieldInformation.TypeInformation, parameterTypeMappingInformation);
 					preActions << "\t\tif(" << scriptName << " != nullptr)" << std::endl;
-					preActions << "\t\t\t" << arg << " = " << GenerateGetInternalCallLine(varTypeInfo.TypeInformation, parameterTypeMappingInformation, scriptName) << ";" << std::endl;
+					preActions << "\t\t\t" << arg << " = " << GenerateGetInternalCallLine(fieldInformation.TypeInformation, parameterTypeMappingInformation, scriptName) << ";" << std::endl;
 				}
 				else
 					outs() << "Error: Invalid struct member type for \"" << name << "\"\n";
@@ -1542,53 +1556,53 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 		case ::ExportedClassTypeCategory::ReflectableClass:
 		{
 			arg = "tmp" + name;
-			std::string scriptType = getScriptInteropType(varTypeInfo.typeName);
+			std::string scriptType = GetScriptInteropTypeName(fieldInformation.typeName);
 
 			if(toInterop)
 			{
 				preActions << "\t\tMonoObject* " << arg << ";\n";
 
 				// Need to copy by value
-				if(isSrcValue(varTypeInfo.flags) || isSrcPointer(varTypeInfo.flags))
+				if(isSrcValue(fieldInformation.flags) || isSrcPointer(fieldInformation.flags))
 				{
-					std::string tmpType = GetCppNativeQualifiedTypeName(varTypeInfo.TypeInformation, parameterTypeMappingInformation);
+					std::string tmpType = GetCppNativeQualifiedTypeName(fieldInformation.TypeInformation, parameterTypeMappingInformation);
 					preActions << "\t\t" << tmpType << " " << arg << "copy;\n";
 
 					// Note: Assuming a copy constructor exists
-					if (isSrcPointer(varTypeInfo.flags))
+					if (isSrcPointer(fieldInformation.flags))
 					{
 						preActions << "\t\tif(value." << name << " != nullptr)\n";
-						preActions << "\t\t\t" << arg << "copy = bs_shared_ptr_new<" << varTypeInfo.typeName << ">(*value." << name << ");\n";
+						preActions << "\t\t\t" << arg << "copy = bs_shared_ptr_new<" << fieldInformation.typeName << ">(*value." << name << ");\n";
 					}
 					else
-						preActions << "\t\t" << arg << "copy = bs_shared_ptr_new<" << varTypeInfo.typeName << ">(value." << name << ");\n";
+						preActions << "\t\t" << arg << "copy = bs_shared_ptr_new<" << fieldInformation.typeName << ">(value." << name << ");\n";
 
-					preActions << generateClassNativeToScriptObjectLine(varTypeInfo.flags, varTypeInfo.typeName, arg, scriptType, arg + "copy");
+					preActions << generateClassNativeToScriptObjectLine(fieldInformation.flags, fieldInformation.typeName, arg, scriptType, arg + "copy");
 				}
-				else if(isSrcSPtr(varTypeInfo.flags))
-					preActions << generateClassNativeToScriptObjectLine(varTypeInfo.flags, varTypeInfo.typeName, arg, scriptType, "value." + name);
+				else if(isSrcSPtr(fieldInformation.flags))
+					preActions << generateClassNativeToScriptObjectLine(fieldInformation.flags, fieldInformation.typeName, arg, scriptType, "value." + name);
 				else
 					outs() << "Error: Invalid struct member type for \"" << name << "\"\n";
 			}
 			else
 			{
-				std::string tmpType = GetCppNativeQualifiedTypeName(varTypeInfo.TypeInformation, parameterTypeMappingInformation);
+				std::string tmpType = GetCppNativeQualifiedTypeName(fieldInformation.TypeInformation, parameterTypeMappingInformation);
 				preActions << "\t\t" << tmpType << " " << arg << ";" << std::endl;
 
 				std::string scriptName = "script" + name;
-				preActions << generateManagedToScriptObjectLine("\t\t", scriptType, scriptName, "value." + name, parameterTypeMappingInformation.TypeCategory, varTypeInfo.flags);
+				preActions << GenerateToNativeCall("\t\t", scriptType, scriptName, "value." + name, fieldInformation.TypeInformation, parameterTypeMappingInformation);
 				preActions << "\t\tif(" << scriptName << " != nullptr)" << std::endl;
 				preActions << "\t\t\t" << arg << " = " << scriptName << "->GetInternal();" << std::endl;
 
 				// Cast to the source type from SPtr
-				if (isSrcValue(varTypeInfo.flags))
+				if (isSrcValue(fieldInformation.flags))
 				{
 					preActions << "\t\tif(" << arg << " != nullptr)" << std::endl;
 					arg = "*" + arg;
 				}
-				else if (isSrcPointer(varTypeInfo.flags))
+				else if (isSrcPointer(fieldInformation.flags))
 					arg = arg + ".get()";
-				else if(!isSrcSPtr(varTypeInfo.flags))
+				else if(!isSrcSPtr(fieldInformation.flags))
 					outs() << "Error: Invalid struct member type for \"" << name << "\"\n";
 			}
 		}
@@ -1596,19 +1610,19 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 		default: // Some resource or game object type
 		{
 			arg = "tmp" + name;
-			std::string scriptType = getScriptInteropType(varTypeInfo.typeName, getPassAsResourceRef(varTypeInfo.flags));
+			std::string scriptType = GetScriptInteropTypeName(fieldInformation.typeName, getPassAsResourceRef(fieldInformation.flags));
 			std::string scriptName = "script" + name;
 
 			if(toInterop)
 			{
 				std::string argName;
 				
-				if(!getIsComponentOrActor(varTypeInfo.flags))
+				if(!getIsComponentOrActor(fieldInformation.flags))
 					argName = "value." + name;
 				else
 					argName = "value." + name + ".GetComponent()";
 
-				preActions << generateNativeToScriptObjectLine(parameterTypeMappingInformation.TypeCategory, varTypeInfo.flags, scriptName, argName);
+				preActions << generateNativeToScriptObjectLine(parameterTypeMappingInformation.TypeCategory, fieldInformation.flags, scriptName, argName);
 
 				preActions << "\t\tMonoObject* " << arg << ";\n";
 				preActions << "\t\tif(" << scriptName << " != nullptr)\n";
@@ -1618,15 +1632,15 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 			}
 			else
 			{
-				std::string tmpType = GetCppNativeQualifiedTypeName(varTypeInfo.TypeInformation, parameterTypeMappingInformation);
+				std::string tmpType = GetCppNativeQualifiedTypeName(fieldInformation.TypeInformation, parameterTypeMappingInformation);
 				preActions << "\t\t" << tmpType << " " << arg << ";" << std::endl;
 				
-				preActions << generateManagedToScriptObjectLine("\t\t", scriptType, scriptName, "value." + name, parameterTypeMappingInformation.TypeCategory, varTypeInfo.flags);
+				preActions << GenerateToNativeCall("\t\t", scriptType, scriptName, "value." + name, fieldInformation.TypeInformation, parameterTypeMappingInformation);
 				preActions << "\t\tif(" << scriptName << " != nullptr)\n";
-				preActions << "\t\t\t" << arg << " = " << GenerateGetInternalCallLine(varTypeInfo.TypeInformation, parameterTypeMappingInformation, scriptName) << ";" << std::endl;
+				preActions << "\t\t\t" << arg << " = " << GenerateGetInternalCallLine(fieldInformation.TypeInformation, parameterTypeMappingInformation, scriptName) << ";" << std::endl;
 			}
 
-			if(!isSrcGHandle(varTypeInfo.flags) && !isSrcRHandle(varTypeInfo.flags))
+			if(!isSrcGHandle(fieldInformation.flags) && !isSrcRHandle(fieldInformation.flags))
 				outs() << "Error: Invalid struct member type for \"" << name << "\"\n";
 		}
 		break;
@@ -1644,34 +1658,34 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 		case ::ExportedClassTypeCategory::WString:
 		case ::ExportedClassTypeCategory::Path:
 		case ::ExportedClassTypeCategory::Enum:
-			entryType = varTypeInfo.typeName;
+			entryType = fieldInformation.typeName;
 			break;
 		case ::ExportedClassTypeCategory::MonoObject:
 			entryType = "MonoObject*";
 			break;
 		default: // Some object or struct type
-			entryType = getScriptInteropType(varTypeInfo.typeName, getPassAsResourceRef(varTypeInfo.flags));
+			entryType = GetScriptInteropTypeName(fieldInformation.typeName, getPassAsResourceRef(fieldInformation.flags));
 			break;
 		}
 
-		std::string argType = GetCppNativeQualifiedTypeName(varTypeInfo.TypeInformation, parameterTypeMappingInformation);
+		std::string argType = GetCppNativeQualifiedTypeName(fieldInformation.TypeInformation, parameterTypeMappingInformation);
 		std::string argName = "vec" + name;
 
-		const VariableTypeInformation& arrayElementTypeInformation = varTypeInfo.TypeInformation.AssertGetUnderlyingType();
+		const VariableTypeInformation& arrayElementTypeInformation = fieldInformation.TypeInformation.AssertGetUnderlyingType();
 
 		if (!toInterop)
 		{
 			std::string arrayName = "array" + name;
 			preActions << "\t\t" << argType << " " << argName;
-			if (isArray(varTypeInfo.flags))
-				preActions << "[" << varTypeInfo.arraySize << "]";
+			if (isArray(fieldInformation.flags))
+				preActions << "[" << fieldInformation.arraySize << "]";
 			preActions << ";" << std::endl;
 
 			preActions << "\t\tif(value." << name << " != nullptr)\n";
 			preActions << "\t\t{\n";
 			preActions << "\t\t\tScriptArray " << arrayName << "(value." << name << ");" << std::endl;
 
-			if(isVector(varTypeInfo.flags) || isSmallVector(varTypeInfo.flags))
+			if(isVector(fieldInformation.flags) || isSmallVector(fieldInformation.flags))
 				preActions << "\t\t\t" << argName << ".resize(" << arrayName << ".Size());" << std::endl;
 
 			preActions << "\t\t\tfor(int i = 0; i < (int)" << arrayName << ".Size(); i++)" << std::endl;
@@ -1699,21 +1713,21 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 			case ::ExportedClassTypeCategory::Struct:
 				preActions << "\t\t\t\t" << argName << "[i] = ";
 
-				if (isComplexStruct(varTypeInfo.flags))
+				if (isComplexStruct(fieldInformation.flags))
 				{
 					preActions << entryType << "::FromInterop(";
-					preActions << arrayName << ".Get<" << GetStructInteropTypeName(varTypeInfo.typeName) << ">(i)";
+					preActions << arrayName << ".Get<" << GetStructInteropTypeName(fieldInformation.typeName) << ">(i)";
 					preActions << ")";
 				}
 				else
-					preActions << arrayName << ".Get<" << varTypeInfo.typeName << ">(i)";
+					preActions << arrayName << ".Get<" << fieldInformation.typeName << ">(i)";
 
 				preActions << ";\n";
 				break;
 			default: // Some object type
 			{
 				std::string scriptName = "script" + name;
-				preActions << generateManagedToScriptObjectLine("\t\t\t\t", entryType, scriptName, arrayName + ".Get<MonoObject*>(i)", parameterTypeMappingInformation.TypeCategory, varTypeInfo.flags);
+				preActions << GenerateToNativeCall("\t\t\t\t", entryType, scriptName, arrayName + ".Get<MonoObject*>(i)", fieldInformation.TypeInformation, parameterTypeMappingInformation);
 				
 				preActions << "\t\t\t\tif(" << scriptName << " != nullptr)\n";
 				preActions << "\t\t\t\t{\n";
@@ -1726,9 +1740,9 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 
 				if(parameterTypeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Class || parameterTypeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
 				{
-					if(isSrcPointer(varTypeInfo.flags))
+					if(isSrcPointer(fieldInformation.flags))
 						preActions << "\t\t\t\t\t" << argName << "[i] = " << elemPtrName << ".get();\n";
-					else if((isSrcReference(varTypeInfo.flags) || isSrcValue(varTypeInfo.flags)) && !isSrcSPtr(varTypeInfo.flags))
+					else if((isSrcReference(fieldInformation.flags) || isSrcValue(fieldInformation.flags)) && !isSrcSPtr(fieldInformation.flags))
 					{
 						preActions << "\t\t\t\t\tif(" << elemPtrName << ")\n";
 						preActions << "\t\t\t\t\t\t" << argName << "[i] = *" << elemPtrName << ";\n";
@@ -1750,10 +1764,10 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 		else
 		{
 			preActions << "\t\tint arraySize" << name << " = ";
-			if (isVector(varTypeInfo.flags) || isSmallVector(varTypeInfo.flags))
+			if (isVector(fieldInformation.flags) || isSmallVector(fieldInformation.flags))
 				preActions << "(int)value." << name << ".size()";
 			else
-				preActions << varTypeInfo.arraySize;
+				preActions << fieldInformation.arraySize;
 			preActions << ";\n";
 
 			preActions << "\t\tMonoArray* " << argName << ";" << std::endl;
@@ -1783,12 +1797,12 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 			case ::ExportedClassTypeCategory::Struct:
 				preActions << "\t\t\t" << arrayName << ".Set(i, ";
 
-				if(isComplexStruct(varTypeInfo.flags))
+				if(isComplexStruct(fieldInformation.flags))
 					preActions << entryType << "::ToInterop(";
 
 				preActions << "value." << name << "[i]";
 
-				if (isComplexStruct(varTypeInfo.flags))
+				if (isComplexStruct(fieldInformation.flags))
 					preActions << ")";
 
 				preActions << ");\n";
@@ -1807,9 +1821,9 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 				preActions << "\t\t\t" << elemPtrType << " " << elemPtrName;
 				if(IsDereferenceRequired(arrayElementTypeInformation, parameterTypeMappingInformation))
 				{
-					preActions << " = bs_shared_ptr_new<" << varTypeInfo.typeName << ">();\n";
+					preActions << " = bs_shared_ptr_new<" << fieldInformation.typeName << ">();\n";
 
-					if (isSrcPointer(varTypeInfo.flags))
+					if (isSrcPointer(fieldInformation.flags))
 					{
 						preActions << "\t\t\tif(value." << name << "[i])\n";
 						preActions << "\t\t\t\t*" << elemPtrName << " = *";
@@ -1825,7 +1839,7 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 					preActions << " = value." << name << "[i];\n";
 
 				preActions << "\t\t\tMonoObject* " << elemName << ";\n";
-				preActions << generateClassNativeToScriptObjectLine(varTypeInfo.flags, varTypeInfo.typeName, elemName, 
+				preActions << generateClassNativeToScriptObjectLine(fieldInformation.flags, fieldInformation.typeName, elemName, 
 					entryType, elemPtrName, false, "\t\t\t");
 
 				preActions << "\t\t\t" << arrayName << ".Set(i, " << elemName << ");" << std::endl;
@@ -1838,7 +1852,7 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 			{
 				std::string scriptName = "script" + name;
 
-				preActions << generateNativeToScriptObjectLine(parameterTypeMappingInformation.TypeCategory, varTypeInfo.flags, scriptName, "value." + name + "[i]", "\t\t\t");
+				preActions << generateNativeToScriptObjectLine(parameterTypeMappingInformation.TypeCategory, fieldInformation.flags, scriptName, "value." + name + "[i]", "\t\t\t");
 				preActions << "\t\t\t\tif(" << scriptName << " != nullptr)\n";
 				preActions << "\t\t\t\t" << arrayName << ".Set(i, " << scriptName << "->GetManagedInstance());" << std::endl;
 				preActions << "\t\t\telse\n";
@@ -1888,7 +1902,7 @@ std::string generateEventCallbackBodyBlockForParam(const std::string& name, cons
 			{
 				argName = "tmp" + name;
 
-				std::string scriptType = getScriptInteropType(varTypeInfo.typeName);
+				std::string scriptType = GetScriptInteropTypeName(varTypeInfo.typeName);
 				preCallActions << "\t\tMonoObject* " << argName << ";\n";
 
 				if(isComplexStruct(varTypeInfo.flags))
@@ -1936,7 +1950,7 @@ std::string generateEventCallbackBodyBlockForParam(const std::string& name, cons
 		case ::ExportedClassTypeCategory::ReflectableClass:
 		{
 			argName = "tmp" + name;
-			std::string scriptType = getScriptInteropType(varTypeInfo.typeName);
+			std::string scriptType = GetScriptInteropTypeName(varTypeInfo.typeName);
 
 			preCallActions << "\t\tMonoObject* " << argName << ";\n";
 			preCallActions << generateClassNativeToScriptObjectLine(varTypeInfo.flags, varTypeInfo.typeName, argName, scriptType, name);
@@ -1948,7 +1962,7 @@ std::string generateEventCallbackBodyBlockForParam(const std::string& name, cons
 			preCallActions << "\t\tMonoObject* " << argName << ";" << std::endl;
 
 			std::string scriptName = "script" + name;
-			std::string scriptType = getScriptInteropType(varTypeInfo.typeName, getPassAsResourceRef(varTypeInfo.flags));
+			std::string scriptType = GetScriptInteropTypeName(varTypeInfo.typeName, getPassAsResourceRef(varTypeInfo.flags));
 
 			preCallActions << generateNativeToScriptObjectLine(paramTypeInfo.TypeCategory, varTypeInfo.flags, scriptName, name);
 			preCallActions << "\t\tif(" << scriptName << " != nullptr)\n";
@@ -1977,7 +1991,7 @@ std::string generateEventCallbackBodyBlockForParam(const std::string& name, cons
 			entryType = "MonoObject*";
 			break;
 		default: // Some object or struct type
-			entryType = getScriptInteropType(varTypeInfo.typeName, getPassAsResourceRef(varTypeInfo.flags));
+			entryType = GetScriptInteropTypeName(varTypeInfo.typeName, getPassAsResourceRef(varTypeInfo.flags));
 			break;
 		}
 
@@ -2445,7 +2459,7 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 	{
 		if (isBase)
 		{
-			interopBaseClassName = getScriptInteropType(classInfo.name) + "Base";
+			interopBaseClassName = GetScriptInteropTypeName(classInfo.name) + "Base";
 
 			output << "\tclass " << exportAttr << " ";
 			output << interopBaseClassName << " : public ";
@@ -2463,7 +2477,7 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 			}
 			else
 			{
-				std::string parentBaseClassName = getScriptInteropType(classInfo.baseClass) + "Base";
+				std::string parentBaseClassName = GetScriptInteropTypeName(classInfo.baseClass) + "Base";
 				output << parentBaseClassName;
 			}
 
@@ -2499,14 +2513,14 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 		}
 		else if (!classInfo.baseClass.empty())
 		{
-			interopBaseClassName = getScriptInteropType(classInfo.baseClass) + "Base";
+			interopBaseClassName = GetScriptInteropTypeName(classInfo.baseClass) + "Base";
 		}
 	}
 
 	// Generate main class
 	output << "\tclass " << exportAttr << " ";;
 
-	std::string interopClassName = getScriptInteropType(classInfo.name);
+	std::string interopClassName = GetScriptInteropTypeName(classInfo.name);
 	output << interopClassName << " : public ";
 
 	if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Resource)
@@ -2700,7 +2714,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 		}
 	}
 
-	std::string interopClassName = getScriptInteropType(classInfo.name);
+	std::string interopClassName = GetScriptInteropTypeName(classInfo.name);
 	std::string wrappedDataType = GetCppNativeQualifiedTypeName(classInfo.name, typeMappingInformation);
 
 	std::string interopBaseClassName;
@@ -2708,9 +2722,9 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 	if(typeMappingInformation.TypeCategory != ::ExportedClassTypeCategory::GUIElement)
 	{
 		if (isBase)
-			interopBaseClassName = getScriptInteropType(classInfo.name) + "Base";
+			interopBaseClassName = GetScriptInteropTypeName(classInfo.name) + "Base";
 		else if (!classInfo.baseClass.empty())
-			interopBaseClassName = getScriptInteropType(classInfo.baseClass) + "Base";
+			interopBaseClassName = GetScriptInteropTypeName(classInfo.baseClass) + "Base";
 	}
 
 	std::stringstream output;
@@ -2736,7 +2750,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 		}
 		else
 		{
-			std::string parentBaseClassName = getScriptInteropType(classInfo.baseClass) + "Base";
+			std::string parentBaseClassName = GetScriptInteropTypeName(classInfo.baseClass) + "Base";
 			output << parentBaseClassName;
 		}
 
@@ -3202,7 +3216,7 @@ std::string generateCppStructHeader(const StructInfo& structInfo)
 	else
 		output << sEditorExportMacro << " ";
 
-	std::string interopClassName = getScriptInteropType(structInfo.name);
+	std::string interopClassName = GetScriptInteropTypeName(structInfo.name);
 	output << interopClassName << " : public " << "ScriptObject<" << interopClassName << ">";
 
 	output << std::endl;
@@ -3241,7 +3255,7 @@ std::string generateCppStructHeader(const StructInfo& structInfo)
 std::string generateCppStructSource(const StructInfo& structInfo)
 {
 	TypeMappingInformation typeInfo = GetNativeToScriptTypeMapping(structInfo.name);
-	std::string interopClassName = getScriptInteropType(structInfo.name);
+	std::string interopClassName = GetScriptInteropTypeName(structInfo.name);
 
 	std::stringstream output;
 	output << GenerateApiCheckBegin(structInfo.api);
@@ -3349,7 +3363,7 @@ void generateLookupFile(const std::string& tableName, ExportedClassTypeCategory 
 			includes << "#include \"" << getRelativeTo(typeInfo.NativeFile, cppOutputFolder) << "\"" << std::endl;
 			includes << GenerateApiCheckEnd(classInfo.api);
 
-			std::string interopClassName = getScriptInteropType(classInfo.name);
+			std::string interopClassName = GetScriptInteropTypeName(classInfo.name);
 			body << GenerateApiCheckBegin(classInfo.api);
 			body << "\t\tADD_ENTRY(" << classInfo.name << ", " << interopClassName << ")" << std::endl;
 			body << GenerateApiCheckEnd(classInfo.api);
