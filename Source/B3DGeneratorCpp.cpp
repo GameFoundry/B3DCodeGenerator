@@ -374,13 +374,13 @@ std::string GetArgumentForInternalToNativeCall(const MethodInfo& methodInfo, con
 /*
  * Returns an argument that can be used for call into a thunk. The argument is expected to have been received through a native event, translated to an interop type.
  *
- * @param	methodInfo				Information about the method being called.
+ * @param	methodInfo				Information about the event that is being triggered.
  * @param	argumentName			Name of the argument.
  * @param	typeInformation			Information about the native type the argument represents.
  * @param	typeMappingInformation	Mapping of the provided argument type in script.
- * @return							Code to retrieves the appropriate argument type from the expected internal argument storage type.
+ * @return							Code to retrieves the appropriate argument type from the event parameter argument type.
  */
-std::string GenerateArgumentForInteropEventToThunkCall(const MethodInfo& methodInfo, const std::string& argumentName, const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation)
+std::string GetArgumentForInteropEventToThunkCall(const MethodInfo& methodInfo, const std::string& argumentName, const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation)
 {
 	if(typeInformation.IsArrayOrVector())
 	{
@@ -415,64 +415,82 @@ std::string GenerateArgumentForInteropEventToThunkCall(const MethodInfo& methodI
 	}
 }
 
-std::string getAsCppToInteropArgument(const std::string& name, ::ExportedClassTypeCategory type, int flags, const std::string& methodName)
+/*
+ * Adds appropriate qualifiers to convert a type access (such as field or method call return value) into a default storage type for the mapped type category.
+ *
+ * @param	access					Field name or method call.
+ * @param	typeInformation			Information about the native type the argument represents.
+ * @param	typeMappingInformation	Mapping of the provided argument type in script.
+ * @return							Code to converts the field or return value into the expected internal argument storage type.
+ */
+std::string GetReturnValueForNativeCall(const std::string& access, const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation)
 {
-	switch (type)
-	{
-	case ::ExportedClassTypeCategory::Primitive: // Always passed as value type, input can be either pointer or ref/value type
-	case ::ExportedClassTypeCategory::Enum:
-	case ::ExportedClassTypeCategory::String:
-	case ::ExportedClassTypeCategory::WString:
-	case ::ExportedClassTypeCategory::Path:
-	case ::ExportedClassTypeCategory::Struct:
-	{
-		if (isSrcPointer(flags))
-			return "*" + name;
-		else if (isSrcReference(flags) || isSrcValue(flags))
-			return name;
-		else
-		{
-			outs() << "Error: Unsure how to pass parameter \"" << name << "\" to method \"" << methodName << "\".\n";
-			return name;
-		}
-	}
-	case ::ExportedClassTypeCategory::MonoObject: // Always passed as a pointer, input must always be a pointer
-	case ::ExportedClassTypeCategory::GUIElement:
-			return name;
-	case ::ExportedClassTypeCategory::Component: // Always passed as a handle, input must be a handle
-		if (!isSrcGHandle(flags))
-			outs() << "Error: Unsure how to pass parameter \"" << name << "\" to method \"" << methodName << "\".\n";
+	const VariableTypeInformation& arrayElementType = typeInformation.IsArrayOrVector() ? typeInformation.AssertGetUnderlyingType() : typeInformation;
+	const VariableTypeInformation& underlyingType = arrayElementType.TypeCategory == VariableTypeCategory::AsyncOp ? arrayElementType.AssertGetUnderlyingType() : arrayElementType;
 
-		if(getIsComponentOrActor(flags))
-			return name + ".GetComponent()";
-
-		return name;
-	case ::ExportedClassTypeCategory::SceneObject:
-	case ::ExportedClassTypeCategory::Resource:
+	switch (typeMappingInformation.TypeCategory)
 	{
-		if (isSrcRHandle(flags) || isSrcGHandle(flags))
-			return name;
-		{
-			outs() << "Error: Unsure how to pass parameter \"" << name << "\" to method \"" << methodName << "\".\n";
-			return name;
-		}
+	case ExportedClassTypeCategory::Primitive: // Always passed as value type, input can be either pointer or ref/value type
+	case ExportedClassTypeCategory::Enum:
+	case ExportedClassTypeCategory::String:
+	case ExportedClassTypeCategory::WString:
+	case ExportedClassTypeCategory::Path:
+	case ExportedClassTypeCategory::Struct:
+	{
+		if (underlyingType.IsQualifierFlagSet(VariableQualifierFlags::IsPointer))
+			return "*" + access;
+
+		return access;
 	}
-	case ::ExportedClassTypeCategory::Class: // Always passed as a sptr, input can be a sptr, pointer, reference or value type
+	case ExportedClassTypeCategory::MonoObject: // Always passed as a pointer, input must always be a pointer
+	case ExportedClassTypeCategory::GUIElement:
+			return access;
+	case ExportedClassTypeCategory::Component: // Always passed as a handle, input must be a handle
+	{
+		const VariableTypeInformation& componentOrActorUnderlyingType = underlyingType.TypeCategory == VariableTypeCategory::ComponentOrActor ? underlyingType.AssertGetUnderlyingType() : underlyingType;
+		if (componentOrActorUnderlyingType.TypeCategory != VariableTypeCategory::GameObjectHandle)
+		{
+			errs() << "Error: Unsure how to provide \"" << access << "\" to interop as a return value.\".\n";
+			return access;
+		}
+
+		if (underlyingType.TypeCategory == VariableTypeCategory::ComponentOrActor)
+			return access + ".GetComponent()";
+
+		return access;
+	}
+	case ExportedClassTypeCategory::SceneObject:
+		if (underlyingType.TypeCategory != VariableTypeCategory::GameObjectHandle)
+		{
+			errs() << "Error: Unsure how to provide \"" << access << "\" to interop as a return value.\".\n";
+			return access;
+		}
+
+		return access;
+	case ExportedClassTypeCategory::Resource:
+		if (underlyingType.TypeCategory != VariableTypeCategory::ResourceHandle)
+		{
+			errs() << "Error: Unsure how to provide \"" << access << "\" to interop as a return value.\".\n";
+			return access;
+		}
+
+		return access;
+	case ::ExportedClassTypeCategory::Class: // Passed as a shared pointer or value type, input can be a shared pointer, pointer, reference or value type
 	case ::ExportedClassTypeCategory::ReflectableClass:
 	{
-		assert(!isSrcRHandle(flags) && !isSrcGHandle(flags));
+		if (underlyingType.TypeCategory == VariableTypeCategory::SharedPointer)
+			return access;
 
-		if (isSrcPointer(flags))
-			return "*" + name;
-		else if (isSrcSPtr(flags))
-			return name;
-		else if (isSrcReference(flags) || isSrcValue(flags))
-			return name;
-		else
+		if(underlyingType.TypeCategory != VariableTypeCategory::General)
 		{
-			outs() << "Error: Unsure how to pass parameter \"" << name << "\" to method \"" << methodName << "\".\n";
-			return name;
+			errs() << "Error: Unsure how to provide \"" << access << "\" to interop as a return value.\".\n";
+			return access;
 		}
+
+		if (underlyingType.IsQualifierFlagSet(VariableQualifierFlags::IsPointer))
+			return "*" + access;
+
+		return access;
 	}
 	default: // Some object type
 		assert(false);
@@ -2191,7 +2209,7 @@ std::string generateCppMethodBody(const ClassInfo& classInfo, const MethodInfo& 
 					returnAssignment = "*" + returnAssignment;
 			}
 
-			call = getAsCppToInteropArgument(methodCall.str(), returnTypeMappingInformation.TypeCategory, methodInfo.returnInfo.flags, "return");
+			call = GetReturnValueForNativeCall(methodCall.str(), methodInfo.returnInfo.TypeInformation, returnTypeMappingInformation);
 		}
 		else
 			call = methodCall.str();
@@ -2286,8 +2304,7 @@ std::string GenerateCppFieldGetterBody(const ClassInfo& classInfo, const FieldIn
 			returnAssignment = "*" + returnAssignment;
 	}
 
-	std::string access = getAsCppToInteropArgument(fieldAccess.str(), returnTypeMappingInformation.TypeCategory, methodInfo.returnInfo.flags, "return");
-
+	const std::string access = GetReturnValueForNativeCall(fieldAccess.str(), methodInfo.returnInfo.TypeInformation, returnTypeMappingInformation);
 	output << "\t\t" << returnAssignment << access << ";\n";
 
 	std::string postCallActionsStr = postCallActions.str();
@@ -2363,7 +2380,7 @@ std::string generateCppEventCallbackBody(const MethodInfo& eventInfo, bool isMod
 		const std::string argumentName = generateEventCallbackBodyBlockForParam(I->Name, *I, preCallActions);
 		const TypeMappingInformation parameterTypeMappingInformation = GetNativeToScriptTypeMapping(I->TypeInformation);
 
-		methodArgs << GenerateArgumentForInteropEventToThunkCall(eventInfo, argumentName, I->TypeInformation, parameterTypeMappingInformation);
+		methodArgs << GetArgumentForInteropEventToThunkCall(eventInfo, argumentName, I->TypeInformation, parameterTypeMappingInformation);
 
 		if (!isLast)
 			methodArgs << ", ";
