@@ -371,48 +371,47 @@ std::string GetArgumentForInternalToNativeCall(const MethodInfo& methodInfo, con
 	}
 }
 
-std::string getAsCppToManagedArgument(const std::string& name, ::ExportedClassTypeCategory type, int flags, const std::string& methodName)
+/*
+ * Returns an argument that can be used for call into a thunk. The argument is expected to have been received through a native event, translated to an interop type.
+ *
+ * @param	methodInfo				Information about the method being called.
+ * @param	argumentName			Name of the argument.
+ * @param	typeInformation			Information about the native type the argument represents.
+ * @param	typeMappingInformation	Mapping of the provided argument type in script.
+ * @return							Code to retrieves the appropriate argument type from the expected internal argument storage type.
+ */
+std::string GenerateArgumentForInteropEventToThunkCall(const MethodInfo& methodInfo, const std::string& argumentName, const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation)
 {
-	switch (type)
+	if(typeInformation.IsArrayOrVector())
 	{
-	case ::ExportedClassTypeCategory::Primitive:
-	case ::ExportedClassTypeCategory::Enum: // Always passed as value type, input can be either pointer or ref/value type
-	{
-		if (isSrcPointer(flags))
-			return "*" + name;
-		else if (isSrcReference(flags) || isSrcValue(flags))
-			return name;
-		else
-		{
-			outs() << "Error: Unsure how to pass parameter \"" << name << "\" to method \"" << methodName << "\".\n";
-			return name;
-		}
+		// Always passed as pointer (MonoArray*), input will always be a pointer
+		return argumentName;
 	}
-	case ::ExportedClassTypeCategory::Struct: // Always passed as a pointer, input can be either pointer or ref/value type
+
+	switch (typeMappingInformation.TypeCategory)
 	{
-		if (isSrcPointer(flags))
-			return name;
-		else if (isSrcReference(flags) || isSrcValue(flags))
-			return "&" + name;
-		else
-		{
-			outs() << "Error: Unsure how to pass parameter \"" << name << "\" to method \"" << methodName << "\".\n";
-			return name;
-		}
+	case ExportedClassTypeCategory::Primitive:
+	case ExportedClassTypeCategory::Enum: // Always passed as value type, input can be either pointer or ref/value type
+	{
+		if (typeInformation.IsQualifierFlagSet(VariableQualifierFlags::IsPointer))
+			return "*" + argumentName;
+
+		return argumentName;
 	}
-	case ::ExportedClassTypeCategory::MonoObject: // Always passed as a pointer, input must always be a pointer
-	case ::ExportedClassTypeCategory::String:
-	case ::ExportedClassTypeCategory::WString:
-	case ::ExportedClassTypeCategory::Path:
-	case ::ExportedClassTypeCategory::Component:
-	case ::ExportedClassTypeCategory::SceneObject:
-	case ::ExportedClassTypeCategory::Resource:
-	case ::ExportedClassTypeCategory::Class:
-	case ::ExportedClassTypeCategory::ReflectableClass:
-			return name;
+	case ExportedClassTypeCategory::Struct: // Always passed as pointer, input will be a pointer (boxed struct as MonoObject*)
+	case ExportedClassTypeCategory::MonoObject: // Always passed as a pointer, input will always be a pointer (MonoObject*)
+	case ExportedClassTypeCategory::String:
+	case ExportedClassTypeCategory::WString:
+	case ExportedClassTypeCategory::Path:
+	case ExportedClassTypeCategory::Component:
+	case ExportedClassTypeCategory::SceneObject:
+	case ExportedClassTypeCategory::Resource:
+	case ExportedClassTypeCategory::Class:
+	case ExportedClassTypeCategory::ReflectableClass:
+		return argumentName;
 	default: // Some object type
-		assert(false);
-		return "";
+		errs() << "Error: Invalid type for method argument " << argumentName << " on method " << methodInfo.sourceName << ".\n";
+		return argumentName;
 	}
 }
 
@@ -2360,21 +2359,11 @@ std::string generateCppEventCallbackBody(const MethodInfo& eventInfo, bool isMod
 	int idx = 0;
 	for (auto I = eventInfo.paramInfos.begin(); I != eventInfo.paramInfos.end(); ++I)
 	{
-		bool isLast = (I + 1) == eventInfo.paramInfos.end();
+		const bool isLast = (I + 1) == eventInfo.paramInfos.end();
+		const std::string argumentName = generateEventCallbackBodyBlockForParam(I->Name, *I, preCallActions);
+		const TypeMappingInformation parameterTypeMappingInformation = GetNativeToScriptTypeMapping(I->TypeInformation);
 
-		std::string argName = generateEventCallbackBodyBlockForParam(I->Name, *I, preCallActions);
-
-		if (!isArrayOrVector(I->flags))
-		{
-			TypeMappingInformation paramTypeInfo = GetNativeToScriptTypeMapping(I->TypeInformation);
-
-			if(paramTypeInfo.TypeCategory == ::ExportedClassTypeCategory::Struct)
-				methodArgs << getAsCppToManagedArgument(argName, ::ExportedClassTypeCategory::Class, I->flags, eventInfo.sourceName);
-			else
-				methodArgs << getAsCppToManagedArgument(argName, paramTypeInfo.TypeCategory, I->flags, eventInfo.sourceName);
-		}
-		else
-			methodArgs << getAsCppToManagedArgument(argName, ::ExportedClassTypeCategory::Class, I->flags, eventInfo.sourceName);
+		methodArgs << GenerateArgumentForInteropEventToThunkCall(eventInfo, argumentName, I->TypeInformation, parameterTypeMappingInformation);
 
 		if (!isLast)
 			methodArgs << ", ";
