@@ -84,53 +84,57 @@ static std::string GetCppInteropQualifiedTypeName(const VariableTypeInformation&
  *
  * @param	typeInformation					Information about the native type to generate the type name for.
  * @param	typeMappingInformation			Mapping of the provided type in script.
- * @param	wrapClassTypesInSharedPointer	If true, all class types will be wrapped as a Shared<T>.
+ * @param	isVariable						If true, the generated type is expected to be used for local variable storage (e.g. qualifiers such as `const &` will be dropped.). Otherwise it's expected to be used for parameters or template arguments.
  */
-static std::string GetCppNativeQualifiedTypeName(const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation, bool wrapClassTypesInSharedPointer = true)
+static std::string GetCppNativeQualifiedTypeName(const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation, bool isVariable = true)
 {
-	const VariableTypeInformation* currentTypeInformation = &typeInformation;
+	const std::string& typeName = typeInformation.GetFirstWrappedOrSelfTypeName();
+
+	std::stringstream output;
+	if (!isVariable && typeInformation.IsQualifierFlagSet(VariableQualifierFlags::IsConst))
+		output << "const ";
 
 	if (typeInformation.TypeCategory == VariableTypeCategory::Vector)
-		return "Vector<" + GetCppNativeQualifiedTypeName(typeInformation.AssertGetUnderlyingType(), typeMappingInformation, wrapClassTypesInSharedPointer) + ">";
+		output << "Vector<" + GetCppNativeQualifiedTypeName(typeInformation.AssertGetUnderlyingType(), typeMappingInformation, false) + ">";
 	else if (typeInformation.TypeCategory == VariableTypeCategory::SmallVector)
-		return "SmallVector<" + GetCppNativeQualifiedTypeName(typeInformation.AssertGetUnderlyingType(), typeMappingInformation, wrapClassTypesInSharedPointer) + ", " + std::to_string(typeInformation.ArraySize) + ">";
-	if (typeInformation.TypeCategory == VariableTypeCategory::AsyncOp)
-		return "TAsyncOp<" + GetCppNativeQualifiedTypeName(typeInformation.AssertGetUnderlyingType(), typeMappingInformation, wrapClassTypesInSharedPointer) + ">";
+		output << "SmallVector<" + GetCppNativeQualifiedTypeName(typeInformation.AssertGetUnderlyingType(), typeMappingInformation, false) + ", " + std::to_string(typeInformation.ArraySize) + ">";
+	else if (typeInformation.TypeCategory == VariableTypeCategory::AsyncOp)
+		output << "TAsyncOp<" + GetCppNativeQualifiedTypeName(typeInformation.AssertGetUnderlyingType(), typeMappingInformation, false) + ">";
 	else if (typeInformation.TypeCategory == VariableTypeCategory::Array || typeInformation.TypeCategory == VariableTypeCategory::ComponentOrActor)
-		return GetCppNativeQualifiedTypeName(typeInformation.AssertGetUnderlyingType(), typeMappingInformation, wrapClassTypesInSharedPointer);
-
-	const std::string& typeName = currentTypeInformation->GetFirstWrappedOrSelfTypeName();
-
-	if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Resource)
-		return "ResourceHandle<" + typeName + ">";
+		output << GetCppNativeQualifiedTypeName(typeInformation.AssertGetUnderlyingType(), typeMappingInformation, false);
+	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Resource)
+		output << "ResourceHandle<" + typeName + ">";
 	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::SceneObject || typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Component)
-		return "GameObjectHandle<" + typeName + ">";
+		output << "GameObjectHandle<" + typeName + ">";
 	else if (isClassType(typeMappingInformation.TypeCategory))
 	{
-		if(wrapClassTypesInSharedPointer || currentTypeInformation->TypeCategory == VariableTypeCategory::SharedPointer)
-			return "SPtr<" + typeName + ">";
+		if (isVariable || typeInformation.TypeCategory == VariableTypeCategory::SharedPointer)
+			output << "SPtr<" + typeName + ">";
 		else
-		{
-			if(currentTypeInformation->IsQualifierFlagSet(VariableQualifierFlags::IsPointer))
-				return typeName + "*";
-			else if(currentTypeInformation->IsQualifierFlagSet(VariableQualifierFlags::IsReference))
-				return typeName + "&";
-			else
-				return typeName;
-		}
+			output << typeName;
 	}
 	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::String)
-		return "String";
+		output << "String";
 	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::WString)
-		return "WString";
+		output << "WString";
 	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Path)
-		return "Path";
-	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Enum && currentTypeInformation->TypeCategory == VariableTypeCategory::Flags)
-		return "Flags<" + typeName + ">";
+		output << "Path";
+	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Enum && typeInformation.TypeCategory == VariableTypeCategory::Flags)
+		output << "Flags<" + typeName + ">";
 	else if(typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GUIElement)
-		return typeName + "*";
+		output << typeName + "*";
 	else
-		return typeName;
+		output << typeName;
+
+	if (!isVariable)
+	{
+		if (typeInformation.IsQualifierFlagSet(VariableQualifierFlags::IsPointer))
+			output << "*";
+		else if (typeInformation.IsQualifierFlagSet(VariableQualifierFlags::IsReference))
+			output << "&";
+	}
+
+	return output.str();
 }
 
 /** Same as GetCppQualifiedTypeName, except the only type information used is the type name. */
@@ -252,7 +256,7 @@ static std::string GenerateGetInternalCallLine(const VariableTypeInformation& ty
  * @param typeMappingInformation	Mapping of the provided type in script.
  * @return							ode that converts a Mono object into its script interop type, assigning it to a variable named @p scriptName.
  */
-std::string GenerateToNativeCall(const std::string& indent, const std::string& scriptType, const std::string& scriptName, const std::string& variableName, const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation)
+static std::string GenerateToNativeCall(const std::string& indent, const std::string& scriptType, const std::string& scriptName, const std::string& variableName, const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation)
 {
 	const bool isRRef = typeInformation.IsParameterFlagSet(ParameterFlags::AsResourceRef);
 	const bool isBase = typeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsReferencingBaseClass);
@@ -288,7 +292,7 @@ std::string GenerateToNativeCall(const std::string& indent, const std::string& s
  * @param	typeMappingInformation	Mapping of the provided argument type in script.
  * @return							Code to retrieves the appropriate argument type from the expected internal argument storage type.
  */
-std::string GetArgumentForInternalToNativeCall(const MethodInfo& methodInfo, const std::string& argumentName, const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation)
+static std::string GetArgumentForInternalToNativeCall(const MethodInfo& methodInfo, const std::string& argumentName, const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation)
 {
 	// Performs the conversion for arguments whose source type is either a value type or pointer type.
 	auto fnGetPlainArgument = [&methodInfo, &argumentName, &typeInformation](bool isInputPointerType)
@@ -390,7 +394,7 @@ std::string GetArgumentForInternalToNativeCall(const MethodInfo& methodInfo, con
  * @param	typeMappingInformation	Mapping of the provided argument type in script.
  * @return							Code to retrieves the appropriate argument type from the event parameter argument type.
  */
-std::string GetArgumentForInteropEventToThunkCall(const MethodInfo& methodInfo, const std::string& argumentName, const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation)
+static std::string GetArgumentForInteropEventToThunkCall(const MethodInfo& methodInfo, const std::string& argumentName, const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation)
 {
 	if(typeInformation.IsArrayOrVector())
 	{
@@ -433,7 +437,7 @@ std::string GetArgumentForInteropEventToThunkCall(const MethodInfo& methodInfo, 
  * @param	typeMappingInformation	Mapping of the provided argument type in script.
  * @return							Code to converts the field or return value into the expected internal argument storage type.
  */
-std::string GetReturnValueForNativeCall(const std::string& access, const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation)
+static std::string GetReturnValueForNativeCall(const std::string& access, const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation)
 {
 	const VariableTypeInformation& arrayElementType = typeInformation.IsArrayOrVector() ? typeInformation.AssertGetUnderlyingType() : typeInformation;
 	const VariableTypeInformation& underlyingType = arrayElementType.TypeCategory == VariableTypeCategory::AsyncOp ? arrayElementType.AssertGetUnderlyingType() : arrayElementType;
@@ -515,7 +519,7 @@ std::string GetReturnValueForNativeCall(const std::string& access, const Variabl
  * @param isResourceReference	If the type is a resource, this will return a resource reference script interop class, rather than the resource's own interop class.
  * @return						Name of the type used for script interop for the provided type name.
  */
-std::string GetScriptInteropTypeName(const std::string& typeName, bool isResourceReference = false)
+static std::string GetScriptInteropTypeName(const std::string& typeName, bool isResourceReference = false)
 {
 	auto iterFind = NativeToScriptTypeMap.find(typeName);
 	if (iterFind == NativeToScriptTypeMap.end())
@@ -563,10 +567,19 @@ static std::string GenerateApiCheckEnd(ApiFlags api)
 	return "";
 }
 
-std::string generateCppMethodSignature(const MethodInfo& methodInfo, const std::string& thisPtrType, const std::string& nestedName, bool isModule)
+/**
+ * Generates the name and parameters for an internal method.
+ *
+ * @param methodInfo			Information about the method being generated.
+ * @param interopThisPtrType	Interop type used for storing the interop object we're generating the method for. This may be the same as @p interopTypeName, but may be some base type.
+ * @param interopTypeName		Interop type we're generating the method on. This will be used as a prefix to the method name, followed by '::'. Set to empty if generating signature for the header declaration.
+ * @param isModule				True if the type is Module singleton.
+ * @return						Method signature, including method name and parameters.
+ */
+static std::string GenerateInternalMethodSignature(const MethodInfo& methodInfo, const std::string& interopThisPtrType, const std::string& interopTypeName, bool isModule)
 {
-	bool isStatic = (methodInfo.flags & (int)MethodFlags::Static) != 0;
-	bool isCtor = (methodInfo.flags & (int)MethodFlags::Constructor) != 0;
+	const bool isStatic = (methodInfo.flags & (int)MethodFlags::Static) != 0;
+	const bool isCtor = (methodInfo.flags & (int)MethodFlags::Constructor) != 0;
 
 	std::stringstream output;
 
@@ -575,7 +588,7 @@ std::string generateCppMethodSignature(const MethodInfo& methodInfo, const std::
 		output << "void";
 	else
 	{
-		TypeMappingInformation returnTypeMappingInformation = GetNativeToScriptTypeMapping(methodInfo.returnInfo.TypeInformation);
+		const TypeMappingInformation& returnTypeMappingInformation = GetNativeToScriptTypeMapping(methodInfo.returnInfo.TypeInformation);
 		if (!CanBeReturned(methodInfo.returnInfo.TypeInformation, returnTypeMappingInformation))
 		{
 			output << "void";
@@ -589,8 +602,8 @@ std::string generateCppMethodSignature(const MethodInfo& methodInfo, const std::
 
 	output << " ";
 
-	if (!nestedName.empty())
-		output << nestedName << "::";
+	if (!interopTypeName.empty())
+		output << interopTypeName << "::";
 
 	output << "Internal" << methodInfo.interopName << "(";
 
@@ -598,22 +611,21 @@ std::string generateCppMethodSignature(const MethodInfo& methodInfo, const std::
 	{
 		output << "MonoObject* managedInstance";
 
-		if (methodInfo.paramInfos.size() > 0)
+		if (!methodInfo.paramInfos.empty())
 			output << ", ";
 	}
 	else if (!isStatic && !isModule)
 	{
-		output << thisPtrType << "* thisPtr";
+		output << interopThisPtrType << "* thisPtr";
 
-		if (methodInfo.paramInfos.size() > 0 || returnAsParameter)
+		if (!methodInfo.paramInfos.empty() || returnAsParameter)
 			output << ", ";
 	}
 
 	for (auto I = methodInfo.paramInfos.begin(); I != methodInfo.paramInfos.end(); ++I)
 	{
-		TypeMappingInformation paramTypeInfo = GetNativeToScriptTypeMapping(I->TypeInformation);
-
-		output << GetCppInteropQualifiedTypeName(I->TypeInformation, paramTypeInfo) << " " << I->Name;
+		const TypeMappingInformation& parameterTypeMappingInformation = GetNativeToScriptTypeMapping(I->TypeInformation);
+		output << GetCppInteropQualifiedTypeName(I->TypeInformation, parameterTypeMappingInformation) << " " << I->Name;
 
 		if ((I + 1) != methodInfo.paramInfos.end() || returnAsParameter)
 			output << ", ";
@@ -621,7 +633,7 @@ std::string generateCppMethodSignature(const MethodInfo& methodInfo, const std::
 
 	if (returnAsParameter)
 	{
-		TypeMappingInformation returnTypeMappingInformation = GetNativeToScriptTypeMapping(methodInfo.returnInfo.TypeInformation);
+		const TypeMappingInformation& returnTypeMappingInformation = GetNativeToScriptTypeMapping(methodInfo.returnInfo.TypeInformation);
 		output << GetCppInteropQualifiedTypeName(methodInfo.returnInfo.TypeInformation, returnTypeMappingInformation) << " " << "__output";
 	}
 
@@ -629,60 +641,45 @@ std::string generateCppMethodSignature(const MethodInfo& methodInfo, const std::
 	return output.str();
 }
 
-std::string generateCppEventCallbackSignature(const MethodInfo& eventInfo, const std::string& nestedName, bool isModule)
+/**
+ * Generates the name and parameters for a method that serves as an event callback.
+ *
+ * @param eventInfo			Information about the event we're generating the callback for.
+ * @param interopTypeName	Interop type we're generating the method on. This will be used as a prefix to the method name, followed by '::'. Set to empty if generating signature for the header declaration.
+ * @param isModule			True if the type is a Module singleton.
+ * @return					Method signature, including method name and parameters.
+ */
+static std::string GenerateEventCallbackSignature(const MethodInfo& eventInfo, const std::string& interopTypeName, bool isModule)
 {
-	bool isStatic = (eventInfo.flags & (int)MethodFlags::Static) != 0;
+	const bool isStatic = (eventInfo.flags & (int)MethodFlags::Static) != 0;
 
 	std::stringstream output;
 
-	if ((isStatic || isModule) && nestedName.empty())
+	if ((isStatic || isModule) && interopTypeName.empty())
 		output << "static ";
 
 	output << "void ";
 	
-	if (!nestedName.empty())
-		output << nestedName << "::";
+	if (!interopTypeName.empty())
+		output << interopTypeName << "::";
 	
 	output << eventInfo.interopName << "(";
 
-	int idx = 0;
+	int parameterIndex = 0;
 	for (auto I = eventInfo.paramInfos.begin(); I != eventInfo.paramInfos.end(); ++I)
 	{
-		TypeMappingInformation paramTypeInfo = GetNativeToScriptTypeMapping(I->TypeInformation);
+		const TypeMappingInformation parameterTypeMappingInformation = GetNativeToScriptTypeMapping(I->TypeInformation);
+		output << GetCppNativeQualifiedTypeName(I->TypeInformation, parameterTypeMappingInformation, false);
 
-		if (!isSrcValue(I->flags) && !isOutput(I->flags))
-			output << "const ";
+		output << " p" << parameterIndex;
 
-		if (isVector(I->flags))
-			output << "std::vector<";
-		else if(isSmallVector(I->flags))
-			output << "SmallVector<";
-
-		output << GetCppNativeQualifiedTypeName(I->TypeInformation, paramTypeInfo, false);
-
-		if(!isSrcValue(I->flags))
-		{
-			if (isSrcPointer(I->flags))
-				output << "*";
-			else if (isSrcReference(I->flags))
-				output << "&";
-		}
-
-		if(isSmallVector(I->flags))
-			output << ", " << I->arraySize << ">";
-
-		if (isVector(I->flags))
-			output << ">";
-
-		output << " p" << idx;
-
-		if (isArray(I->flags))
+		if (I->TypeInformation.TypeCategory == VariableTypeCategory::Array)
 			output << "[" << I->arraySize << "]";
 
 		if ((I + 1) != eventInfo.paramInfos.end())
 			output << ", ";
 
-		idx++;
+		parameterIndex++;
 	}
 
 	output << ")";
@@ -1217,7 +1214,7 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 			break;
 		}
 
-		std::string argType = GetCppNativeQualifiedTypeName(parameterInformation.TypeInformation, parameterTypeMappingInformation, false);
+		std::string argType = GetCppNativeQualifiedTypeName(parameterInformation.TypeInformation, parameterTypeMappingInformation);
 		std::string argName = "vec" + parameterName;
 
 		const VariableTypeInformation& arrayElementTypeInformation = parameterInformation.TypeInformation.AssertGetUnderlyingType();
@@ -2615,7 +2612,7 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 	for (auto& eventInfo : classInfo.eventInfos)
 	{
 		output << GenerateApiCheckBegin(eventInfo.api);
-		output << "\t\t" << generateCppEventCallbackSignature(eventInfo, "", isModule) << ";" << std::endl;
+		output << "\t\t" << GenerateEventCallbackSignature(eventInfo, "", isModule) << ";" << std::endl;
 		output << GenerateApiCheckEnd(eventInfo.api);
 	}
 
@@ -2678,7 +2675,7 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 			continue;
 
 		output << GenerateApiCheckBegin(methodInfo.api);
-		output << "\t\tstatic " << generateCppMethodSignature(methodInfo, interopClassThisPtrType, "", isModule) << ";" << std::endl;
+		output << "\t\tstatic " << GenerateInternalMethodSignature(methodInfo, interopClassThisPtrType, "", isModule) << ";" << std::endl;
 		output << GenerateApiCheckEnd(methodInfo.api);
 	}
 
@@ -2688,7 +2685,7 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 			continue;
 
 		output << GenerateApiCheckBegin(methodInfo.api);
-		output << "\t\tstatic " << generateCppMethodSignature(methodInfo, interopClassThisPtrType, "", isModule) << ";" << std::endl;
+		output << "\t\tstatic " << GenerateInternalMethodSignature(methodInfo, interopClassThisPtrType, "", isModule) << ";" << std::endl;
 		output << GenerateApiCheckEnd(methodInfo.api);
 	}
 
@@ -3073,7 +3070,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 		const MethodInfo& eventInfo = *I;
 
 		output << GenerateApiCheckBegin(eventInfo.api);
-		output << "\t" << generateCppEventCallbackSignature(eventInfo, interopClassName, isModule) << std::endl;
+		output << "\t" << GenerateEventCallbackSignature(eventInfo, interopClassName, isModule) << std::endl;
 		output << generateCppEventCallbackBody(eventInfo, isModule);
 		output << GenerateApiCheckEnd(eventInfo.api);
 
@@ -3111,7 +3108,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 			continue;
 
 		output << GenerateApiCheckBegin(methodInfo.api);
-		output << "\t" << generateCppMethodSignature(methodInfo, interopClassThisPtrType, interopClassName, isModule) << std::endl;
+		output << "\t" << GenerateInternalMethodSignature(methodInfo, interopClassThisPtrType, interopClassName, isModule) << std::endl;
 		output << generateCppMethodBody(classInfo, methodInfo, classInfo.name, interopClassName, typeMappingInformation, isModule);
 		output << GenerateApiCheckEnd(methodInfo.api);
 
@@ -3131,7 +3128,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 			continue;
 
 		output << GenerateApiCheckBegin(methodInfo.api);
-		output << "\t" << generateCppMethodSignature(methodInfo, interopClassThisPtrType, interopClassName, isModule) << std::endl;
+		output << "\t" << GenerateInternalMethodSignature(methodInfo, interopClassThisPtrType, interopClassName, isModule) << std::endl;
 		output << generateCppMethodBody(classInfo, methodInfo, classInfo.name, interopClassName, typeMappingInformation, isModule);
 		output << GenerateApiCheckEnd(methodInfo.api);
 
@@ -3164,14 +3161,14 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 		assert(getterInfo && setterInfo);
 
 		output << GenerateApiCheckBegin(getterInfo->api);
-		output << "\t" << generateCppMethodSignature(*getterInfo, interopClassThisPtrType, interopClassName, isModule) << std::endl;
+		output << "\t" << GenerateInternalMethodSignature(*getterInfo, interopClassThisPtrType, interopClassName, isModule) << std::endl;
 		output << GenerateCppFieldGetterBody(classInfo, *I, *getterInfo, typeMappingInformation, isModule);
 		output << GenerateApiCheckEnd(getterInfo->api);
 		
 		output << std::endl;
 
 		output << GenerateApiCheckBegin(setterInfo->api);
-		output << "\t" << generateCppMethodSignature(*setterInfo, interopClassThisPtrType, interopClassName, isModule) << std::endl;
+		output << "\t" << GenerateInternalMethodSignature(*setterInfo, interopClassThisPtrType, interopClassName, isModule) << std::endl;
 		output << generateCppFieldSetterBody(classInfo, *I, *setterInfo, typeMappingInformation, isModule);
 		output << GenerateApiCheckEnd(setterInfo->api);
 			
