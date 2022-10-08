@@ -1015,32 +1015,38 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 		const std::string parameterTypeName = parameterInformation.TypeInformation.GetLastWrappedOrSelfTypeName();
 		std::string argumentName;
 
+		const bool isFlags = parameterTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Enum && parameterInformation.TypeInformation.TypeCategory == VariableTypeCategory::Flags;
+		const bool isPlainType =
+			parameterTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Primitive ||
+			parameterTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Enum && parameterInformation.TypeInformation.TypeCategory != VariableTypeCategory::Flags ||
+			(parameterTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Struct && !parameterInformation.TypeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsStructWrapperUsed));
+		const bool isClassType = parameterTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Class || parameterTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::ReflectableClass;
+
+		// Primitive and non-complex structs can be passed as-is, except for return values, in which case we need to box them.
+		// Flags need to be converted to their underlying enum type if they are an output parameter or return value.
+		// All other types need conversion to the corresponding Mono type.
+		const bool isTemporaryRequired = returnValue || (isOutputParameter && !isPlainType) || (!isPlainType && !isFlags);
+
+		// Temporary is needed for any type that cannot be passed directly between native and interop
+		if (isTemporaryRequired)
+		{
+			argumentName = "tmp" + parameterName;
+
+			const std::string fullTypeName = GetCppNativeQualifiedTypeName(parameterInformation.TypeInformation, parameterTypeMappingInformation);
+			preCallActions << "\t\t" << fullTypeName << " " << argumentName;
+
+			if (isClassType && (returnValue || isOutputParameter) && IsDereferenceRequired(parameterInformation.TypeInformation, parameterTypeMappingInformation))
+				preCallActions << " = bs_shared_ptr_new<" << parameterTypeName << ">()"; // We'll be copying by value rather than just assigning the pointer, so initialize the destination
+
+			preCallActions << ";\n";
+		}
+
 		switch (parameterTypeMappingInformation.TypeCategory)
 		{
 		case ::ExportedClassTypeCategory::Primitive:
 		case ::ExportedClassTypeCategory::Enum:
 		case ::ExportedClassTypeCategory::Struct:
 		{
-			const bool isFlags = parameterTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Enum && parameterInformation.TypeInformation.TypeCategory == VariableTypeCategory::Flags;
-			const bool isPlainEnum = parameterTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Enum && parameterInformation.TypeInformation.TypeCategory != VariableTypeCategory::Flags;
-			const bool isPlainStructOrPrimitive =
-				parameterTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Primitive ||
-				isPlainEnum ||
-				(parameterTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Struct && !parameterInformation.TypeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsStructWrapperUsed));
-
-			// Primitive and non-complex structs can be passed as-is, except for return values, in which case we need to box them.
-			// Flags need to be converted to their underlying enum type if they are an output parameter or return value.
-			// All other types need conversion to the corresponding Mono type.
-			const bool isTemporaryRequired = returnValue || (isOutputParameter && !isPlainStructOrPrimitive) || (!isPlainStructOrPrimitive && !isFlags);
-
-			if (isTemporaryRequired)
-			{
-				argumentName = "tmp" + parameterName;
-
-				const std::string fullTypeName = GetCppNativeQualifiedTypeName(parameterInformation.TypeInformation, parameterTypeMappingInformation);
-				preCallActions << "\t\t" << fullTypeName << " " << argumentName << ";\n";
-			}
-
 			if (returnValue)
 			{
 				if (parameterTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Struct)
@@ -1083,9 +1089,6 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 			break;
 		case ::ExportedClassTypeCategory::String:
 		{
-			argumentName = "tmp" + parameterName;
-			preCallActions << "\t\tString " << argumentName << ";" << std::endl;
-
 			if (returnValue)
 				postCallActions << "\t\t" << parameterName << " = MonoUtil::StringToMono(" << argumentName << ");" << std::endl;
 			else if (isOutput(parameterInformation.flags))
@@ -1096,9 +1099,6 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 		break;
 		case ::ExportedClassTypeCategory::Path:
 		{
-			argumentName = "tmp" + parameterName;
-			preCallActions << "\t\tPath " << argumentName << ";" << std::endl;
-
 			if (returnValue)
 				postCallActions << "\t\t" << parameterName << " = MonoUtil::StringToMono(" << argumentName << ".ToString());" << std::endl;
 			else if (isOutput(parameterInformation.flags))
@@ -1109,9 +1109,6 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 		break;
 		case ::ExportedClassTypeCategory::WString:
 		{
-			argumentName = "tmp" + parameterName;
-			preCallActions << "\t\tWString " << argumentName << ";" << std::endl;
-
 			if (returnValue)
 				postCallActions << "\t\t" << parameterName << " = MonoUtil::WstringToMono(" << argumentName << ");" << std::endl;
 			else if (isOutput(parameterInformation.flags))
@@ -1122,16 +1119,12 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 		break;
 		case ::ExportedClassTypeCategory::MonoObject:
 		{
-			argumentName = "tmp" + parameterName;
-			
 			if (returnValue)
 			{
-				preCallActions << "\t\tMonoObject* " << argumentName << ";" << std::endl;
 				postCallActions << "\t\t" << parameterName << " = " << argumentName << ";" << std::endl;
 			}
 			else if (isOutput(parameterInformation.flags))
 			{
-				preCallActions << "\t\tMonoObject* " << argumentName << ";" << std::endl;
 				postCallActions << "\t\tMonoUtil::ReferenceCopy(" << parameterName << ", " << argumentName << ");" << std::endl;
 			}
 			else
@@ -1142,11 +1135,8 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 		break;
 		case ::ExportedClassTypeCategory::GUIElement:
 		{
-			argumentName = "tmp" + parameterName;
-			std::string tmpType = GetCppNativeQualifiedTypeName(parameterInformation.TypeInformation, parameterTypeMappingInformation);
 			std::string scriptType = GetScriptInteropTypeName(parameterInformation.typeName);
 
-			preCallActions << "\t\t" << tmpType << " " << argumentName << ";\n";
 			if(returnValue || isOutput(parameterInformation.flags))
 				outs() << "Error: GUIElement cannot be used as parameter outputs or return values. Ignoring. \n";
 			else
@@ -1162,15 +1152,7 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 		case ::ExportedClassTypeCategory::Class:
 		case ::ExportedClassTypeCategory::ReflectableClass:
 		{
-			argumentName = "tmp" + parameterName;
-			std::string tmpType = GetCppNativeQualifiedTypeName(parameterInformation.TypeInformation, parameterTypeMappingInformation);
 			std::string scriptType = GetScriptInteropTypeName(parameterInformation.typeName);
-
-			preCallActions << "\t\t" << tmpType << " " << argumentName;
-			if ((returnValue || isOutput(parameterInformation.flags)) && IsDereferenceRequired(parameterInformation.TypeInformation, parameterTypeMappingInformation))
-				preCallActions << " = bs_shared_ptr_new<" << parameterInformation.typeName << ">()";
-
-			preCallActions << ";\n";
 
 			if (returnValue)
 				postCallActions << GenerateNativeClassToScriptObject(parameterInformation.TypeInformation, parameterName, scriptType, argumentName);
@@ -1188,11 +1170,6 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 			break;
 		default: // Some resource or game object type
 		{
-			argumentName = "tmp" + parameterName;
-			std::string tmpType = GetCppNativeQualifiedTypeName(parameterInformation.TypeInformation, parameterTypeMappingInformation);
-
-			preCallActions << "\t\t" << tmpType << " " << argumentName << ";" << std::endl;
-
 			std::string scriptName = "script" + parameterName;
 			std::string scriptType = GetScriptInteropTypeName(parameterInformation.typeName, getPassAsResourceRef(parameterInformation.flags));
 
