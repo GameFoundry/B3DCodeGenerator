@@ -13,6 +13,8 @@
  */
 static bool IsDereferenceRequired(const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation)
 {
+	// TODO - All uses of this can be removed and replaced with a SharedPointer check
+
 	// Other types aren't allowed to be dereferenced
 	if (typeMappingInformation.TypeCategory != ExportedClassTypeCategory::Class && typeMappingInformation.TypeCategory != ExportedClassTypeCategory::ReflectableClass)
 		return false;
@@ -1477,111 +1479,97 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 	}
 }
 
-std::string generateFieldConvertBlock(const std::string& name, const VariableBase& fieldInformation, bool toInterop, std::stringstream& preActions)
+/**
+ * Generates code that converts a struct field from or to interop.
+ *
+ * @param name					Name of the field that's being converted.
+ * @param fieldInformation		Information about the field being converted.
+ * @param toInterop				True if converting native to interop, false if converting from interop to native.
+ * @param preActions			Stream that can be used for appending code that will execute before the field assignment happens.
+ * @return						Name of the variable containing either the native or interop representation of the field.
+ */
+std::string GenerateFieldConvertBlock(const std::string& name, const VariableBase& fieldInformation, bool toInterop, std::stringstream& preActions)
 {
 	TypeMappingInformation parameterTypeMappingInformation = GetNativeToScriptTypeMapping(fieldInformation.TypeInformation);
 
-	if (getIsAsyncOp(fieldInformation.flags))
+	if (fieldInformation.TypeInformation.TypeCategory == VariableTypeCategory::AsyncOp)
 	{
 		outs() << "Error: AsyncOp type not supported as a struct field. \n";
 		return "";
 	}
 
-	if (!isArrayOrVector(fieldInformation.flags))
+	const std::string& fieldTypeName = fieldInformation.TypeInformation.GetLastWrappedOrSelfTypeName();
+
+	// Handle non-array types
+	if (!fieldInformation.TypeInformation.IsArrayOrVector())
 	{
 		std::string arg;
 
+		// Primitive, enum and non-complex structs can be passed as-is.
+		// All other types need conversion to the corresponding Mono type.
+		const bool isTemporaryRequired = parameterTypeMappingInformation.TypeCategory != ExportedClassTypeCategory::Primitive && parameterTypeMappingInformation.TypeCategory != ExportedClassTypeCategory::Enum &&
+			(parameterTypeMappingInformation.TypeCategory != ExportedClassTypeCategory::Struct || fieldInformation.TypeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsStructWrapperUsed));
+
+		if(isTemporaryRequired)
+		{
+			arg = "tmp" + name;
+		}
+
 		switch (parameterTypeMappingInformation.TypeCategory)
 		{
-		case ::ExportedClassTypeCategory::Primitive:
-		case ::ExportedClassTypeCategory::Enum:
+		case ExportedClassTypeCategory::Primitive:
+		case ExportedClassTypeCategory::Enum:
 			arg = "value." + name;
 			break;
-		case ::ExportedClassTypeCategory::Struct:
-			if(isComplexStruct(fieldInformation.flags))
+		case ExportedClassTypeCategory::Struct:
+			if(fieldInformation.TypeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsStructWrapperUsed))
 			{
-				std::string interopType = GetStructInteropTypeName(fieldInformation.typeName);
-				std::string scriptType = GetScriptInteropTypeName(fieldInformation.typeName);
+				std::string interopType = GetStructInteropTypeName(fieldTypeName);
+				std::string scriptType = GetScriptInteropTypeName(fieldTypeName);
 
-				arg = "tmp" + name;
 				if(toInterop)
 				{
-					preActions << "\t\t" << interopType << " " << arg << ";" << std::endl;
-					preActions << "\t\t" << arg << " = " << scriptType << "::ToInterop(value." << name << ");" << std::endl;
+					preActions << "\t\t" << interopType << " " << arg << ";\n";
+					preActions << "\t\t" << arg << " = " << scriptType << "::ToInterop(value." << name << ");\n";
 				}
 				else
 				{
-					preActions << "\t\t" << fieldInformation.typeName << " " << arg << ";" << std::endl;
-					preActions << "\t\t" << arg << " = " << scriptType << "::FromInterop(value." << name << ");" << std::endl;
+					preActions << "\t\t" << fieldTypeName << " " << arg << ";\n";
+					preActions << "\t\t" << arg << " = " << scriptType << "::FromInterop(value." << name << ");\n";
 				}
 			}
 			else
 				arg = "value." + name;
 			break;
-		case ::ExportedClassTypeCategory::String:
+		case ExportedClassTypeCategory::String:
+		case ExportedClassTypeCategory::WString:
+		case ExportedClassTypeCategory::Path:
 		{
-			arg = "tmp" + name;
-
 			if(toInterop)
 			{
-				preActions << "\t\tMonoString* " << arg << ";" << std::endl;
-				preActions << "\t\t" << arg << " = MonoUtil::StringToMono(value." << name << ");" << std::endl;
+				preActions << "\t\tMonoString* " << arg << ";\n";
+				preActions << "\t\t" << arg << " = " << GenerateStringToMonoCall(parameterTypeMappingInformation.TypeCategory, "value." + name) << ";\n";
 			}
 			else
 			{
-				preActions << "\t\tString " << arg << ";" << std::endl;
-				preActions << "\t\t" << arg << " = MonoUtil::MonoToString(value." << name << ");" << std::endl;
+				preActions << "\t\tString " << arg << ";\n";
+				preActions << "\t\t" << arg << " = " << GenerateMonoToStringCall(parameterTypeMappingInformation.TypeCategory, "value." + name) << ";\n";
 			}
 		}
 		break;
-		case ::ExportedClassTypeCategory::WString:
+		case ExportedClassTypeCategory::MonoObject:
 		{
-			arg = "tmp" + name;
-
-			if(toInterop)
-			{
-				preActions << "\t\tMonoString* " << arg << ";" << std::endl;
-				preActions << "\t\t" << arg << " = MonoUtil::WstringToMono(value." << name << ");" << std::endl;
-			}
-			else
-			{
-				preActions << "\t\tWString " << arg << ";" << std::endl;
-				preActions << "\t\t" << arg << " = MonoUtil::MonoToWString(value." << name << ");" << std::endl;
-			}
-		}
-		break;
-		case ::ExportedClassTypeCategory::Path:
-		{
-			arg = "tmp" + name;
-
-			if(toInterop)
-			{
-				preActions << "\t\tMonoString* " << arg << ";" << std::endl;
-				preActions << "\t\t" << arg << " = MonoUtil::StringToMono(value." << name << ".ToString());" << std::endl;
-			}
-			else
-			{
-				preActions << "\t\tPath " << arg << ";" << std::endl;
-				preActions << "\t\t" << arg << " = MonoUtil::MonoToString(value." << name << ");" << std::endl;
-			}
-		}
-		break;
-		case ::ExportedClassTypeCategory::MonoObject:
-		{
-			arg = "tmp" + name;
-
 			preActions << "\t\tMonoObject* " << arg << ";" << std::endl;
 			preActions << "\t\t" << arg << " = " << name << ";" << std::endl;
 		}
 		break;
-		case ::ExportedClassTypeCategory::GUIElement:
+		case ExportedClassTypeCategory::GUIElement:
 		{
-			arg = "tmp" + name;
-			std::string scriptType = GetScriptInteropTypeName(fieldInformation.typeName);
+			const std::string scriptType = GetScriptInteropTypeName(fieldTypeName);
 
 			if(!toInterop)
 			{
-				if(isSrcPointer(fieldInformation.flags))
+				if(fieldInformation.TypeInformation.IsQualifierFlagSet(VariableQualifierFlags::IsPointer))
 				{
 					std::string tmpType = GetCppNativeQualifiedTypeName(fieldInformation.TypeInformation, parameterTypeMappingInformation);
 					preActions << "\t\t" << tmpType << " " << arg << ";" << std::endl;
@@ -1596,37 +1584,45 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 			}
 		}
 			break;
-		case ::ExportedClassTypeCategory::Class:
-		case ::ExportedClassTypeCategory::ReflectableClass:
+		case ExportedClassTypeCategory::Class:
+		case ExportedClassTypeCategory::ReflectableClass:
 		{
-			arg = "tmp" + name;
-			std::string scriptType = GetScriptInteropTypeName(fieldInformation.typeName);
+			std::string scriptType = GetScriptInteropTypeName(fieldTypeName);
 
 			if(toInterop)
 			{
 				preActions << "\t\tMonoObject* " << arg << ";\n";
 
-				// Need to copy by value
-				if(isSrcValue(fieldInformation.flags) || isSrcPointer(fieldInformation.flags))
+				if(fieldInformation.TypeInformation.TypeCategory == VariableTypeCategory::SharedPointer)
 				{
+					if(fieldInformation.TypeInformation.IsQualifierFlagSet(VariableQualifierFlags::IsReference))
+					{
+						errs() << "Error: Invalid struct member type for \"" << name << "\". Cannot pass Shared<T> by pointer.\n";
+					}
+
+					preActions << GenerateNativeClassToMonoObject(fieldInformation.TypeInformation, arg, scriptType, "value." + name);
+				}
+				else
+				{
+					if(fieldInformation.TypeInformation.TypeCategory != VariableTypeCategory::General)
+					{
+						errs() << "Error: Invalid struct member type for \"" << name << "\"\n";
+					}
+					
 					std::string tmpType = GetCppNativeQualifiedTypeName(fieldInformation.TypeInformation, parameterTypeMappingInformation);
 					preActions << "\t\t" << tmpType << " " << arg << "copy;\n";
 
 					// Note: Assuming a copy constructor exists
-					if (isSrcPointer(fieldInformation.flags))
+					if (fieldInformation.TypeInformation.IsQualifierFlagSet(VariableQualifierFlags::IsPointer))
 					{
 						preActions << "\t\tif(value." << name << " != nullptr)\n";
-						preActions << "\t\t\t" << arg << "copy = bs_shared_ptr_new<" << fieldInformation.typeName << ">(*value." << name << ");\n";
+						preActions << "\t\t\t" << arg << "copy = bs_shared_ptr_new<" << fieldTypeName << ">(*value." << name << ");\n";
 					}
 					else
-						preActions << "\t\t" << arg << "copy = bs_shared_ptr_new<" << fieldInformation.typeName << ">(value." << name << ");\n";
+						preActions << "\t\t" << arg << "copy = bs_shared_ptr_new<" << fieldTypeName << ">(value." << name << ");\n";
 
 					preActions << GenerateNativeClassToMonoObject(fieldInformation.TypeInformation, arg, scriptType, arg + "copy");
 				}
-				else if(isSrcSPtr(fieldInformation.flags))
-					preActions << GenerateNativeClassToMonoObject(fieldInformation.TypeInformation, arg, scriptType, "value." + name);
-				else
-					outs() << "Error: Invalid struct member type for \"" << name << "\"\n";
 			}
 			else
 			{
@@ -1639,29 +1635,33 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 				preActions << "\t\t\t" << arg << " = " << scriptName << "->GetInternal();" << std::endl;
 
 				// Cast to the source type from SPtr
-				if (isSrcValue(fieldInformation.flags))
+				if (fieldInformation.TypeInformation.TypeCategory == VariableTypeCategory::General)
 				{
-					preActions << "\t\tif(" << arg << " != nullptr)" << std::endl;
-					arg = "*" + arg;
+					if(fieldInformation.TypeInformation.IsQualifierFlagSet(VariableQualifierFlags::IsPointer))
+					{
+						arg = arg + ".get()";
+					}
+					else
+					{
+						preActions << "\t\tif(" << arg << " != nullptr)" << std::endl;
+						arg = "*" + arg;
+					}
 				}
-				else if (isSrcPointer(fieldInformation.flags))
-					arg = arg + ".get()";
-				else if(!isSrcSPtr(fieldInformation.flags))
-					outs() << "Error: Invalid struct member type for \"" << name << "\"\n";
+				else if(fieldInformation.TypeInformation.TypeCategory != VariableTypeCategory::SharedPointer)
+					errs() << "Error: Invalid struct member type for \"" << name << "\"\n";
 			}
 		}
 			break;
 		default: // Some resource or game object type
 		{
-			arg = "tmp" + name;
-			std::string scriptType = GetScriptInteropTypeName(fieldInformation.typeName, getPassAsResourceRef(fieldInformation.flags));
+			std::string scriptType = GetScriptInteropTypeName(fieldTypeName, fieldInformation.TypeInformation.IsParameterFlagSet(ParameterFlags::AsResourceRef));
 			std::string scriptName = "script" + name;
 
 			if(toInterop)
 			{
 				std::string argName;
 				
-				if(!getIsComponentOrActor(fieldInformation.flags))
+				if(fieldInformation.TypeInformation.TypeCategory != VariableTypeCategory::ComponentOrActor)
 					argName = "value." + name;
 				else
 					argName = "value." + name + ".GetComponent()";
@@ -1679,7 +1679,8 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 				preActions << "\t\t\t" << arg << " = " << GenerateGetInternalCallLine(fieldInformation.TypeInformation, parameterTypeMappingInformation, scriptName) << ";" << std::endl;
 			}
 
-			if(!isSrcGHandle(fieldInformation.flags) && !isSrcRHandle(fieldInformation.flags))
+			const VariableTypeInformation& underlyingType = fieldInformation.TypeInformation.TypeCategory == VariableTypeCategory::ComponentOrActor ? fieldInformation.TypeInformation.AssertGetUnderlyingType() : fieldInformation.TypeInformation;
+			if(underlyingType.TypeCategory != VariableTypeCategory::GameObjectHandle && underlyingType.TypeCategory != VariableTypeCategory::ResourceHandle)
 				outs() << "Error: Invalid struct member type for \"" << name << "\"\n";
 		}
 		break;
@@ -3316,7 +3317,7 @@ std::string generateCppStructSource(const StructInfo& structInfo)
 			// Arrays can be assigned, so copy them entry by entry
 			if(isArray(fieldInfo.flags))
 			{
-				std::string argName = generateFieldConvertBlock(fieldInfo.Name, fieldInfo, false, output);
+				std::string argName = GenerateFieldConvertBlock(fieldInfo.Name, fieldInfo, false, output);
 
 				output << "\t\tauto tmp" << fieldInfo.Name << " = " << argName << ";\n";
 				output << "\t\tfor(int i = 0; i < " << fieldInfo.arraySize << "; ++i)\n";
@@ -3324,7 +3325,7 @@ std::string generateCppStructSource(const StructInfo& structInfo)
 			}
 			else
 			{
-				std::string argName = generateFieldConvertBlock(fieldInfo.Name, fieldInfo, false, output);
+				std::string argName = GenerateFieldConvertBlock(fieldInfo.Name, fieldInfo, false, output);
 
 				output << "\t\toutput." << fieldInfo.Name << " = " << argName << ";\n";
 			}
@@ -3341,7 +3342,7 @@ std::string generateCppStructSource(const StructInfo& structInfo)
 		output << "\t\t" << structInfo.interopName << " output;\n";
 		for(auto& fieldInfo : structInfo.fields)
 		{
-			std::string argName = generateFieldConvertBlock(fieldInfo.Name, fieldInfo, true, output);
+			std::string argName = GenerateFieldConvertBlock(fieldInfo.Name, fieldInfo, true, output);
 
 			output << "\t\toutput." << fieldInfo.Name << " = " << argName << ";\n";
 		}
