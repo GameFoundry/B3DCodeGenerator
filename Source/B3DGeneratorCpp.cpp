@@ -994,9 +994,24 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 		return argumentName;
 	}
 
+	// Converts a native struct into an interop struct
+	auto fnGenerateConvertToInteropStructPostCallActions = [&postCallActions](const std::string& inputVariableName, const std::string& outputVariableName, const std::string& inputType)
+	{
+		const std::string scriptType = GetScriptInteropTypeName(inputType);
+
+		postCallActions << "\t\t" << GetStructInteropTypeName(inputType) << " interop" << outputVariableName << ";\n";
+		postCallActions << "\t\tinterop" << outputVariableName << " = " << scriptType << "::ToInterop(" << inputVariableName << ");\n";
+
+		postCallActions << "\t\tMonoUtil::ValueCopy(" << outputVariableName << ", ";
+		postCallActions << "&interop" << outputVariableName << ", ";
+		postCallActions << scriptType << "::GetMetaData()->ScriptClass->GetInternalClassInternal());\n";
+	};
+
 	// Handle non-array types
 	if (!parameterInformation.TypeInformation.IsArrayOrVector())
 	{
+		const bool isOutputParameter = parameterInformation.TypeInformation.IsOutputParameter();
+
 		const std::string parameterTypeName = parameterInformation.TypeInformation.GetLastWrappedOrSelfTypeName();
 		std::string argumentName;
 
@@ -1005,58 +1020,49 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 		case ::ExportedClassTypeCategory::Primitive:
 		case ::ExportedClassTypeCategory::Enum:
 		case ::ExportedClassTypeCategory::Struct:
-			if (returnValue)
+		{
+			const bool isFlags = parameterTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Enum && parameterInformation.TypeInformation.TypeCategory == VariableTypeCategory::Flags;
+			const bool isPlainEnum = parameterTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Enum && parameterInformation.TypeInformation.TypeCategory != VariableTypeCategory::Flags;
+			const bool isPlainStructOrPrimitive =
+				parameterTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Primitive ||
+				isPlainEnum ||
+				(parameterTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Struct && !parameterInformation.TypeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsStructWrapperUsed));
+
+			// Primitive and non-complex structs can be passed as-is, except for return values, in which case we need to box them.
+			// Flags need to be converted to their underlying enum type if they are an output parameter or return value.
+			// All other types need conversion to the corresponding Mono type.
+			const bool isTemporaryRequired = returnValue || (isOutputParameter && !isPlainStructOrPrimitive) || (!isPlainStructOrPrimitive && !isFlags);
+
+			if (isTemporaryRequired)
 			{
 				argumentName = "tmp" + parameterName;
 
-				if(parameterInformation.TypeInformation.TypeCategory == VariableTypeCategory::Flags)
-					preCallActions << "\t\tFlags<" << parameterTypeName << "> " << argumentName << ";" << std::endl;
-				else
-					preCallActions << "\t\t" << parameterTypeName << " " << argumentName << ";" << std::endl;
+				const std::string fullTypeName = GetCppNativeQualifiedTypeName(parameterInformation.TypeInformation, parameterTypeMappingInformation);
+				preCallActions << "\t\t" << fullTypeName << " " << argumentName << ";\n";
+			}
 
+			if (returnValue)
+			{
 				if (parameterTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Struct)
 				{
-					if(parameterInformation.TypeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsStructWrapperUsed))
-					{
-						const std::string scriptType = GetScriptInteropTypeName(parameterTypeName);
-
-						postCallActions << "\t\t" << GetStructInteropTypeName(parameterTypeName) << " interop" << parameterName << ";\n";
-						postCallActions << "\t\tinterop" << parameterName << " = " << scriptType << "::ToInterop(" << argumentName << ");\n";
-
-						postCallActions << "\t\tMonoUtil::ValueCopy(" << parameterName << ", ";
-						postCallActions << "&interop" << parameterName << ", ";
-						postCallActions << scriptType << "::GetMetaData()->ScriptClass->GetInternalClassInternal());\n";
-					}
+					if (parameterInformation.TypeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsStructWrapperUsed))
+						fnGenerateConvertToInteropStructPostCallActions(argumentName, parameterName, parameterTypeName);
 					else
 						postCallActions << "\t\t*" << parameterName << " = " << argumentName << ";" << std::endl;
 				}
-				else if(parameterInformation.TypeInformation.TypeCategory == VariableTypeCategory::Flags)
+				else if (parameterInformation.TypeInformation.TypeCategory == VariableTypeCategory::Flags)
 					postCallActions << "\t\t" << parameterName << " = (" << parameterTypeName << ")(uint32_t)" << argumentName << ";" << std::endl;
 				else
 					postCallActions << "\t\t" << parameterName << " = " << argumentName << ";" << std::endl;
 			}
-			else if (parameterInformation.TypeInformation.IsOutputParameter())
+			else if (isOutputParameter)
 			{
-				if(parameterTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Struct && parameterInformation.TypeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsStructWrapperUsed))
+				if (parameterTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Struct && parameterInformation.TypeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsStructWrapperUsed))
 				{
-					argumentName = "tmp" + parameterName;
-					preCallActions << "\t\t" << parameterTypeName << " " << argumentName << ";" << std::endl;
-
-					// TODO - Equivalent to block above
-					const std::string scriptType = GetScriptInteropTypeName(parameterTypeName);
-
-					postCallActions << "\t\t" << GetStructInteropTypeName(parameterTypeName) << " interop" << parameterName << ";\n";
-					postCallActions << "\t\tinterop" << parameterName << " = " << scriptType << "::ToInterop(" << argumentName << ");\n";
-
-					postCallActions << "\t\tMonoUtil::ValueCopy(" << parameterName << ", ";
-					postCallActions << "&interop" << parameterName << ", ";
-					postCallActions << scriptType << "::GetMetaData()->ScriptClass->GetInternalClassInternal());\n";
+					fnGenerateConvertToInteropStructPostCallActions(argumentName, parameterName, parameterTypeName);
 				}
 				else if (parameterInformation.TypeInformation.TypeCategory == VariableTypeCategory::Flags)
 				{
-					argumentName = "tmp" + parameterName;
-					preCallActions << "\t\tFlags<" << parameterTypeName << "> " << argumentName << ";" << std::endl;
-
 					postCallActions << "\t\t*" << parameterName << " = (" << parameterTypeName << ")(uint32_t)" << argumentName << ";" << std::endl;
 				}
 				else
@@ -1064,17 +1070,15 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 			}
 			else
 			{
-				if(parameterTypeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Struct && parameterInformation.TypeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsStructWrapperUsed))
+				if (parameterTypeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Struct && parameterInformation.TypeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsStructWrapperUsed))
 				{
-					argumentName = "tmp" + parameterName;
-					preCallActions << "\t\t" << parameterTypeName << " " << argumentName << ";" << std::endl;
-
 					std::string scriptType = GetScriptInteropTypeName(parameterTypeName);
 					preCallActions << "\t\t" << argumentName << " = " << scriptType << "::FromInterop(*" << parameterName << ");" << std::endl;
 				}
 				else
 					argumentName = parameterName;
 			}
+		}
 
 			break;
 		case ::ExportedClassTypeCategory::String:
