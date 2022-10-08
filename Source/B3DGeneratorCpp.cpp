@@ -840,6 +840,7 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 {
 	TypeMappingInformation parameterTypeMappingInformation = GetNativeToScriptTypeMapping(parameterInformation.TypeInformation);
 
+	// Handle AsyncOp types
 	if(parameterInformation.TypeInformation.TypeCategory == VariableTypeCategory::AsyncOp)
 	{
 		const VariableTypeInformation& asyncOpUnderlyingTypeInformation = parameterInformation.TypeInformation.AssertGetUnderlyingType();
@@ -993,9 +994,11 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 		return argumentName;
 	}
 
-	if (!isArrayOrVector(parameterInformation.flags))
+	// Handle non-array types
+	if (!parameterInformation.TypeInformation.IsArrayOrVector())
 	{
-		std::string argName;
+		const std::string parameterTypeName = parameterInformation.TypeInformation.GetLastWrappedOrSelfTypeName();
+		std::string argumentName;
 
 		switch (parameterTypeMappingInformation.TypeCategory)
 		{
@@ -1004,127 +1007,128 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 		case ::ExportedClassTypeCategory::Struct:
 			if (returnValue)
 			{
-				argName = "tmp" + parameterName;
+				argumentName = "tmp" + parameterName;
 
-				if(isFlagsEnum(parameterInformation.flags))
-					preCallActions << "\t\tFlags<" << parameterInformation.typeName << "> " << argName << ";" << std::endl;
+				if(parameterInformation.TypeInformation.TypeCategory == VariableTypeCategory::Flags)
+					preCallActions << "\t\tFlags<" << parameterTypeName << "> " << argumentName << ";" << std::endl;
 				else
-					preCallActions << "\t\t" << parameterInformation.typeName << " " << argName << ";" << std::endl;
+					preCallActions << "\t\t" << parameterTypeName << " " << argumentName << ";" << std::endl;
 
-				if (parameterTypeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Struct)
+				if (parameterTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Struct)
 				{
-					if(isComplexStruct(parameterInformation.flags))
+					if(parameterInformation.TypeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsStructWrapperUsed))
 					{
-						std::string scriptType = GetScriptInteropTypeName(parameterInformation.typeName);
+						const std::string scriptType = GetScriptInteropTypeName(parameterTypeName);
 
-						postCallActions << "\t\t" << GetStructInteropTypeName(parameterInformation.typeName) << " interop" << parameterName << ";\n";
-						postCallActions << "\t\tinterop" << parameterName << " = " << scriptType << "::ToInterop(" << argName << ");\n";
+						postCallActions << "\t\t" << GetStructInteropTypeName(parameterTypeName) << " interop" << parameterName << ";\n";
+						postCallActions << "\t\tinterop" << parameterName << " = " << scriptType << "::ToInterop(" << argumentName << ");\n";
 
 						postCallActions << "\t\tMonoUtil::ValueCopy(" << parameterName << ", ";
 						postCallActions << "&interop" << parameterName << ", ";
 						postCallActions << scriptType << "::GetMetaData()->ScriptClass->GetInternalClassInternal());\n";
 					}
 					else
-						postCallActions << "\t\t*" << parameterName << " = " << argName << ";" << std::endl;
+						postCallActions << "\t\t*" << parameterName << " = " << argumentName << ";" << std::endl;
 				}
-				else if(isFlagsEnum(parameterInformation.flags))
-					postCallActions << "\t\t" << parameterName << " = (" << parameterInformation.typeName << ")(uint32_t)" << argName << ";" << std::endl;
+				else if(parameterInformation.TypeInformation.TypeCategory == VariableTypeCategory::Flags)
+					postCallActions << "\t\t" << parameterName << " = (" << parameterTypeName << ")(uint32_t)" << argumentName << ";" << std::endl;
 				else
-					postCallActions << "\t\t" << parameterName << " = " << argName << ";" << std::endl;
+					postCallActions << "\t\t" << parameterName << " = " << argumentName << ";" << std::endl;
 			}
-			else if (isOutput(parameterInformation.flags))
+			else if (parameterInformation.TypeInformation.IsOutputParameter())
 			{
-				if(parameterTypeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Struct && isComplexStruct(parameterInformation.flags))
+				if(parameterTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Struct && parameterInformation.TypeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsStructWrapperUsed))
 				{
-					argName = "tmp" + parameterName;
-					preCallActions << "\t\t" << parameterInformation.typeName << " " << argName << ";" << std::endl;
+					argumentName = "tmp" + parameterName;
+					preCallActions << "\t\t" << parameterTypeName << " " << argumentName << ";" << std::endl;
 
-					std::string scriptType = GetScriptInteropTypeName(parameterInformation.typeName);
+					// TODO - Equivalent to block above
+					const std::string scriptType = GetScriptInteropTypeName(parameterTypeName);
 
-					postCallActions << "\t\t" << GetStructInteropTypeName(parameterInformation.typeName) << " interop" << parameterName << ";\n";
-					postCallActions << "\t\tinterop" << parameterName << " = " << scriptType << "::ToInterop(" << argName << ");\n";
+					postCallActions << "\t\t" << GetStructInteropTypeName(parameterTypeName) << " interop" << parameterName << ";\n";
+					postCallActions << "\t\tinterop" << parameterName << " = " << scriptType << "::ToInterop(" << argumentName << ");\n";
 
 					postCallActions << "\t\tMonoUtil::ValueCopy(" << parameterName << ", ";
 					postCallActions << "&interop" << parameterName << ", ";
 					postCallActions << scriptType << "::GetMetaData()->ScriptClass->GetInternalClassInternal());\n";
 				}
-				else if (isFlagsEnum(parameterInformation.flags))
+				else if (parameterInformation.TypeInformation.TypeCategory == VariableTypeCategory::Flags)
 				{
-					argName = "tmp" + parameterName;
-					preCallActions << "\t\tFlags<" << parameterInformation.typeName << "> " << argName << ";" << std::endl;
+					argumentName = "tmp" + parameterName;
+					preCallActions << "\t\tFlags<" << parameterTypeName << "> " << argumentName << ";" << std::endl;
 
-					postCallActions << "\t\t*" << parameterName << " = (" << parameterInformation.typeName << ")(uint32_t)" << argName << ";" << std::endl;
+					postCallActions << "\t\t*" << parameterName << " = (" << parameterTypeName << ")(uint32_t)" << argumentName << ";" << std::endl;
 				}
 				else
-					argName = parameterName;
+					argumentName = parameterName;
 			}
 			else
 			{
-				if(parameterTypeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Struct && isComplexStruct(parameterInformation.flags))
+				if(parameterTypeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Struct && parameterInformation.TypeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsStructWrapperUsed))
 				{
-					argName = "tmp" + parameterName;
-					preCallActions << "\t\t" << parameterInformation.typeName << " " << argName << ";" << std::endl;
+					argumentName = "tmp" + parameterName;
+					preCallActions << "\t\t" << parameterTypeName << " " << argumentName << ";" << std::endl;
 
-					std::string scriptType = GetScriptInteropTypeName(parameterInformation.typeName);
-					preCallActions << "\t\t" << argName << " = " << scriptType << "::FromInterop(*" << parameterName << ");" << std::endl;
+					std::string scriptType = GetScriptInteropTypeName(parameterTypeName);
+					preCallActions << "\t\t" << argumentName << " = " << scriptType << "::FromInterop(*" << parameterName << ");" << std::endl;
 				}
 				else
-					argName = parameterName;
+					argumentName = parameterName;
 			}
 
 			break;
 		case ::ExportedClassTypeCategory::String:
 		{
-			argName = "tmp" + parameterName;
-			preCallActions << "\t\tString " << argName << ";" << std::endl;
+			argumentName = "tmp" + parameterName;
+			preCallActions << "\t\tString " << argumentName << ";" << std::endl;
 
 			if (returnValue)
-				postCallActions << "\t\t" << parameterName << " = MonoUtil::StringToMono(" << argName << ");" << std::endl;
+				postCallActions << "\t\t" << parameterName << " = MonoUtil::StringToMono(" << argumentName << ");" << std::endl;
 			else if (isOutput(parameterInformation.flags))
-				postCallActions << "\t\tMonoUtil::ReferenceCopy(" << parameterName << ",  (MonoObject*)MonoUtil::StringToMono(" << argName << "));" << std::endl;
+				postCallActions << "\t\tMonoUtil::ReferenceCopy(" << parameterName << ",  (MonoObject*)MonoUtil::StringToMono(" << argumentName << "));" << std::endl;
 			else
-				preCallActions << "\t\t" << argName << " = MonoUtil::MonoToString(" << parameterName << ");" << std::endl;
+				preCallActions << "\t\t" << argumentName << " = MonoUtil::MonoToString(" << parameterName << ");" << std::endl;
 		}
 		break;
 		case ::ExportedClassTypeCategory::Path:
 		{
-			argName = "tmp" + parameterName;
-			preCallActions << "\t\tPath " << argName << ";" << std::endl;
+			argumentName = "tmp" + parameterName;
+			preCallActions << "\t\tPath " << argumentName << ";" << std::endl;
 
 			if (returnValue)
-				postCallActions << "\t\t" << parameterName << " = MonoUtil::StringToMono(" << argName << ".ToString());" << std::endl;
+				postCallActions << "\t\t" << parameterName << " = MonoUtil::StringToMono(" << argumentName << ".ToString());" << std::endl;
 			else if (isOutput(parameterInformation.flags))
-				postCallActions << "\t\tMonoUtil::ReferenceCopy(" << parameterName << ",  (MonoObject*)MonoUtil::StringToMono(" << argName << ".ToString()));" << std::endl;
+				postCallActions << "\t\tMonoUtil::ReferenceCopy(" << parameterName << ",  (MonoObject*)MonoUtil::StringToMono(" << argumentName << ".ToString()));" << std::endl;
 			else
-				preCallActions << "\t\t" << argName << " = MonoUtil::MonoToString(" << parameterName << ");" << std::endl;
+				preCallActions << "\t\t" << argumentName << " = MonoUtil::MonoToString(" << parameterName << ");" << std::endl;
 		}
 		break;
 		case ::ExportedClassTypeCategory::WString:
 		{
-			argName = "tmp" + parameterName;
-			preCallActions << "\t\tWString " << argName << ";" << std::endl;
+			argumentName = "tmp" + parameterName;
+			preCallActions << "\t\tWString " << argumentName << ";" << std::endl;
 
 			if (returnValue)
-				postCallActions << "\t\t" << parameterName << " = MonoUtil::WstringToMono(" << argName << ");" << std::endl;
+				postCallActions << "\t\t" << parameterName << " = MonoUtil::WstringToMono(" << argumentName << ");" << std::endl;
 			else if (isOutput(parameterInformation.flags))
-				postCallActions << "\t\tMonoUtil::ReferenceCopy(" << parameterName << ", (MonoObject*)MonoUtil::WstringToMono(" << argName << "));" << std::endl;
+				postCallActions << "\t\tMonoUtil::ReferenceCopy(" << parameterName << ", (MonoObject*)MonoUtil::WstringToMono(" << argumentName << "));" << std::endl;
 			else
-				preCallActions << "\t\t" << argName << " = MonoUtil::MonoToWString(" << parameterName << ");" << std::endl;
+				preCallActions << "\t\t" << argumentName << " = MonoUtil::MonoToWString(" << parameterName << ");" << std::endl;
 		}
 		break;
 		case ::ExportedClassTypeCategory::MonoObject:
 		{
-			argName = "tmp" + parameterName;
+			argumentName = "tmp" + parameterName;
 			
 			if (returnValue)
 			{
-				preCallActions << "\t\tMonoObject* " << argName << ";" << std::endl;
-				postCallActions << "\t\t" << parameterName << " = " << argName << ";" << std::endl;
+				preCallActions << "\t\tMonoObject* " << argumentName << ";" << std::endl;
+				postCallActions << "\t\t" << parameterName << " = " << argumentName << ";" << std::endl;
 			}
 			else if (isOutput(parameterInformation.flags))
 			{
-				preCallActions << "\t\tMonoObject* " << argName << ";" << std::endl;
-				postCallActions << "\t\tMonoUtil::ReferenceCopy(" << parameterName << ", " << argName << ");" << std::endl;
+				preCallActions << "\t\tMonoObject* " << argumentName << ";" << std::endl;
+				postCallActions << "\t\tMonoUtil::ReferenceCopy(" << parameterName << ", " << argumentName << ");" << std::endl;
 			}
 			else
 			{
@@ -1134,11 +1138,11 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 		break;
 		case ::ExportedClassTypeCategory::GUIElement:
 		{
-			argName = "tmp" + parameterName;
+			argumentName = "tmp" + parameterName;
 			std::string tmpType = GetCppNativeQualifiedTypeName(parameterInformation.TypeInformation, parameterTypeMappingInformation);
 			std::string scriptType = GetScriptInteropTypeName(parameterInformation.typeName);
 
-			preCallActions << "\t\t" << tmpType << " " << argName << ";\n";
+			preCallActions << "\t\t" << tmpType << " " << argumentName << ";\n";
 			if(returnValue || isOutput(parameterInformation.flags))
 				outs() << "Error: GUIElement cannot be used as parameter outputs or return values. Ignoring. \n";
 			else
@@ -1147,50 +1151,50 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 
 				preCallActions << GenerateMonoToScriptObject("\t\t", scriptType, scriptName, parameterName, parameterInformation.TypeInformation, parameterTypeMappingInformation);
 				preCallActions << "\t\tif(" << scriptName << " != nullptr)" << std::endl;
-				preCallActions << "\t\t\t" << argName << " = " << GenerateGetInternalCallLine(parameterInformation.TypeInformation, parameterTypeMappingInformation, scriptName) << ";" << std::endl;
+				preCallActions << "\t\t\t" << argumentName << " = " << GenerateGetInternalCallLine(parameterInformation.TypeInformation, parameterTypeMappingInformation, scriptName) << ";" << std::endl;
 			}
 		}
 			break;
 		case ::ExportedClassTypeCategory::Class:
 		case ::ExportedClassTypeCategory::ReflectableClass:
 		{
-			argName = "tmp" + parameterName;
+			argumentName = "tmp" + parameterName;
 			std::string tmpType = GetCppNativeQualifiedTypeName(parameterInformation.TypeInformation, parameterTypeMappingInformation);
 			std::string scriptType = GetScriptInteropTypeName(parameterInformation.typeName);
 
-			preCallActions << "\t\t" << tmpType << " " << argName;
+			preCallActions << "\t\t" << tmpType << " " << argumentName;
 			if ((returnValue || isOutput(parameterInformation.flags)) && IsDereferenceRequired(parameterInformation.TypeInformation, parameterTypeMappingInformation))
 				preCallActions << " = bs_shared_ptr_new<" << parameterInformation.typeName << ">()";
 
 			preCallActions << ";\n";
 
 			if (returnValue)
-				postCallActions << GenerateNativeClassToScriptObject(parameterInformation.TypeInformation, parameterName, scriptType, argName);
+				postCallActions << GenerateNativeClassToScriptObject(parameterInformation.TypeInformation, parameterName, scriptType, argumentName);
 			else if (isOutput(parameterInformation.flags))
-				postCallActions << GenerateNativeClassToScriptObject(parameterInformation.TypeInformation, parameterName, scriptType, argName, true);
+				postCallActions << GenerateNativeClassToScriptObject(parameterInformation.TypeInformation, parameterName, scriptType, argumentName, true);
 			else
 			{
 				std::string scriptName = "script" + parameterName;
 				
 				preCallActions << GenerateMonoToScriptObject("\t\t", scriptType, scriptName, parameterName, parameterInformation.TypeInformation, parameterTypeMappingInformation);
 				preCallActions << "\t\tif(" << scriptName << " != nullptr)" << std::endl;
-				preCallActions << "\t\t\t" << argName << " = " << GenerateGetInternalCallLine(parameterInformation.TypeInformation, parameterTypeMappingInformation, scriptName) << ";" << std::endl;
+				preCallActions << "\t\t\t" << argumentName << " = " << GenerateGetInternalCallLine(parameterInformation.TypeInformation, parameterTypeMappingInformation, scriptName) << ";" << std::endl;
 			}
 		}
 			break;
 		default: // Some resource or game object type
 		{
-			argName = "tmp" + parameterName;
+			argumentName = "tmp" + parameterName;
 			std::string tmpType = GetCppNativeQualifiedTypeName(parameterInformation.TypeInformation, parameterTypeMappingInformation);
 
-			preCallActions << "\t\t" << tmpType << " " << argName << ";" << std::endl;
+			preCallActions << "\t\t" << tmpType << " " << argumentName << ";" << std::endl;
 
 			std::string scriptName = "script" + parameterName;
 			std::string scriptType = GetScriptInteropTypeName(parameterInformation.typeName, getPassAsResourceRef(parameterInformation.flags));
 
 			if (returnValue)
 			{
-				postCallActions << GenerateNativeHandleToScriptObject(parameterInformation.TypeInformation, parameterTypeMappingInformation, scriptName, argName);
+				postCallActions << GenerateNativeHandleToScriptObject(parameterInformation.TypeInformation, parameterTypeMappingInformation, scriptName, argumentName);
 				postCallActions << "\t\tif(" << scriptName << " != nullptr)" << std::endl;
 				postCallActions << "\t\t\t" << parameterName << " = " << scriptName << "->GetManagedInstance();" << std::endl;
 				postCallActions << "\t\telse" << std::endl;
@@ -1198,7 +1202,7 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 			}
 			else if (isOutput(parameterInformation.flags))
 			{
-				postCallActions << GenerateNativeHandleToScriptObject(parameterInformation.TypeInformation, parameterTypeMappingInformation, scriptName, argName);
+				postCallActions << GenerateNativeHandleToScriptObject(parameterInformation.TypeInformation, parameterTypeMappingInformation, scriptName, argumentName);
 				postCallActions << "\t\tif(" << scriptName << " != nullptr)" << std::endl;
 				postCallActions << "\t\t\tMonoUtil::ReferenceCopy(" << parameterName << ", " << scriptName << "->GetManagedInstance());" << std::endl;
 				postCallActions << "\t\telse" << std::endl;
@@ -1208,13 +1212,13 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 			{
 				preCallActions << GenerateMonoToScriptObject("\t\t", scriptType, scriptName, parameterName, parameterInformation.TypeInformation, parameterTypeMappingInformation);
 				preCallActions << "\t\tif(" << scriptName << " != nullptr)" << std::endl;
-				preCallActions << "\t\t\t" << argName << " = " << GenerateGetInternalCallLine(parameterInformation.TypeInformation, parameterTypeMappingInformation, scriptName) << ";" << std::endl;
+				preCallActions << "\t\t\t" << argumentName << " = " << GenerateGetInternalCallLine(parameterInformation.TypeInformation, parameterTypeMappingInformation, scriptName) << ";" << std::endl;
 			}
 		}
 		break;
 		}
 
-		return argName;
+		return argumentName;
 	}
 	else
 	{
