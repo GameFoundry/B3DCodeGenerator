@@ -246,43 +246,6 @@ static std::string GenerateGetInternalCallLine(const VariableTypeInformation& ty
 }
 
 /**
- * Returns code that converts a Mono object into its script interop type.
- *
- * @param indent					Indent to apply to the generated line of code.
- * @param scriptType				Script interop type.
- * @param scriptName				Name of the script interop variable to store the result in.
- * @param variableName				Name of the variable containing the Mono object.
- * @param typeInformation			Information about the native type.
- * @param typeMappingInformation	Mapping of the provided type in script.
- * @return							ode that converts a Mono object into its script interop type, assigning it to a variable named @p scriptName.
- */
-static std::string GenerateToNativeCall(const std::string& indent, const std::string& scriptType, const std::string& scriptName, const std::string& variableName, const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation)
-{
-	const bool isRRef = typeInformation.IsParameterFlagSet(ParameterFlags::AsResourceRef);
-	const bool isBase = typeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsReferencingBaseClass);
-
-	std::stringstream output;
-	if (!isBase || isRRef)
-	{
-		output << indent << scriptType << "* " << scriptName << ";" << std::endl;
-		output << indent << scriptName << " = " << scriptType << "::ToNative(" << variableName << ");" << std::endl;
-	}
-	else
-	{
-		std::string scriptBaseType;
-		if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
-			scriptBaseType = "ScriptGUIElementBaseTBase";
-		else
-			scriptBaseType = scriptType + "Base";
-
-		output << indent << scriptBaseType << "* " << scriptName << ";" << std::endl;
-		output << indent << scriptName << " = (" << scriptBaseType << "*)" << scriptType << "::ToNative(" << variableName << ");" << std::endl;
-	}
-
-	return output.str();
-}
-
-/**
  * Returns an argument that can be used for call into a native method. The argument is expected to have been received through
  * an internal interop call.
  *
@@ -686,9 +649,16 @@ static std::string GenerateEventCallbackSignature(const MethodInfo& eventInfo, c
 	return output.str();
 }
 
-std::string generateCppEventThunk(const MethodInfo& eventInfo, bool isModule)
+/**
+ * Generates the type definition and a static field holding a thunk for a particular event.
+ *
+ * @param eventInfo			Information about the event we're generating the thunk for.
+ * @param isModule			True if the type the event is on is a Module singleton.
+ * @return					Thunk type definition, followed by thunk static field.
+ */
+std::string GenerateEventThunkSignature(const MethodInfo& eventInfo, bool isModule)
 {
-	bool isStatic = (eventInfo.flags & (int)MethodFlags::Static) != 0;
+	const bool isStatic = (eventInfo.flags & (int)MethodFlags::Static) != 0;
 
 	std::stringstream output;
 	output << "\t\ttypedef void(BS_THUNKCALL *" << eventInfo.sourceName << "ThunkDef) (";
@@ -712,23 +682,72 @@ std::string generateCppEventThunk(const MethodInfo& eventInfo, bool isModule)
 	return output.str();
 }
 
-std::string generateClassNativeToScriptObjectLine(int flags, const std::string& typeName, const std::string& outputName, 
-	const std::string& scriptType, const std::string& argName, bool asRef = false, const std::string& indent = "\t\t")
+/**
+ * Returns code that converts a Mono object into its script interop type.
+ *
+ * @param indent					Indent to apply to the generated line of code.
+ * @param scriptType				Script interop type.
+ * @param scriptName				Name of the script interop variable to store the result in.
+ * @param variableName				Name of the variable containing the Mono object.
+ * @param typeInformation			Information about the native type.
+ * @param typeMappingInformation	Mapping of the provided type in script.
+ * @return							ode that converts a Mono object into its script interop type, assigning it to a variable named @p scriptName.
+ */
+static std::string GenerateMonoToScriptObject(const std::string& indent, const std::string& scriptType, const std::string& scriptName, const std::string& variableName, const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation)
+{
+	const bool isRRef = typeInformation.IsParameterFlagSet(ParameterFlags::AsResourceRef);
+	const bool isBase = typeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsReferencingBaseClass);
+
+	std::stringstream output;
+	if (!isBase || isRRef)
+	{
+		output << indent << scriptType << "* " << scriptName << ";" << std::endl;
+		output << indent << scriptName << " = " << scriptType << "::ToNative(" << variableName << ");" << std::endl;
+	}
+	else
+	{
+		std::string scriptBaseType;
+		if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
+			scriptBaseType = "ScriptGUIElementBaseTBase";
+		else
+			scriptBaseType = scriptType + "Base";
+
+		output << indent << scriptBaseType << "* " << scriptName << ";" << std::endl;
+		output << indent << scriptName << " = (" << scriptBaseType << "*)" << scriptType << "::ToNative(" << variableName << ");" << std::endl;
+	}
+
+	return output.str();
+}
+
+/**
+ * Converts a native class type argument into its script interop object. This should be only called on types that are exported to scripting a ExportedClassTypeCategory::Class or ExportedClassTypeCategory::ReflectableClass.
+ *
+ * @param typeInformation		Information about the native type to convert.
+ * @param outputName			Name of the variable to store the result in.
+ * @param scriptType			Interop script type we're doing the conversion for.
+ * @param argName				Name of the variable that's being converted.
+ * @param performReferenceCopy	If true, reference copy operation will be performed when assigning the value to output. Required if writing the output as an output parameter to an internal method.
+ * @param indent				Optional indent to apply to the generated code.
+ * @return						Code that converts a native object to a script interop object.
+ */
+std::string GenerateNativeClassToScriptObject(const VariableTypeInformation& typeInformation, const std::string& outputName, 
+	const std::string& scriptType, const std::string& argName, bool performReferenceCopy = false, const std::string& indent = "\t\t")
 {
 	std::stringstream output;
 
-	auto generateCreateLine = [&output, &outputName, asRef](const std::string& scriptType, const std::string& argName, const std::string& indent)
+	// TODO - Need to modify this part if we wish to have persistence with managed objects
+	auto fnGenerateCreateLine = [&output, &outputName, performReferenceCopy](const std::string& scriptType, const std::string& argName, const std::string& indent)
 	{
-		if (asRef)
+		if (performReferenceCopy)
 			output << indent << "MonoUtil::ReferenceCopy(" << outputName << ", " << scriptType << "::Create(" << argName << "));\n";
 		else
 			output << indent << outputName << " = " << scriptType << "::Create(" << argName << ");\n";
 	};
 
-	if(isBaseParam(flags))
+	if(typeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsReferencingBaseClass))
 	{
 		std::vector<std::string> derivedClasses;
-		getDerivedClasses(typeName, derivedClasses);
+		getDerivedClasses(typeInformation.GetLastWrappedOrSelfTypeName(), derivedClasses);
 
 		if(!derivedClasses.empty())
 		{
@@ -736,35 +755,33 @@ std::string generateClassNativeToScriptObjectLine(int flags, const std::string& 
 			output << indent << "{\n";
 
 			output << indent << "\tif(rtti_is_of_type<" << derivedClasses[0] << ">(" << argName << "))\n";
-			generateCreateLine(GetScriptInteropTypeName(derivedClasses[0]), 
-				"std::static_pointer_cast<" + derivedClasses[0] + ">(" + argName + ")", indent + "\t\t");
+			fnGenerateCreateLine(GetScriptInteropTypeName(derivedClasses[0]), "std::static_pointer_cast<" + derivedClasses[0] + ">(" + argName + ")", indent + "\t\t");
 
 			for(uint32_t i = 1; i < (uint32_t)derivedClasses.size(); i++)
 			{
 				output << indent << "\telse if(rtti_is_of_type<" << derivedClasses[i] << ">(" << argName << "))\n";
-				generateCreateLine(GetScriptInteropTypeName(derivedClasses[i]),
-					"std::static_pointer_cast<" + derivedClasses[i] + ">(" + argName + ")", indent + "\t\t");
+				fnGenerateCreateLine(GetScriptInteropTypeName(derivedClasses[i]), "std::static_pointer_cast<" + derivedClasses[i] + ">(" + argName + ")", indent + "\t\t");
 			}
 
 			output << indent << "\telse\n";
-			generateCreateLine(scriptType, argName, indent + "\t\t");
+			fnGenerateCreateLine(scriptType, argName, indent + "\t\t");
 
 
 			output << indent << "}\n";
 			output << indent << "else\n";
-			generateCreateLine(scriptType, argName, indent + "\t");
+			fnGenerateCreateLine(scriptType, argName, indent + "\t");
 
 			return output.str();
 		}
 	}
 	else
-		generateCreateLine(scriptType, argName, indent);
+		fnGenerateCreateLine(scriptType, argName, indent);
 
 	return output.str();
 }
 
-std::string generateNativeToScriptObjectLine(::ExportedClassTypeCategory type, int flags, const std::string& scriptName,
-	const std::string& argName, const std::string& indent = "\t\t")
+// TODO - Clean up
+std::string GenerateNativeHandleToScriptObject(::ExportedClassTypeCategory type, int flags, const std::string& scriptName, const std::string& argName, const std::string& indent = "\t\t")
 {
 	std::stringstream output;
 
@@ -870,10 +887,10 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 			if (!asyncOpUnderlyingTypeInformation.IsArrayOrVector())
 			{
 				if (parameterTypeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass || parameterTypeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Class)
-					postCallActions << generateClassNativeToScriptObjectLine(parameterInformation.flags, asyncOpUnderlyingTypeInformation.GetLastWrappedOrSelfTypeName(), "monoObj", scriptType, "nativeObj", false, "\t\t\t");
+					postCallActions << GenerateNativeClassToScriptObject(asyncOpUnderlyingTypeInformation, "monoObj", scriptType, "nativeObj", false, "\t\t\t");
 				else // Resource
 				{
-					postCallActions << generateNativeToScriptObjectLine(parameterTypeMappingInformation.TypeCategory, parameterInformation.flags, "scriptObj", "nativeObj", "\t\t\t");
+					postCallActions << GenerateNativeHandleToScriptObject(parameterTypeMappingInformation.TypeCategory, parameterInformation.flags, "scriptObj", "nativeObj", "\t\t\t");
 					postCallActions << "\t\t\tif(scriptObj != nullptr)" << std::endl;
 					postCallActions << "\t\t\t\tmonoObj = scriptObj->GetManagedInstance();" << std::endl;
 					postCallActions << "\t\t\telse" << std::endl;
@@ -930,8 +947,7 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 						postCallActions << " = nativeObj[i];\n";
 
 					postCallActions << "\t\t\t\tMonoObject* " << arrayElementName << ";\n";
-					postCallActions << generateClassNativeToScriptObjectLine(parameterInformation.flags, arrayElementTypeInformation.GetLastWrappedOrSelfTypeName(), arrayElementName,
-						scriptType, arrayElementPtrName, false, "\t\t\t\t");
+					postCallActions << GenerateNativeClassToScriptObject(arrayElementTypeInformation, arrayElementName, scriptType, arrayElementPtrName, false, "\t\t\t\t");
 
 					postCallActions << "\t\t\t\t" << arrayName << ".Set(i, " << arrayElementName << ");" << std::endl;
 					break;
@@ -940,7 +956,7 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 				{
 					std::string scriptName = "scriptObj";
 
-					postCallActions << generateNativeToScriptObjectLine(parameterTypeMappingInformation.TypeCategory, parameterInformation.flags, scriptName, "nativeObj[i]", "\t\t\t\t");
+					postCallActions << GenerateNativeHandleToScriptObject(parameterTypeMappingInformation.TypeCategory, parameterInformation.flags, scriptName, "nativeObj[i]", "\t\t\t\t");
 					postCallActions << "\t\t\t\tif(" << scriptName << " != nullptr)" << std::endl;
 					postCallActions << "\t\t\t\t\t" << arrayName << ".Set(i, " << scriptName << "->GetManagedInstance());" << std::endl;
 					postCallActions << "\t\t\t\telse" << std::endl;
@@ -1123,7 +1139,7 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 			{
 				std::string scriptName = "script" + parameterName;
 
-				preCallActions << GenerateToNativeCall("\t\t", scriptType, scriptName, parameterName, parameterInformation.TypeInformation, parameterTypeMappingInformation);
+				preCallActions << GenerateMonoToScriptObject("\t\t", scriptType, scriptName, parameterName, parameterInformation.TypeInformation, parameterTypeMappingInformation);
 				preCallActions << "\t\tif(" << scriptName << " != nullptr)" << std::endl;
 				preCallActions << "\t\t\t" << argName << " = " << GenerateGetInternalCallLine(parameterInformation.TypeInformation, parameterTypeMappingInformation, scriptName) << ";" << std::endl;
 			}
@@ -1143,14 +1159,14 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 			preCallActions << ";\n";
 
 			if (returnValue)
-				postCallActions << generateClassNativeToScriptObjectLine(parameterInformation.flags, parameterInformation.typeName, parameterName, scriptType, argName);
+				postCallActions << GenerateNativeClassToScriptObject(parameterInformation.TypeInformation, parameterName, scriptType, argName);
 			else if (isOutput(parameterInformation.flags))
-				postCallActions << generateClassNativeToScriptObjectLine(parameterInformation.flags, parameterInformation.typeName, parameterName, scriptType, argName, true);
+				postCallActions << GenerateNativeClassToScriptObject(parameterInformation.TypeInformation, parameterName, scriptType, argName, true);
 			else
 			{
 				std::string scriptName = "script" + parameterName;
 				
-				preCallActions << GenerateToNativeCall("\t\t", scriptType, scriptName, parameterName, parameterInformation.TypeInformation, parameterTypeMappingInformation);
+				preCallActions << GenerateMonoToScriptObject("\t\t", scriptType, scriptName, parameterName, parameterInformation.TypeInformation, parameterTypeMappingInformation);
 				preCallActions << "\t\tif(" << scriptName << " != nullptr)" << std::endl;
 				preCallActions << "\t\t\t" << argName << " = " << GenerateGetInternalCallLine(parameterInformation.TypeInformation, parameterTypeMappingInformation, scriptName) << ";" << std::endl;
 			}
@@ -1168,7 +1184,7 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 
 			if (returnValue)
 			{
-				postCallActions << generateNativeToScriptObjectLine(parameterTypeMappingInformation.TypeCategory, parameterInformation.flags, scriptName, argName);
+				postCallActions << GenerateNativeHandleToScriptObject(parameterTypeMappingInformation.TypeCategory, parameterInformation.flags, scriptName, argName);
 				postCallActions << "\t\tif(" << scriptName << " != nullptr)" << std::endl;
 				postCallActions << "\t\t\t" << parameterName << " = " << scriptName << "->GetManagedInstance();" << std::endl;
 				postCallActions << "\t\telse" << std::endl;
@@ -1176,7 +1192,7 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 			}
 			else if (isOutput(parameterInformation.flags))
 			{
-				postCallActions << generateNativeToScriptObjectLine(parameterTypeMappingInformation.TypeCategory, parameterInformation.flags, scriptName, argName);
+				postCallActions << GenerateNativeHandleToScriptObject(parameterTypeMappingInformation.TypeCategory, parameterInformation.flags, scriptName, argName);
 				postCallActions << "\t\tif(" << scriptName << " != nullptr)" << std::endl;
 				postCallActions << "\t\t\tMonoUtil::ReferenceCopy(" << parameterName << ", " << scriptName << "->GetManagedInstance());" << std::endl;
 				postCallActions << "\t\telse" << std::endl;
@@ -1184,7 +1200,7 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 			}
 			else
 			{
-				preCallActions << GenerateToNativeCall("\t\t", scriptType, scriptName, parameterName, parameterInformation.TypeInformation, parameterTypeMappingInformation);
+				preCallActions << GenerateMonoToScriptObject("\t\t", scriptType, scriptName, parameterName, parameterInformation.TypeInformation, parameterTypeMappingInformation);
 				preCallActions << "\t\tif(" << scriptName << " != nullptr)" << std::endl;
 				preCallActions << "\t\t\t" << argName << " = " << GenerateGetInternalCallLine(parameterInformation.TypeInformation, parameterTypeMappingInformation, scriptName) << ";" << std::endl;
 			}
@@ -1278,7 +1294,7 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 			{
 				std::string scriptName = "script" + parameterName;
 
-				preCallActions << GenerateToNativeCall("\t\t\t\t", entryType, scriptName, arrayName + ".Get<MonoObject*>(i)",parameterInformation.TypeInformation, parameterTypeMappingInformation);
+				preCallActions << GenerateMonoToScriptObject("\t\t\t\t", entryType, scriptName, arrayName + ".Get<MonoObject*>(i)",parameterInformation.TypeInformation, parameterTypeMappingInformation);
 				preCallActions << "\t\t\t\tif(" << scriptName << " != nullptr)\n";
 				preCallActions << "\t\t\t\t{\n";
 
@@ -1396,8 +1412,7 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 					postCallActions << " = " << argName << "[i];\n";
 
 				postCallActions << "\t\t\tMonoObject* " << elemName << ";\n";
-				postCallActions << generateClassNativeToScriptObjectLine(parameterInformation.flags, parameterInformation.typeName, elemName, 
-					entryType, elemPtrName, false, "\t\t\t");
+				postCallActions << GenerateNativeClassToScriptObject(parameterInformation.TypeInformation, elemName, entryType, elemPtrName, false, "\t\t\t");
 
 				postCallActions << "\t\t\t" << arrayName << ".Set(i, " << elemName << ");" << std::endl;
 				break;
@@ -1409,7 +1424,7 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 			{
 				std::string scriptName = "script" + parameterName;
 
-				postCallActions << generateNativeToScriptObjectLine(parameterTypeMappingInformation.TypeCategory, parameterInformation.flags, scriptName, argName + "[i]", "\t\t\t");
+				postCallActions << GenerateNativeHandleToScriptObject(parameterTypeMappingInformation.TypeCategory, parameterInformation.flags, scriptName, argName + "[i]", "\t\t\t");
 				postCallActions << "\t\t\tif(" << scriptName << " != nullptr)" << std::endl;
 				postCallActions << "\t\t\t\t" << arrayName << ".Set(i, " << scriptName << "->GetManagedInstance());" << std::endl;
 				postCallActions << "\t\t\telse" << std::endl;
@@ -1540,7 +1555,7 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 					preActions << "\t\t" << tmpType << " " << arg << ";" << std::endl;
 
 					std::string scriptName = "script" + name;
-					preActions << GenerateToNativeCall("\t\t", scriptType, scriptName, "value." + name, fieldInformation.TypeInformation, parameterTypeMappingInformation);
+					preActions << GenerateMonoToScriptObject("\t\t", scriptType, scriptName, "value." + name, fieldInformation.TypeInformation, parameterTypeMappingInformation);
 					preActions << "\t\tif(" << scriptName << " != nullptr)" << std::endl;
 					preActions << "\t\t\t" << arg << " = " << GenerateGetInternalCallLine(fieldInformation.TypeInformation, parameterTypeMappingInformation, scriptName) << ";" << std::endl;
 				}
@@ -1574,10 +1589,10 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 					else
 						preActions << "\t\t" << arg << "copy = bs_shared_ptr_new<" << fieldInformation.typeName << ">(value." << name << ");\n";
 
-					preActions << generateClassNativeToScriptObjectLine(fieldInformation.flags, fieldInformation.typeName, arg, scriptType, arg + "copy");
+					preActions << GenerateNativeClassToScriptObject(fieldInformation.TypeInformation, arg, scriptType, arg + "copy");
 				}
 				else if(isSrcSPtr(fieldInformation.flags))
-					preActions << generateClassNativeToScriptObjectLine(fieldInformation.flags, fieldInformation.typeName, arg, scriptType, "value." + name);
+					preActions << GenerateNativeClassToScriptObject(fieldInformation.TypeInformation, arg, scriptType, "value." + name);
 				else
 					outs() << "Error: Invalid struct member type for \"" << name << "\"\n";
 			}
@@ -1587,7 +1602,7 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 				preActions << "\t\t" << tmpType << " " << arg << ";" << std::endl;
 
 				std::string scriptName = "script" + name;
-				preActions << GenerateToNativeCall("\t\t", scriptType, scriptName, "value." + name, fieldInformation.TypeInformation, parameterTypeMappingInformation);
+				preActions << GenerateMonoToScriptObject("\t\t", scriptType, scriptName, "value." + name, fieldInformation.TypeInformation, parameterTypeMappingInformation);
 				preActions << "\t\tif(" << scriptName << " != nullptr)" << std::endl;
 				preActions << "\t\t\t" << arg << " = " << scriptName << "->GetInternal();" << std::endl;
 
@@ -1619,7 +1634,7 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 				else
 					argName = "value." + name + ".GetComponent()";
 
-				preActions << generateNativeToScriptObjectLine(parameterTypeMappingInformation.TypeCategory, fieldInformation.flags, scriptName, argName);
+				preActions << GenerateNativeHandleToScriptObject(parameterTypeMappingInformation.TypeCategory, fieldInformation.flags, scriptName, argName);
 
 				preActions << "\t\tMonoObject* " << arg << ";\n";
 				preActions << "\t\tif(" << scriptName << " != nullptr)\n";
@@ -1632,7 +1647,7 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 				std::string tmpType = GetCppNativeQualifiedTypeName(fieldInformation.TypeInformation, parameterTypeMappingInformation);
 				preActions << "\t\t" << tmpType << " " << arg << ";" << std::endl;
 				
-				preActions << GenerateToNativeCall("\t\t", scriptType, scriptName, "value." + name, fieldInformation.TypeInformation, parameterTypeMappingInformation);
+				preActions << GenerateMonoToScriptObject("\t\t", scriptType, scriptName, "value." + name, fieldInformation.TypeInformation, parameterTypeMappingInformation);
 				preActions << "\t\tif(" << scriptName << " != nullptr)\n";
 				preActions << "\t\t\t" << arg << " = " << GenerateGetInternalCallLine(fieldInformation.TypeInformation, parameterTypeMappingInformation, scriptName) << ";" << std::endl;
 			}
@@ -1724,7 +1739,7 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 			default: // Some object type
 			{
 				std::string scriptName = "script" + name;
-				preActions << GenerateToNativeCall("\t\t\t\t", entryType, scriptName, arrayName + ".Get<MonoObject*>(i)", fieldInformation.TypeInformation, parameterTypeMappingInformation);
+				preActions << GenerateMonoToScriptObject("\t\t\t\t", entryType, scriptName, arrayName + ".Get<MonoObject*>(i)", fieldInformation.TypeInformation, parameterTypeMappingInformation);
 				
 				preActions << "\t\t\t\tif(" << scriptName << " != nullptr)\n";
 				preActions << "\t\t\t\t{\n";
@@ -1836,8 +1851,7 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 					preActions << " = value." << name << "[i];\n";
 
 				preActions << "\t\t\tMonoObject* " << elemName << ";\n";
-				preActions << generateClassNativeToScriptObjectLine(fieldInformation.flags, fieldInformation.typeName, elemName, 
-					entryType, elemPtrName, false, "\t\t\t");
+				preActions << GenerateNativeClassToScriptObject(fieldInformation.TypeInformation, elemName, entryType, elemPtrName, false, "\t\t\t");
 
 				preActions << "\t\t\t" << arrayName << ".Set(i, " << elemName << ");" << std::endl;
 			}
@@ -1849,7 +1863,7 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 			{
 				std::string scriptName = "script" + name;
 
-				preActions << generateNativeToScriptObjectLine(parameterTypeMappingInformation.TypeCategory, fieldInformation.flags, scriptName, "value." + name + "[i]", "\t\t\t");
+				preActions << GenerateNativeHandleToScriptObject(parameterTypeMappingInformation.TypeCategory, fieldInformation.flags, scriptName, "value." + name + "[i]", "\t\t\t");
 				preActions << "\t\t\t\tif(" << scriptName << " != nullptr)\n";
 				preActions << "\t\t\t\t" << arrayName << ".Set(i, " << scriptName << "->GetManagedInstance());" << std::endl;
 				preActions << "\t\t\telse\n";
@@ -1950,7 +1964,7 @@ std::string generateEventCallbackBodyBlockForParam(const std::string& name, cons
 			std::string scriptType = GetScriptInteropTypeName(varTypeInfo.typeName);
 
 			preCallActions << "\t\tMonoObject* " << argName << ";\n";
-			preCallActions << generateClassNativeToScriptObjectLine(varTypeInfo.flags, varTypeInfo.typeName, argName, scriptType, name);
+			preCallActions << GenerateNativeClassToScriptObject(varTypeInfo.TypeInformation, argName, scriptType, name);
 		}
 			break;
 		default: // Some resource or game object type
@@ -1961,7 +1975,7 @@ std::string generateEventCallbackBodyBlockForParam(const std::string& name, cons
 			std::string scriptName = "script" + name;
 			std::string scriptType = GetScriptInteropTypeName(varTypeInfo.typeName, getPassAsResourceRef(varTypeInfo.flags));
 
-			preCallActions << generateNativeToScriptObjectLine(paramTypeInfo.TypeCategory, varTypeInfo.flags, scriptName, name);
+			preCallActions << GenerateNativeHandleToScriptObject(paramTypeInfo.TypeCategory, varTypeInfo.flags, scriptName, name);
 			preCallActions << "\t\tif(" << scriptName << " != nullptr)\n";
 			preCallActions << "\t\t\t" << argName << " = " << scriptName << "->GetManagedInstance();" << std::endl;
 			preCallActions << "\t\telse\n";
@@ -2048,8 +2062,7 @@ std::string generateEventCallbackBodyBlockForParam(const std::string& name, cons
 		{
 			std::string elemName = "arrayElem" + name;
 			preCallActions << "\t\t\tMonoObject* " << elemName << ";\n";
-			preCallActions << generateClassNativeToScriptObjectLine(varTypeInfo.flags, varTypeInfo.typeName, elemName,
-				entryType, name + "[i]", false, "\t\t\t");
+			preCallActions << GenerateNativeClassToScriptObject(varTypeInfo.TypeInformation, elemName, entryType, name + "[i]", false, "\t\t\t");
 			preCallActions << "\t\t\t" << arrayName << ".Set(i, " << elemName << ");" << std::endl;
 		}
 		break;
@@ -2057,7 +2070,7 @@ std::string generateEventCallbackBodyBlockForParam(const std::string& name, cons
 		{
 			std::string scriptName = "script" + name;
 
-			preCallActions << generateNativeToScriptObjectLine(paramTypeInfo.TypeCategory, varTypeInfo.flags, scriptName, name + "[i]", "\t\t\t");
+			preCallActions << GenerateNativeHandleToScriptObject(paramTypeInfo.TypeCategory, varTypeInfo.flags, scriptName, name + "[i]", "\t\t\t");
 			preCallActions << "\t\t\tif(" << scriptName << "[i] != nullptr)\n";
 			preCallActions << "\t\t\t" << arrayName << ".Set(i, " << scriptName << "->GetManagedInstance());" << std::endl;
 			preCallActions << "\t\t\telse\n";
@@ -2630,7 +2643,7 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 	for (auto& eventInfo : classInfo.eventInfos)
 	{
 		output << GenerateApiCheckBegin(eventInfo.api);
-		output << generateCppEventThunk(eventInfo, isModule);
+		output << GenerateEventThunkSignature(eventInfo, isModule);
 		output << GenerateApiCheckEnd(eventInfo.api);
 	}
 
