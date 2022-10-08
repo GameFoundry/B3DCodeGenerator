@@ -1359,70 +1359,84 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 		}
 		else
 		{
-			std::string arrayName = "array" + parameterName;
+			const std::string scriptArrayName = "array" + parameterName;
 
 			postCallActions << "\t\tint arraySize" << parameterName << " = ";
-			if (isVector(parameterInformation.flags) || isSmallVector(parameterInformation.flags))
+			if (parameterInformation.TypeInformation.TypeCategory == VariableTypeCategory::Vector || parameterInformation.TypeInformation.TypeCategory == VariableTypeCategory::SmallVector)
 				postCallActions << "(int)" << arrayArgumentName << ".size()";
 			else
-				postCallActions << parameterInformation.arraySize;
+				postCallActions << parameterInformation.TypeInformation.ArraySize;
 			postCallActions << ";\n";
 
-			postCallActions << "\t\tScriptArray " << arrayName;
+			postCallActions << "\t\tScriptArray " << scriptArrayName;
 			postCallActions << " = " << "ScriptArray::Create<" << arrayEntryTypeName << ">(arraySize" << parameterName << ");" << std::endl;
 			postCallActions << "\t\tfor(int i = 0; i < arraySize" << parameterName << "; i++)" << std::endl;
 			postCallActions << "\t\t{" << std::endl;
 
 			switch (parameterTypeMappingInformation.TypeCategory)
 			{
-			case ::ExportedClassTypeCategory::Primitive:
-			case ::ExportedClassTypeCategory::String:
-			case ::ExportedClassTypeCategory::WString:
-			case ::ExportedClassTypeCategory::Path:
-				postCallActions << "\t\t\t" << arrayName << ".Set(i, " << arrayArgumentName << "[i]);" << std::endl;
+			case ExportedClassTypeCategory::Primitive:
+			case ExportedClassTypeCategory::String:
+			case ExportedClassTypeCategory::WString:
+			case ExportedClassTypeCategory::Path:
+				postCallActions << "\t\t\t" << scriptArrayName << ".Set(i, " << arrayArgumentName << "[i]);" << std::endl;
 				break;
-			case ::ExportedClassTypeCategory::Enum:
+			case ExportedClassTypeCategory::Enum:
 			{
 				std::string enumType;
 				ParserUtility::MapBuiltinPrimitiveTypeToCppType(parameterTypeMappingInformation.EnumUnderlyingType, enumType);
 
-				if(isFlagsEnum(parameterInformation.flags))
-					postCallActions << "\t\t\t" << arrayName << ".Set(i, (" << enumType << ")(uint32_t)" << arrayArgumentName << "[i]);" << std::endl;
+				if(arrayElementTypeInformation.TypeCategory == VariableTypeCategory::Flags)
+					postCallActions << "\t\t\t" << scriptArrayName << ".Set(i, (" << enumType << ")(uint32_t)" << arrayArgumentName << "[i]);" << std::endl;
 				else
-					postCallActions << "\t\t\t" << arrayName << ".Set(i, (" << enumType << ")" << arrayArgumentName << "[i]);" << std::endl;
+					postCallActions << "\t\t\t" << scriptArrayName << ".Set(i, (" << enumType << ")" << arrayArgumentName << "[i]);" << std::endl;
 				break;
 			}
-			case ::ExportedClassTypeCategory::Struct:
-				postCallActions << "\t\t\t" << arrayName << ".Set(i, ";
+			case ExportedClassTypeCategory::Struct:
+				postCallActions << "\t\t\t" << scriptArrayName << ".Set(i, ";
 
-				if(isComplexStruct(parameterInformation.flags))
+				if(arrayElementTypeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsStructWrapperUsed))
 					postCallActions << arrayEntryTypeName << "::ToInterop(";
 
 				postCallActions << arrayArgumentName << "[i]";
 
-				if (isComplexStruct(parameterInformation.flags))
+				if (arrayElementTypeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsStructWrapperUsed))
 					postCallActions << ")";
 
 				postCallActions << ");\n";
 
 				break;
-			case ::ExportedClassTypeCategory::MonoObject:
-				postCallActions << "\t\t\t" << arrayName << ".Set(i, " << arrayArgumentName << "[i]);" << std::endl;
+			case ExportedClassTypeCategory::MonoObject:
+				postCallActions << "\t\t\t" << scriptArrayName << ".Set(i, " << arrayArgumentName << "[i]);" << std::endl;
 				break;
-			case ::ExportedClassTypeCategory::Class:
-			case ::ExportedClassTypeCategory::ReflectableClass:
+			case ExportedClassTypeCategory::Class:
+			case ExportedClassTypeCategory::ReflectableClass:
 			{
-				std::string elemName = "arrayElem" + parameterName;
+				const std::string arrayElementName = "arrayElem" + parameterName;
 
-				std::string elemPtrType = GetCppNativeQualifiedTypeName(arrayElementTypeInformation, parameterTypeMappingInformation);
-				std::string elemPtrName = "arrayElemPtr" + parameterName;
+				const std::string elemPtrType = GetCppNativeQualifiedTypeName(arrayElementTypeInformation, parameterTypeMappingInformation);
+				const std::string elemPtrName = "arrayElemPtr" + parameterName;
 
 				postCallActions << "\t\t\t" << elemPtrType << " " << elemPtrName;
-				if(IsDereferenceRequired(arrayElementTypeInformation, parameterTypeMappingInformation))
+				if(arrayElementTypeInformation.TypeCategory == VariableTypeCategory::SharedPointer)
 				{
-					postCallActions << " = bs_shared_ptr_new<" << parameterInformation.typeName << ">();\n";
+					if(arrayElementTypeInformation.IsQualifierFlagSet(VariableQualifierFlags::IsReference))
+					{
+						errs() << "Error: Cannot pass Shared<T> by pointer.";
+					}
 
-					if (isSrcPointer(parameterInformation.flags))
+					postCallActions << " = " << arrayArgumentName << "[i];\n";
+				}
+				else
+				{
+					if(arrayElementTypeInformation.TypeCategory != VariableTypeCategory::General)
+					{
+						errs() << "Error: Class passed as an invalid type: " << (uint32_t)arrayElementTypeInformation.TypeCategory;
+					}
+
+					postCallActions << " = bs_shared_ptr_new<" << arrayElementTypeInformation.GetLastWrappedOrSelfTypeName() << ">();\n";
+
+					if (arrayElementTypeInformation.IsQualifierFlagSet(VariableQualifierFlags::IsPointer))
 					{
 						postCallActions << "\t\t\tif(" << arrayArgumentName << "[i])\n";
 						postCallActions << "\t\t\t\t*" << elemPtrName << " = *";
@@ -1434,21 +1448,19 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 
 					postCallActions << arrayArgumentName << "[i];\n";
 				}
-				else
-					postCallActions << " = " << arrayArgumentName << "[i];\n";
 
-				postCallActions << "\t\t\tMonoObject* " << elemName << ";\n";
-				postCallActions << GenerateNativeClassToMonoObject(arrayElementTypeInformation, elemName, arrayEntryTypeName, elemPtrName, false, "\t\t\t");
+				postCallActions << "\t\t\tMonoObject* " << arrayElementName << ";\n";
+				postCallActions << GenerateNativeClassToMonoObject(arrayElementTypeInformation, arrayElementName, arrayEntryTypeName, elemPtrName, false, "\t\t\t");
 
-				postCallActions << "\t\t\t" << arrayName << ".Set(i, " << elemName << ");" << std::endl;
+				postCallActions << "\t\t\t" << scriptArrayName << ".Set(i, " << arrayElementName << ");" << std::endl;
 				break;
 			}
-			case ::ExportedClassTypeCategory::GUIElement:
+			case ExportedClassTypeCategory::GUIElement:
 				outs() << "Error: GUIElement cannot be used as parameter outputs or return values. Ignoring. \n";
 				break;
 			default: // Some resource or game object type
 			{
-				postCallActions << GenerateNativeHandleToMonoObject(arrayElementTypeInformation, parameterTypeMappingInformation, arrayArgumentName, "i", "script" + parameterName, arrayName, false, "\t\t\t");
+				postCallActions << GenerateNativeHandleToMonoObject(arrayElementTypeInformation, parameterTypeMappingInformation, arrayArgumentName, "i", "script" + parameterName, scriptArrayName, false, "\t\t\t");
 			}
 			break;
 			}
@@ -1456,9 +1468,9 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 			postCallActions << "\t\t}" << std::endl;
 
 			if (returnValue)
-				postCallActions << "\t\t" << parameterName << " = " << arrayName << ".GetInternal();" << std::endl;
+				postCallActions << "\t\t" << parameterName << " = " << scriptArrayName << ".GetInternal();" << std::endl;
 			else
-				postCallActions << "\t\tMonoUtil::ReferenceCopy(" << parameterName << ", (MonoObject*)" << arrayName << ".GetInternal());" << std::endl;
+				postCallActions << "\t\tMonoUtil::ReferenceCopy(" << parameterName << ", (MonoObject*)" << scriptArrayName << ".GetInternal());" << std::endl;
 		}
 
 		return arrayArgumentName;
