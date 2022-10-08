@@ -753,28 +753,28 @@ static std::string GenerateMonoToScriptObject(const std::string& indent, const s
 }
 
 /**
- * Converts a native class type argument into its script interop object. This should be only called on types that are exported to scripting a ExportedClassTypeCategory::Class or ExportedClassTypeCategory::ReflectableClass.
+ * Converts a native class type argument into MonoObject. This should be only called on types that are exported to scripting a ExportedClassTypeCategory::Class or ExportedClassTypeCategory::ReflectableClass.
  *
- * @param typeInformation		Information about the native type to convert.
- * @param outputName			Name of the variable to store the result in.
- * @param scriptType			Interop script type we're doing the conversion for.
- * @param argName				Name of the variable that's being converted.
- * @param performReferenceCopy	If true, reference copy operation will be performed when assigning the value to output. Required if writing the output as an output parameter to an internal method.
- * @param indent				Optional indent to apply to the generated code.
- * @return						Code that converts a native object to a script interop object.
+ * @param typeInformation			Information about the native type to convert.
+ * @param outputVariableName		Name of the variable to store the result in.
+ * @param scriptType				Interop script type we're doing the conversion for.
+ * @param inputVariableName			Name of the variable that's being converted.
+ * @param performReferenceCopy		If true, reference copy operation will be performed when assigning the value to output. Required if writing the output as an output parameter to an internal method.
+ * @param indent					Optional indent to apply to the generated code.
+ * @return							Code that converts a native object to a MonoObject.
  */
-std::string GenerateNativeClassToScriptObject(const VariableTypeInformation& typeInformation, const std::string& outputName, 
-	const std::string& scriptType, const std::string& argName, bool performReferenceCopy = false, const std::string& indent = "\t\t")
+std::string GenerateNativeClassToMonoObject(const VariableTypeInformation& typeInformation, const std::string& outputVariableName, 
+	const std::string& scriptType, const std::string& inputVariableName, bool performReferenceCopy = false, const std::string& indent = "\t\t")
 {
 	std::stringstream output;
 
 	// TODO - Need to modify this part if we wish to have persistence with managed objects
-	auto fnGenerateCreateLine = [&output, &outputName, performReferenceCopy](const std::string& scriptType, const std::string& argName, const std::string& indent)
+	auto fnGenerateCreateLine = [&output, &outputVariableName, performReferenceCopy](const std::string& scriptType, const std::string& inputVariableName, const std::string& indent)
 	{
 		if (performReferenceCopy)
-			output << indent << "MonoUtil::ReferenceCopy(" << outputName << ", " << scriptType << "::Create(" << argName << "));\n";
+			output << indent << "MonoUtil::ReferenceCopy(" << outputVariableName << ", " << scriptType << "::Create(" << inputVariableName << "));\n";
 		else
-			output << indent << outputName << " = " << scriptType << "::Create(" << argName << ");\n";
+			output << indent << outputVariableName << " = " << scriptType << "::Create(" << inputVariableName << ");\n";
 	};
 
 	if(typeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsReferencingBaseClass))
@@ -784,76 +784,108 @@ std::string GenerateNativeClassToScriptObject(const VariableTypeInformation& typ
 
 		if(!derivedClasses.empty())
 		{
-			output << indent << "if(" << argName << ")\n";
+			output << indent << "if(" << inputVariableName << ")\n";
 			output << indent << "{\n";
 
-			output << indent << "\tif(rtti_is_of_type<" << derivedClasses[0] << ">(" << argName << "))\n";
-			fnGenerateCreateLine(GetScriptInteropTypeName(derivedClasses[0]), "std::static_pointer_cast<" + derivedClasses[0] + ">(" + argName + ")", indent + "\t\t");
+			output << indent << "\tif(rtti_is_of_type<" << derivedClasses[0] << ">(" << inputVariableName << "))\n";
+			fnGenerateCreateLine(GetScriptInteropTypeName(derivedClasses[0]), "std::static_pointer_cast<" + derivedClasses[0] + ">(" + inputVariableName + ")", indent + "\t\t");
 
 			for(uint32_t i = 1; i < (uint32_t)derivedClasses.size(); i++)
 			{
-				output << indent << "\telse if(rtti_is_of_type<" << derivedClasses[i] << ">(" << argName << "))\n";
-				fnGenerateCreateLine(GetScriptInteropTypeName(derivedClasses[i]), "std::static_pointer_cast<" + derivedClasses[i] + ">(" + argName + ")", indent + "\t\t");
+				output << indent << "\telse if(rtti_is_of_type<" << derivedClasses[i] << ">(" << inputVariableName << "))\n";
+				fnGenerateCreateLine(GetScriptInteropTypeName(derivedClasses[i]), "std::static_pointer_cast<" + derivedClasses[i] + ">(" + inputVariableName + ")", indent + "\t\t");
 			}
 
 			output << indent << "\telse\n";
-			fnGenerateCreateLine(scriptType, argName, indent + "\t\t");
+			fnGenerateCreateLine(scriptType, inputVariableName, indent + "\t\t");
 
 
 			output << indent << "}\n";
 			output << indent << "else\n";
-			fnGenerateCreateLine(scriptType, argName, indent + "\t");
+			fnGenerateCreateLine(scriptType, inputVariableName, indent + "\t");
 
 			return output.str();
 		}
 	}
 	else
-		fnGenerateCreateLine(scriptType, argName, indent);
+		fnGenerateCreateLine(scriptType, inputVariableName, indent);
 
 	return output.str();
 }
 
 /**
- * Converts a native handle type argument into its script interop object. This should be only called on game or resource object types.
+ * Converts a native handle type argument into MonoObject. This should be only called on game or resource object types.
  *
  * @param typeInformation			Information about the native type to convert.
  * @param typeMappingInformation	Mapping of the provided type in script.
- * @param outputName				Name of the variable to store the result in.
- * @param argName					Name of the variable that's being converted.
+ * @param inputVariableName			Name of the variable that's being converted.
+ * @param arrayIndexVariable		Optional variable that specifies an array index to lookup in the @p inputVariableName. If non-empty, it's assumed both input and output are arrays.
+ * @param scriptVariableName		Name of the temporary script type to store the script interop object in.
+ * @param outputVariableName		Name of the variable to store the result in.
+ * @param isOutputParameter			True if the output variable is an output parameter to scripting.
  * @param indent					Optional indent to apply to the generated code.
- * @return							Code that converts a native object to a script interop object.
+ * @return							Code that converts a native object to a MonoObject.
  */
-std::string GenerateNativeHandleToScriptObject(const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation, const std::string& outputName, const std::string& argName, const std::string& indent = "\t\t")
+std::string GenerateNativeHandleToMonoObject(const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation, const std::string& inputVariableName, const std::string& arrayIndexVariable, const std::string& scriptVariableName, 
+	const std::string& outputVariableName, bool isOutputParameter, const std::string& indent = "\t\t")
 {
+	// NOTE: scriptVariableName can be automatically deduced from output variable name, but I'm avoding doing that right now to prevent changes to generated code
+	//const std::string scriptVariableName = "script" + outputVariableName;
 	std::stringstream output;
+
+	const std::string inputVariableAccess = arrayIndexVariable.empty() ? inputVariableName : inputVariableName + "[" + arrayIndexVariable + "]";
 
 	if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Resource)
 	{
 		if(typeInformation.IsParameterFlagSet(ParameterFlags::AsResourceRef))
 		{
-			output << indent << "ScriptRRefBase* " << outputName << ";\n";
-			output << indent << outputName << " = ScriptResourceManager::Instance().GetScriptRRef(" << argName << ");\n";
+			output << indent << "ScriptRRefBase* " << scriptVariableName << ";\n";
+			output << indent << scriptVariableName << " = ScriptResourceManager::Instance().GetScriptRRef(" << inputVariableAccess << ");\n";
 		}
 		else
 		{
-			output << indent << "ScriptResourceBase* " << outputName << ";\n";
-			output << indent << outputName << " = ScriptResourceManager::Instance().GetScriptResource(" << argName << ", true);\n";
+			output << indent << "ScriptResourceBase* " << scriptVariableName << ";\n";
+			output << indent << scriptVariableName << " = ScriptResourceManager::Instance().GetScriptResource(" << inputVariableAccess << ", true);\n";
 		}
 	}
 	else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Component)
 	{
-		output << indent << "ScriptComponentBase* " << outputName << " = nullptr;\n";
-		output << indent << "if(" << argName << ")\n";
-		output << indent << "\t" << outputName << " = ScriptGameObjectManager::Instance().GetBuiltinScriptComponent(" << "static_object_cast<Component>(" << argName << "));\n";
+		output << indent << "ScriptComponentBase* " << scriptVariableName << " = nullptr;\n";
+		output << indent << "if(" << inputVariableAccess << ")\n";
+		output << indent << "\t" << scriptVariableName << " = ScriptGameObjectManager::Instance().GetBuiltinScriptComponent(" << "static_object_cast<Component>(" << inputVariableAccess << "));\n";
 	}
 	else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::SceneObject)
 	{
-		output << indent << "ScriptSceneObject* " << outputName << " = nullptr;\n";
-		output << indent << "if(" << argName << ")\n";
-		output << indent << outputName << " = ScriptGameObjectManager::Instance().GetOrCreateScriptSceneObject(" << argName << ");\n";
+		output << indent << "ScriptSceneObject* " << scriptVariableName << " = nullptr;\n";
+		output << indent << "if(" << inputVariableAccess << ")\n";
+		output << indent << scriptVariableName << " = ScriptGameObjectManager::Instance().GetOrCreateScriptSceneObject(" << inputVariableAccess << ");\n";
 	}
 	else
 		assert(false && "Unsupported type category");
+
+	output << indent << "if(" << scriptVariableName << " != nullptr)\n";
+
+	if(arrayIndexVariable.empty())
+	{
+		if(isOutputParameter)
+		{
+			output << indent << "\tMonoUtil::ReferenceCopy(" << outputVariableName << ", " << scriptVariableName << "->GetManagedInstance());\n";
+			output << indent << "else\n";
+			output << indent << "\t*" << outputVariableName << " = nullptr;\n";
+		}
+		else
+		{
+			output << indent << "\t" << outputVariableName << " = " << scriptVariableName << "->GetManagedInstance();\n";
+			output << indent << "else\n";
+			output << indent << "\t" << outputVariableName << " = nullptr;\n";
+		}
+	}
+	else
+	{
+		output << indent << "\t" << outputVariableName << ".Set(" << arrayIndexVariable << ", " << scriptVariableName << "->GetManagedInstance());\n";
+		output << indent << "else\n";
+		output << indent << "\t" << outputVariableName << ".Set(" << arrayIndexVariable << ", nullptr);\n";
+	}
 
 	return output.str();
 }
@@ -927,14 +959,10 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 			if (!asyncOpUnderlyingTypeInformation.IsArrayOrVector())
 			{
 				if (parameterTypeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass || parameterTypeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Class)
-					postCallActions << GenerateNativeClassToScriptObject(asyncOpUnderlyingTypeInformation, "monoObj", scriptType, "nativeObj", false, "\t\t\t");
+					postCallActions << GenerateNativeClassToMonoObject(asyncOpUnderlyingTypeInformation, "monoObj", scriptType, "nativeObj", false, "\t\t\t");
 				else // Resource
 				{
-					postCallActions << GenerateNativeHandleToScriptObject(asyncOpUnderlyingTypeInformation, parameterTypeMappingInformation, "scriptObj", "nativeObj", "\t\t\t");
-					postCallActions << "\t\t\tif(scriptObj != nullptr)" << std::endl;
-					postCallActions << "\t\t\t\tmonoObj = scriptObj->GetManagedInstance();" << std::endl;
-					postCallActions << "\t\t\telse" << std::endl;
-					postCallActions << "\t\t\t\tmonoObj = nullptr;" << std::endl;
+					postCallActions << GenerateNativeHandleToMonoObject(asyncOpUnderlyingTypeInformation, parameterTypeMappingInformation, "nativeObj", "", "scriptObj", "monoObj", false, "\t\t\t");
 				}
 
 			}
@@ -958,8 +986,8 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 
 				switch (parameterTypeMappingInformation.TypeCategory)
 				{
-				case ::ExportedClassTypeCategory::ReflectableClass:
-				case ::ExportedClassTypeCategory::Class:
+				case ExportedClassTypeCategory::ReflectableClass:
+				case ExportedClassTypeCategory::Class:
 				{
 					const std::string arrayElementName = "arrayElem" + parameterName;
 
@@ -987,20 +1015,14 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 						postCallActions << " = nativeObj[i];\n";
 
 					postCallActions << "\t\t\t\tMonoObject* " << arrayElementName << ";\n";
-					postCallActions << GenerateNativeClassToScriptObject(arrayElementTypeInformation, arrayElementName, scriptType, arrayElementPtrName, false, "\t\t\t\t");
+					postCallActions << GenerateNativeClassToMonoObject(arrayElementTypeInformation, arrayElementName, scriptType, arrayElementPtrName, false, "\t\t\t\t");
 
 					postCallActions << "\t\t\t\t" << arrayName << ".Set(i, " << arrayElementName << ");" << std::endl;
 					break;
 				}
-				case ::ExportedClassTypeCategory::Resource:
+				case ExportedClassTypeCategory::Resource:
 				{
-					std::string scriptName = "scriptObj";
-
-					postCallActions << GenerateNativeHandleToScriptObject(arrayElementTypeInformation, parameterTypeMappingInformation, scriptName, "nativeObj[i]", "\t\t\t\t");
-					postCallActions << "\t\t\t\tif(" << scriptName << " != nullptr)" << std::endl;
-					postCallActions << "\t\t\t\t\t" << arrayName << ".Set(i, " << scriptName << "->GetManagedInstance());" << std::endl;
-					postCallActions << "\t\t\t\telse" << std::endl;
-					postCallActions << "\t\t\t\t\t" << arrayName << ".Set(i, nullptr);" << std::endl;
+					postCallActions << GenerateNativeHandleToMonoObject(arrayElementTypeInformation, parameterTypeMappingInformation, "nativeObj", "i", "scriptObj", arrayName, false, "\t\t\t\t");
 				}
 				break;
 				default:
@@ -1164,9 +1186,9 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 			const std::string scriptType = GetScriptInteropTypeName(parameterTypeName);
 
 			if (returnValue)
-				postCallActions << GenerateNativeClassToScriptObject(parameterInformation.TypeInformation, parameterName, scriptType, argumentName);
+				postCallActions << GenerateNativeClassToMonoObject(parameterInformation.TypeInformation, parameterName, scriptType, argumentName);
 			else if (isOutputParameter)
-				postCallActions << GenerateNativeClassToScriptObject(parameterInformation.TypeInformation, parameterName, scriptType, argumentName, true);
+				postCallActions << GenerateNativeClassToMonoObject(parameterInformation.TypeInformation, parameterName, scriptType, argumentName, true);
 			else
 			{
 				const std::string scriptName = "script" + parameterName;
@@ -1179,27 +1201,15 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 			break;
 		default: // Some resource or game object type
 		{
-			const std::string scriptName = "script" + parameterName;
-			const std::string scriptType = GetScriptInteropTypeName(parameterTypeName, parameterInformation.TypeInformation.IsParameterFlagSet(ParameterFlags::AsResourceRef));
-
-			if (returnValue)
+			if (returnValue || isOutputParameter)
 			{
-				postCallActions << GenerateNativeHandleToScriptObject(parameterInformation.TypeInformation, parameterTypeMappingInformation, scriptName, argumentName);
-				postCallActions << "\t\tif(" << scriptName << " != nullptr)" << std::endl;
-				postCallActions << "\t\t\t" << parameterName << " = " << scriptName << "->GetManagedInstance();" << std::endl;
-				postCallActions << "\t\telse" << std::endl;
-				postCallActions << "\t\t\t" << parameterName << " = nullptr;" << std::endl;
-			}
-			else if (isOutputParameter)
-			{
-				postCallActions << GenerateNativeHandleToScriptObject(parameterInformation.TypeInformation, parameterTypeMappingInformation, scriptName, argumentName);
-				postCallActions << "\t\tif(" << scriptName << " != nullptr)" << std::endl;
-				postCallActions << "\t\t\tMonoUtil::ReferenceCopy(" << parameterName << ", " << scriptName << "->GetManagedInstance());" << std::endl;
-				postCallActions << "\t\telse" << std::endl;
-				postCallActions << "\t\t\t*" << parameterName << " = nullptr;" << std::endl;
+				postCallActions << GenerateNativeHandleToMonoObject(parameterInformation.TypeInformation, parameterTypeMappingInformation, argumentName, "", "script" + parameterName, parameterName, isOutputParameter);
 			}
 			else
 			{
+				const std::string scriptName = "script" + parameterName;
+				const std::string scriptType = GetScriptInteropTypeName(parameterTypeName, parameterInformation.TypeInformation.IsParameterFlagSet(ParameterFlags::AsResourceRef));
+
 				preCallActions << GenerateMonoToScriptObject("\t\t", scriptType, scriptName, parameterName, parameterInformation.TypeInformation, parameterTypeMappingInformation);
 				preCallActions << "\t\tif(" << scriptName << " != nullptr)" << std::endl;
 				preCallActions << "\t\t\t" << argumentName << " = " << GenerateGetInternalCallLine(parameterInformation.TypeInformation, parameterTypeMappingInformation, scriptName) << ";" << std::endl;
@@ -1414,7 +1424,7 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 					postCallActions << " = " << argName << "[i];\n";
 
 				postCallActions << "\t\t\tMonoObject* " << elemName << ";\n";
-				postCallActions << GenerateNativeClassToScriptObject(arrayElementTypeInformation, elemName, entryType, elemPtrName, false, "\t\t\t");
+				postCallActions << GenerateNativeClassToMonoObject(arrayElementTypeInformation, elemName, entryType, elemPtrName, false, "\t\t\t");
 
 				postCallActions << "\t\t\t" << arrayName << ".Set(i, " << elemName << ");" << std::endl;
 				break;
@@ -1424,13 +1434,7 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 				break;
 			default: // Some resource or game object type
 			{
-				std::string scriptName = "script" + parameterName;
-
-				postCallActions << GenerateNativeHandleToScriptObject(arrayElementTypeInformation, parameterTypeMappingInformation, scriptName, argName + "[i]", "\t\t\t");
-				postCallActions << "\t\t\tif(" << scriptName << " != nullptr)" << std::endl;
-				postCallActions << "\t\t\t\t" << arrayName << ".Set(i, " << scriptName << "->GetManagedInstance());" << std::endl;
-				postCallActions << "\t\t\telse" << std::endl;
-				postCallActions << "\t\t\t\t" << arrayName << ".Set(i, nullptr);" << std::endl;
+				postCallActions << GenerateNativeHandleToMonoObject(arrayElementTypeInformation, parameterTypeMappingInformation, argName, "i", "script" + parameterName, arrayName, false, "\t\t\t");
 			}
 			break;
 			}
@@ -1591,10 +1595,10 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 					else
 						preActions << "\t\t" << arg << "copy = bs_shared_ptr_new<" << fieldInformation.typeName << ">(value." << name << ");\n";
 
-					preActions << GenerateNativeClassToScriptObject(fieldInformation.TypeInformation, arg, scriptType, arg + "copy");
+					preActions << GenerateNativeClassToMonoObject(fieldInformation.TypeInformation, arg, scriptType, arg + "copy");
 				}
 				else if(isSrcSPtr(fieldInformation.flags))
-					preActions << GenerateNativeClassToScriptObject(fieldInformation.TypeInformation, arg, scriptType, "value." + name);
+					preActions << GenerateNativeClassToMonoObject(fieldInformation.TypeInformation, arg, scriptType, "value." + name);
 				else
 					outs() << "Error: Invalid struct member type for \"" << name << "\"\n";
 			}
@@ -1636,13 +1640,8 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 				else
 					argName = "value." + name + ".GetComponent()";
 
-				preActions << GenerateNativeHandleToScriptObject(fieldInformation.TypeInformation, parameterTypeMappingInformation, scriptName, argName);
-
 				preActions << "\t\tMonoObject* " << arg << ";\n";
-				preActions << "\t\tif(" << scriptName << " != nullptr)\n";
-				preActions << "\t\t\t" << arg << " = " << scriptName << "->GetManagedInstance();" << std::endl;
-				preActions << "\t\telse\n";
-				preActions << "\t\t\t" << arg << " = nullptr;\n";
+				preActions << GenerateNativeHandleToMonoObject(fieldInformation.TypeInformation, parameterTypeMappingInformation, argName, "", scriptName, arg, false);
 			}
 			else
 			{
@@ -1853,7 +1852,7 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 					preActions << " = value." << name << "[i];\n";
 
 				preActions << "\t\t\tMonoObject* " << elemName << ";\n";
-				preActions << GenerateNativeClassToScriptObject(arrayElementTypeInformation, elemName, entryType, elemPtrName, false, "\t\t\t");
+				preActions << GenerateNativeClassToMonoObject(arrayElementTypeInformation, elemName, entryType, elemPtrName, false, "\t\t\t");
 
 				preActions << "\t\t\t" << arrayName << ".Set(i, " << elemName << ");" << std::endl;
 			}
@@ -1863,13 +1862,7 @@ std::string generateFieldConvertBlock(const std::string& name, const VariableBas
 				break;
 			default: // Some resource or game object type
 			{
-				std::string scriptName = "script" + name;
-
-				preActions << GenerateNativeHandleToScriptObject(arrayElementTypeInformation, parameterTypeMappingInformation, scriptName, "value." + name + "[i]", "\t\t\t");
-				preActions << "\t\t\t\tif(" << scriptName << " != nullptr)\n";
-				preActions << "\t\t\t\t" << arrayName << ".Set(i, " << scriptName << "->GetManagedInstance());" << std::endl;
-				preActions << "\t\t\telse\n";
-				preActions << "\t\t\t\t" << arrayName << ".Set(i, nullptr);" << std::endl;
+				preActions << GenerateNativeHandleToMonoObject(arrayElementTypeInformation, parameterTypeMappingInformation, "value." + name, "i", "script" + name, arrayName, false, "\t\t\t");
 			}
 			break;
 			}
@@ -1966,22 +1959,14 @@ std::string generateEventCallbackBodyBlockForParam(const std::string& name, cons
 			std::string scriptType = GetScriptInteropTypeName(parameterInformation.typeName);
 
 			preCallActions << "\t\tMonoObject* " << argName << ";\n";
-			preCallActions << GenerateNativeClassToScriptObject(parameterInformation.TypeInformation, argName, scriptType, name);
+			preCallActions << GenerateNativeClassToMonoObject(parameterInformation.TypeInformation, argName, scriptType, name);
 		}
 			break;
 		default: // Some resource or game object type
 		{
 			argName = "tmp" + name;
 			preCallActions << "\t\tMonoObject* " << argName << ";" << std::endl;
-
-			std::string scriptName = "script" + name;
-			std::string scriptType = GetScriptInteropTypeName(parameterInformation.typeName, getPassAsResourceRef(parameterInformation.flags));
-
-			preCallActions << GenerateNativeHandleToScriptObject(parameterInformation.TypeInformation, parameterTypeMapping, scriptName, name);
-			preCallActions << "\t\tif(" << scriptName << " != nullptr)\n";
-			preCallActions << "\t\t\t" << argName << " = " << scriptName << "->GetManagedInstance();" << std::endl;
-			preCallActions << "\t\telse\n";
-			preCallActions << "\t\t\t" << argName << " = nullptr;\n";
+			preCallActions << GenerateNativeHandleToMonoObject(parameterInformation.TypeInformation, parameterTypeMapping, name, "", "script" + name, argName, false);
 		}
 		break;
 		}
@@ -2066,19 +2051,13 @@ std::string generateEventCallbackBodyBlockForParam(const std::string& name, cons
 		{
 			std::string elemName = "arrayElem" + name;
 			preCallActions << "\t\t\tMonoObject* " << elemName << ";\n";
-			preCallActions << GenerateNativeClassToScriptObject(arrayElementTypeInformation, elemName, entryType, name + "[i]", false, "\t\t\t");
+			preCallActions << GenerateNativeClassToMonoObject(arrayElementTypeInformation, elemName, entryType, name + "[i]", false, "\t\t\t");
 			preCallActions << "\t\t\t" << arrayName << ".Set(i, " << elemName << ");" << std::endl;
 		}
 		break;
 		default: // Some resource or game object type
 		{
-			std::string scriptName = "script" + name;
-
-			preCallActions << GenerateNativeHandleToScriptObject(arrayElementTypeInformation, parameterTypeMapping, scriptName, name + "[i]", "\t\t\t");
-			preCallActions << "\t\t\tif(" << scriptName << "[i] != nullptr)\n";
-			preCallActions << "\t\t\t" << arrayName << ".Set(i, " << scriptName << "->GetManagedInstance());" << std::endl;
-			preCallActions << "\t\t\telse\n";
-			preCallActions << "\t\t\t\t" << arrayName << ".Set(i, nullptr);" << std::endl;
+			preCallActions << GenerateNativeHandleToMonoObject(arrayElementTypeInformation, parameterTypeMapping, name, "i", "script" + name, arrayName, false, "\t\t\t");
 		}
 		break;
 		}
