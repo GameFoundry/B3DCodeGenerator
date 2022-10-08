@@ -682,6 +682,39 @@ std::string GenerateEventThunkSignature(const MethodInfo& eventInfo, bool isModu
 	return output.str();
 }
 
+/** Generates a MonoUtil::String/WstringToMono method call, appropriate to the provided type. Only valid for path and string types. */
+static std::string GenerateStringToMonoCall(ExportedClassTypeCategory exportedClassTypeCategory, const std::string& argument)
+{
+	switch (exportedClassTypeCategory)
+	{
+		case ExportedClassTypeCategory::Path:
+			return "MonoUtil::StringToMono(" + argument + ".ToString())";
+		case ExportedClassTypeCategory::String:
+			return "MonoUtil::StringToMono(" + argument + ")";
+		case ExportedClassTypeCategory::WString:
+			return "MonoUtil::WstringToMono(" + argument + ")";
+	default:
+		assert(false && "Invalid type for this method.");
+		return argument;
+	}
+}
+
+/** Generates a MonoUtil::String/WstringToMono method call, appropriate to the provided type. Only valid for path and string types. */
+static std::string GenerateMonoToStringCall(ExportedClassTypeCategory exportedClassTypeCategory, const std::string& argument)
+{
+	switch (exportedClassTypeCategory)
+	{
+		case ExportedClassTypeCategory::String:
+		case ExportedClassTypeCategory::Path:
+			return "MonoUtil::MonoToString(" + argument + ")";
+		case ExportedClassTypeCategory::WString:
+			return "MonoUtil::MonoToWstring(" + argument + ")";
+	default:
+		assert(false && "Invalid type for this method.");
+		return argument;
+	}
+}
+
 /**
  * Returns code that converts a Mono object into its script interop type.
  *
@@ -1043,9 +1076,9 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 
 		switch (parameterTypeMappingInformation.TypeCategory)
 		{
-		case ::ExportedClassTypeCategory::Primitive:
-		case ::ExportedClassTypeCategory::Enum:
-		case ::ExportedClassTypeCategory::Struct:
+		case ExportedClassTypeCategory::Primitive:
+		case ExportedClassTypeCategory::Enum:
+		case ExportedClassTypeCategory::Struct:
 		{
 			if (returnValue)
 			{
@@ -1087,61 +1120,37 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 		}
 
 			break;
-		case ::ExportedClassTypeCategory::String:
+		case ExportedClassTypeCategory::String:
+		case ExportedClassTypeCategory::WString:
+		case ExportedClassTypeCategory::Path:
 		{
 			if (returnValue)
-				postCallActions << "\t\t" << parameterName << " = MonoUtil::StringToMono(" << argumentName << ");" << std::endl;
-			else if (isOutput(parameterInformation.flags))
-				postCallActions << "\t\tMonoUtil::ReferenceCopy(" << parameterName << ",  (MonoObject*)MonoUtil::StringToMono(" << argumentName << "));" << std::endl;
+				postCallActions << "\t\t" << parameterName << " = " << GenerateStringToMonoCall(parameterTypeMappingInformation.TypeCategory, argumentName) << ";\n";
+			else if (isOutputParameter)
+				postCallActions << "\t\tMonoUtil::ReferenceCopy(" << parameterName << ",  (MonoObject*)" << GenerateStringToMonoCall(parameterTypeMappingInformation.TypeCategory, argumentName) << ");\n";
 			else
-				preCallActions << "\t\t" << argumentName << " = MonoUtil::MonoToString(" << parameterName << ");" << std::endl;
+				preCallActions << "\t\t" << argumentName << " = " << GenerateMonoToStringCall(parameterTypeMappingInformation.TypeCategory, parameterName) << ";\n";
 		}
 		break;
-		case ::ExportedClassTypeCategory::Path:
+		case ExportedClassTypeCategory::MonoObject:
 		{
 			if (returnValue)
-				postCallActions << "\t\t" << parameterName << " = MonoUtil::StringToMono(" << argumentName << ".ToString());" << std::endl;
-			else if (isOutput(parameterInformation.flags))
-				postCallActions << "\t\tMonoUtil::ReferenceCopy(" << parameterName << ",  (MonoObject*)MonoUtil::StringToMono(" << argumentName << ".ToString()));" << std::endl;
-			else
-				preCallActions << "\t\t" << argumentName << " = MonoUtil::MonoToString(" << parameterName << ");" << std::endl;
-		}
-		break;
-		case ::ExportedClassTypeCategory::WString:
-		{
-			if (returnValue)
-				postCallActions << "\t\t" << parameterName << " = MonoUtil::WstringToMono(" << argumentName << ");" << std::endl;
-			else if (isOutput(parameterInformation.flags))
-				postCallActions << "\t\tMonoUtil::ReferenceCopy(" << parameterName << ", (MonoObject*)MonoUtil::WstringToMono(" << argumentName << "));" << std::endl;
-			else
-				preCallActions << "\t\t" << argumentName << " = MonoUtil::MonoToWString(" << parameterName << ");" << std::endl;
-		}
-		break;
-		case ::ExportedClassTypeCategory::MonoObject:
-		{
-			if (returnValue)
-			{
 				postCallActions << "\t\t" << parameterName << " = " << argumentName << ";" << std::endl;
-			}
-			else if (isOutput(parameterInformation.flags))
-			{
+			else if (isOutputParameter)
 				postCallActions << "\t\tMonoUtil::ReferenceCopy(" << parameterName << ", " << argumentName << ");" << std::endl;
-			}
 			else
-			{
-				outs() << "Error: MonoObject type not supported as input. Ignoring. \n";
-			}
+				errs() << "Error: MonoObject type not supported as input. Ignoring. \n";
 		}
 		break;
-		case ::ExportedClassTypeCategory::GUIElement:
+		case ExportedClassTypeCategory::GUIElement:
 		{
-			std::string scriptType = GetScriptInteropTypeName(parameterInformation.typeName);
+			const std::string scriptType = GetScriptInteropTypeName(parameterTypeName);
 
-			if(returnValue || isOutput(parameterInformation.flags))
-				outs() << "Error: GUIElement cannot be used as parameter outputs or return values. Ignoring. \n";
+			if(returnValue || isOutputParameter)
+				errs() << "Error: GUIElement cannot be used as parameter outputs or return values. Ignoring. \n";
 			else
 			{
-				std::string scriptName = "script" + parameterName;
+				const std::string scriptName = "script" + parameterName;
 
 				preCallActions << GenerateMonoToScriptObject("\t\t", scriptType, scriptName, parameterName, parameterInformation.TypeInformation, parameterTypeMappingInformation);
 				preCallActions << "\t\tif(" << scriptName << " != nullptr)" << std::endl;
@@ -1149,18 +1158,18 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 			}
 		}
 			break;
-		case ::ExportedClassTypeCategory::Class:
-		case ::ExportedClassTypeCategory::ReflectableClass:
+		case ExportedClassTypeCategory::Class:
+		case ExportedClassTypeCategory::ReflectableClass:
 		{
-			std::string scriptType = GetScriptInteropTypeName(parameterInformation.typeName);
+			const std::string scriptType = GetScriptInteropTypeName(parameterTypeName);
 
 			if (returnValue)
 				postCallActions << GenerateNativeClassToScriptObject(parameterInformation.TypeInformation, parameterName, scriptType, argumentName);
-			else if (isOutput(parameterInformation.flags))
+			else if (isOutputParameter)
 				postCallActions << GenerateNativeClassToScriptObject(parameterInformation.TypeInformation, parameterName, scriptType, argumentName, true);
 			else
 			{
-				std::string scriptName = "script" + parameterName;
+				const std::string scriptName = "script" + parameterName;
 				
 				preCallActions << GenerateMonoToScriptObject("\t\t", scriptType, scriptName, parameterName, parameterInformation.TypeInformation, parameterTypeMappingInformation);
 				preCallActions << "\t\tif(" << scriptName << " != nullptr)" << std::endl;
@@ -1170,8 +1179,8 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 			break;
 		default: // Some resource or game object type
 		{
-			std::string scriptName = "script" + parameterName;
-			std::string scriptType = GetScriptInteropTypeName(parameterInformation.typeName, getPassAsResourceRef(parameterInformation.flags));
+			const std::string scriptName = "script" + parameterName;
+			const std::string scriptType = GetScriptInteropTypeName(parameterTypeName, parameterInformation.TypeInformation.IsParameterFlagSet(ParameterFlags::AsResourceRef));
 
 			if (returnValue)
 			{
@@ -1181,7 +1190,7 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 				postCallActions << "\t\telse" << std::endl;
 				postCallActions << "\t\t\t" << parameterName << " = nullptr;" << std::endl;
 			}
-			else if (isOutput(parameterInformation.flags))
+			else if (isOutputParameter)
 			{
 				postCallActions << GenerateNativeHandleToScriptObject(parameterInformation.TypeInformation, parameterTypeMappingInformation, scriptName, argumentName);
 				postCallActions << "\t\tif(" << scriptName << " != nullptr)" << std::endl;
@@ -1201,7 +1210,9 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 
 		return argumentName;
 	}
-	else
+
+	// Handle array types
+	assert(parameterInformation.TypeInformation.IsArrayOrVector());
 	{
 		std::string entryType;
 		switch (parameterTypeMappingInformation.TypeCategory)
