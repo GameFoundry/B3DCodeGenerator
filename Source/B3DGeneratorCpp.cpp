@@ -1688,7 +1688,9 @@ std::string GenerateFieldConvertBlock(const std::string& name, const VariableBas
 
 		return arg;
 	}
-	else
+
+	// Handle array types
+	assert(fieldInformation.TypeInformation.IsArrayOrVector());
 	{
 		const VariableTypeInformation& arrayElementTypeInformation = fieldInformation.TypeInformation.AssertGetUnderlyingType();
 
@@ -1924,46 +1926,64 @@ std::string GenerateFieldConvertBlock(const std::string& name, const VariableBas
 	}
 }
 
-std::string generateEventCallbackBodyBlockForParam(const std::string& name, const VariableBase& parameterInformation, std::stringstream& preCallActions)
+/**
+ * Generates code required for passing an argument from event callback to an event thunk.
+ *
+ * @param name						Name of the argument variable received in the event callback.
+ * @param parameterInformation		Information about the parameter the argument is being passed to.
+ * @param preCallActions			Actions to execute before the thunk call.
+ * @return							Name of the argument to pass to the thunk.
+ */
+std::string GenerateEventCallbackBodyBlockForArgument(const std::string& name, const VariableBase& parameterInformation, std::stringstream& preCallActions)
 {
-	TypeMappingInformation parameterTypeMapping = GetNativeToScriptTypeMapping(parameterInformation.TypeInformation);
+	const TypeMappingInformation parameterTypeMappingInformation = GetNativeToScriptTypeMapping(parameterInformation.TypeInformation);
+	const std::string& parameterTypeName = parameterInformation.TypeInformation.GetLastWrappedOrSelfTypeName();
 
-	if (getIsAsyncOp(parameterInformation.flags))
+	if (parameterInformation.TypeInformation.TypeCategory == VariableTypeCategory::AsyncOp)
 	{
-		outs() << "Error: AsyncOp type not supported as an event callback parameter. \n";
+		errs() << "Error: AsyncOp type not supported as an event callback parameter. \n";
 		return "";
 	}
 
-	if (!isArrayOrVector(parameterInformation.flags))
+	// Handle non-array types
+	if (!parameterInformation.TypeInformation.IsArrayOrVector())
 	{
 		std::string argName;
 
-		switch (parameterTypeMapping.TypeCategory)
+		// Primitives and non-flags enums can be passed as-is.
+		// All other types need conversion to the corresponding Mono type.
+		const bool isTemporaryRequired =
+			parameterTypeMappingInformation.TypeCategory != ExportedClassTypeCategory::Primitive &&
+			(parameterTypeMappingInformation.TypeCategory != ExportedClassTypeCategory::Enum || parameterInformation.TypeInformation.TypeCategory == VariableTypeCategory::Flags);
+
+		if(isTemporaryRequired)
+		{
+			argName = "tmp" + name;
+		}
+
+		switch (parameterTypeMappingInformation.TypeCategory)
 		{
 		case ::ExportedClassTypeCategory::Primitive:
 			argName = name;
 			break;
 		case ::ExportedClassTypeCategory::Enum:
-			if(isFlagsEnum(parameterInformation.flags))
+			if(parameterInformation.TypeInformation.TypeCategory == VariableTypeCategory::Flags)
 			{
-				argName = "tmp" + name;
-				preCallActions << "\t\t" << parameterInformation.typeName << argName << ";" << std::endl;
-				preCallActions << "\t\t" << argName << " = (" << parameterInformation.typeName << ")(uint32_t)" << name << ";" << std::endl;
+				preCallActions << "\t\t" << parameterTypeName << argName << ";" << std::endl;
+				preCallActions << "\t\t" << argName << " = (" << parameterTypeName << ")(uint32_t)" << name << ";" << std::endl;
 			}
 			else
 				argName = name;
 			break;
 		case ::ExportedClassTypeCategory::Struct:
 			{
-				argName = "tmp" + name;
-
-				std::string scriptType = GetScriptInteropTypeName(parameterInformation.typeName);
+				const std::string scriptType = GetScriptInteropTypeName(parameterTypeName);
 				preCallActions << "\t\tMonoObject* " << argName << ";\n";
 
-				if(isComplexStruct(parameterInformation.flags))
+				if(parameterInformation.TypeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsStructWrapperUsed))
 				{
-					std::string interopName = "interop" + name;
-					std::string interopType = GetStructInteropTypeName(parameterInformation.typeName);
+					const std::string interopName = "interop" + name;
+					const std::string interopType = GetStructInteropTypeName(parameterTypeName);
 					
 					preCallActions << "\t\t" << interopType << " " << interopName << ";" << std::endl;
 					preCallActions << "\t\t" << interopName << " = " << scriptType << "::ToInterop(" << name << ");" << std::endl;
@@ -1975,37 +1995,23 @@ std::string generateEventCallbackBodyBlockForParam(const std::string& name, cons
 
 			break;
 		case ::ExportedClassTypeCategory::String:
-		{
-			argName = "tmp" + name;
-			preCallActions << "\t\tMonoString* " << argName << ";" << std::endl;
-			preCallActions << "\t\t" << argName << " = MonoUtil::StringToMono(" << name << ");" << std::endl;
-		}
-		break;
 		case ::ExportedClassTypeCategory::WString:
-		{
-			argName = "tmp" + name;
-			preCallActions << "\t\tMonoString* " << argName << ";" << std::endl;
-			preCallActions << "\t\t" << argName << " = MonoUtil::WstringToMono(" << name << ");" << std::endl;
-		}
-		break;
 		case ::ExportedClassTypeCategory::Path:
 		{
-			argName = "tmp" + name;
 			preCallActions << "\t\tMonoString* " << argName << ";" << std::endl;
-			preCallActions << "\t\t" << argName << " = MonoUtil::StringToMono(" << name << ".ToString());" << std::endl;
+			preCallActions << "\t\t" << argName << " = " << GenerateStringToMonoCall(parameterTypeMappingInformation.TypeCategory, name) << ";\n";
 		}
+		break;
 		break;
 		case ::ExportedClassTypeCategory::MonoObject:
 		{
-			argName = "tmp" + name;
 			preCallActions << "\t\tMonoObject* " << argName << " = " << name << ";\n";
 		}
 		break;
 		case ::ExportedClassTypeCategory::Class:
 		case ::ExportedClassTypeCategory::ReflectableClass:
 		{
-			argName = "tmp" + name;
-			std::string scriptType = GetScriptInteropTypeName(parameterInformation.typeName);
+			const std::string scriptType = GetScriptInteropTypeName(parameterTypeName);
 
 			preCallActions << "\t\tMonoObject* " << argName << ";\n";
 			preCallActions << GenerateNativeClassToMonoObject(parameterInformation.TypeInformation, argName, scriptType, name);
@@ -2013,34 +2019,35 @@ std::string generateEventCallbackBodyBlockForParam(const std::string& name, cons
 			break;
 		default: // Some resource or game object type
 		{
-			argName = "tmp" + name;
 			preCallActions << "\t\tMonoObject* " << argName << ";" << std::endl;
-			preCallActions << GenerateNativeHandleToMonoObject(parameterInformation.TypeInformation, parameterTypeMapping, name, "", "script" + name, argName, false);
+			preCallActions << GenerateNativeHandleToMonoObject(parameterInformation.TypeInformation, parameterTypeMappingInformation, name, "", "script" + name, argName, false);
 		}
 		break;
 		}
 
 		return argName;
 	}
-	else
+
+	// Handle array types
+	assert(parameterInformation.TypeInformation.IsArrayOrVector());
 	{
 		const VariableTypeInformation& arrayElementTypeInformation = parameterInformation.TypeInformation.AssertGetUnderlyingType();
 
 		std::string entryType;
-		switch (parameterTypeMapping.TypeCategory)
+		switch (parameterTypeMappingInformation.TypeCategory)
 		{
 		case ::ExportedClassTypeCategory::Primitive:
 		case ::ExportedClassTypeCategory::String:
 		case ::ExportedClassTypeCategory::WString:
 		case ::ExportedClassTypeCategory::Path:
 		case ::ExportedClassTypeCategory::Enum:
-			entryType = parameterInformation.typeName;
+			entryType = parameterTypeName;
 			break;
 		case ::ExportedClassTypeCategory::MonoObject:
 			entryType = "MonoObject*";
 			break;
 		default: // Some object or struct type
-			entryType = GetScriptInteropTypeName(parameterInformation.typeName, getPassAsResourceRef(parameterInformation.flags));
+			entryType = GetScriptInteropTypeName(parameterTypeName, getPassAsResourceRef(parameterInformation.flags));
 			break;
 		}
 
@@ -2060,7 +2067,7 @@ std::string generateEventCallbackBodyBlockForParam(const std::string& name, cons
 		preCallActions << "\t\tfor(int i = 0; i < arraySize" << name << "; i++)" << std::endl;
 		preCallActions << "\t\t{" << std::endl;
 
-		switch (parameterTypeMapping.TypeCategory)
+		switch (parameterTypeMappingInformation.TypeCategory)
 		{
 		case ::ExportedClassTypeCategory::Primitive:
 		case ::ExportedClassTypeCategory::String:
@@ -2071,7 +2078,7 @@ std::string generateEventCallbackBodyBlockForParam(const std::string& name, cons
 		case ::ExportedClassTypeCategory::Enum:
 		{
 			std::string enumType;
-			ParserUtility::MapBuiltinPrimitiveTypeToCppType(parameterTypeMapping.EnumUnderlyingType, enumType);
+			ParserUtility::MapBuiltinPrimitiveTypeToCppType(parameterTypeMappingInformation.EnumUnderlyingType, enumType);
 
 			if(isFlagsEnum(parameterInformation.flags))
 				preCallActions << "\t\t\t" << arrayName << ".Set(i, (" << enumType << ")(uint32_t)" << name << "[i]);" << std::endl;
@@ -2106,7 +2113,7 @@ std::string generateEventCallbackBodyBlockForParam(const std::string& name, cons
 		break;
 		default: // Some resource or game object type
 		{
-			preCallActions << GenerateNativeHandleToMonoObject(arrayElementTypeInformation, parameterTypeMapping, name, "i", "script" + name, arrayName, false, "\t\t\t");
+			preCallActions << GenerateNativeHandleToMonoObject(arrayElementTypeInformation, parameterTypeMappingInformation, name, "i", "script" + name, arrayName, false, "\t\t\t");
 		}
 		break;
 		}
@@ -2433,7 +2440,7 @@ std::string generateCppEventCallbackBody(const MethodInfo& eventInfo, bool isMod
 	for (auto I = eventInfo.paramInfos.begin(); I != eventInfo.paramInfos.end(); ++I)
 	{
 		const bool isLast = (I + 1) == eventInfo.paramInfos.end();
-		const std::string argumentName = generateEventCallbackBodyBlockForParam(I->Name, *I, preCallActions);
+		const std::string argumentName = GenerateEventCallbackBodyBlockForArgument(I->Name, *I, preCallActions);
 		const TypeMappingInformation parameterTypeMappingInformation = GetNativeToScriptTypeMapping(I->TypeInformation);
 
 		methodArgs << GetArgumentForInteropEventToThunkCall(eventInfo, argumentName, I->TypeInformation, parameterTypeMappingInformation);
