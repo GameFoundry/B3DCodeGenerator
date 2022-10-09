@@ -1963,10 +1963,10 @@ std::string GenerateEventCallbackBodyBlockForArgument(const std::string& name, c
 
 		switch (parameterTypeMappingInformation.TypeCategory)
 		{
-		case ::ExportedClassTypeCategory::Primitive:
+		case ExportedClassTypeCategory::Primitive:
 			argName = name;
 			break;
-		case ::ExportedClassTypeCategory::Enum:
+		case ExportedClassTypeCategory::Enum:
 			if(parameterInformation.TypeInformation.TypeCategory == VariableTypeCategory::Flags)
 			{
 				preCallActions << "\t\t" << parameterTypeName << argName << ";" << std::endl;
@@ -1975,7 +1975,7 @@ std::string GenerateEventCallbackBodyBlockForArgument(const std::string& name, c
 			else
 				argName = name;
 			break;
-		case ::ExportedClassTypeCategory::Struct:
+		case ExportedClassTypeCategory::Struct:
 			{
 				const std::string scriptType = GetScriptInteropTypeName(parameterTypeName);
 				preCallActions << "\t\tMonoObject* " << argName << ";\n";
@@ -1994,22 +1994,22 @@ std::string GenerateEventCallbackBodyBlockForArgument(const std::string& name, c
 			}
 
 			break;
-		case ::ExportedClassTypeCategory::String:
-		case ::ExportedClassTypeCategory::WString:
-		case ::ExportedClassTypeCategory::Path:
+		case ExportedClassTypeCategory::String:
+		case ExportedClassTypeCategory::WString:
+		case ExportedClassTypeCategory::Path:
 		{
 			preCallActions << "\t\tMonoString* " << argName << ";" << std::endl;
 			preCallActions << "\t\t" << argName << " = " << GenerateStringToMonoCall(parameterTypeMappingInformation.TypeCategory, name) << ";\n";
 		}
 		break;
 		break;
-		case ::ExportedClassTypeCategory::MonoObject:
+		case ExportedClassTypeCategory::MonoObject:
 		{
 			preCallActions << "\t\tMonoObject* " << argName << " = " << name << ";\n";
 		}
 		break;
-		case ::ExportedClassTypeCategory::Class:
-		case ::ExportedClassTypeCategory::ReflectableClass:
+		case ExportedClassTypeCategory::Class:
+		case ExportedClassTypeCategory::ReflectableClass:
 		{
 			const std::string scriptType = GetScriptInteropTypeName(parameterTypeName);
 
@@ -2036,14 +2036,14 @@ std::string GenerateEventCallbackBodyBlockForArgument(const std::string& name, c
 		std::string entryType;
 		switch (parameterTypeMappingInformation.TypeCategory)
 		{
-		case ::ExportedClassTypeCategory::Primitive:
-		case ::ExportedClassTypeCategory::String:
-		case ::ExportedClassTypeCategory::WString:
-		case ::ExportedClassTypeCategory::Path:
-		case ::ExportedClassTypeCategory::Enum:
+		case ExportedClassTypeCategory::Primitive:
+		case ExportedClassTypeCategory::String:
+		case ExportedClassTypeCategory::WString:
+		case ExportedClassTypeCategory::Path:
+		case ExportedClassTypeCategory::Enum:
 			entryType = parameterTypeName;
 			break;
-		case ::ExportedClassTypeCategory::MonoObject:
+		case ExportedClassTypeCategory::MonoObject:
 			entryType = "MonoObject*";
 			break;
 		default: // Some object or struct type
@@ -2069,13 +2069,13 @@ std::string GenerateEventCallbackBodyBlockForArgument(const std::string& name, c
 
 		switch (parameterTypeMappingInformation.TypeCategory)
 		{
-		case ::ExportedClassTypeCategory::Primitive:
-		case ::ExportedClassTypeCategory::String:
-		case ::ExportedClassTypeCategory::WString:
-		case ::ExportedClassTypeCategory::Path:
+		case ExportedClassTypeCategory::Primitive:
+		case ExportedClassTypeCategory::String:
+		case ExportedClassTypeCategory::WString:
+		case ExportedClassTypeCategory::Path:
 			preCallActions << "\t\t\t" << scriptArrayName << ".Set(i, " << name << "[i]);" << std::endl;
 			break;
-		case ::ExportedClassTypeCategory::Enum:
+		case ExportedClassTypeCategory::Enum:
 		{
 			std::string enumType;
 			ParserUtility::MapBuiltinPrimitiveTypeToCppType(parameterTypeMappingInformation.EnumUnderlyingType, enumType);
@@ -2086,7 +2086,7 @@ std::string GenerateEventCallbackBodyBlockForArgument(const std::string& name, c
 				preCallActions << "\t\t\t" << scriptArrayName << ".Set(i, (" << enumType << ")" << name << "[i]);" << std::endl;
 			break;
 		}
-		case ::ExportedClassTypeCategory::Struct:
+		case ExportedClassTypeCategory::Struct:
 			preCallActions << "\t\t\t" << scriptArrayName << ".Set(i, ";
 
 			if (arrayElementTypeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsStructWrapperUsed))
@@ -2099,11 +2099,11 @@ std::string GenerateEventCallbackBodyBlockForArgument(const std::string& name, c
 
 			preCallActions << ");\n";
 			break;
-		case ::ExportedClassTypeCategory::MonoObject:
+		case ExportedClassTypeCategory::MonoObject:
 			preCallActions << "\t\t\t\t" << scriptArrayName << ".Set(i, " << name << "[i]);" << std::endl;
 			break;
-		case ::ExportedClassTypeCategory::Class:
-		case ::ExportedClassTypeCategory::ReflectableClass:
+		case ExportedClassTypeCategory::Class:
+		case ExportedClassTypeCategory::ReflectableClass:
 		{
 			std::string elemName = "arrayElem" + name;
 			preCallActions << "\t\t\tMonoObject* " << elemName << ";\n";
@@ -2265,11 +2265,9 @@ std::string generateCppMethodBody(const ClassInfo& classInfo, const MethodInfo& 
 		if (!methodInfo.returnInfo.typeName.empty())
 		{
 			// Dereference input if needed
-			if (isClassType(returnTypeMappingInformation.TypeCategory) && !isArrayOrVector(methodInfo.returnInfo.flags))
+			if ((isClassType(returnTypeMappingInformation.TypeCategory) && methodInfo.returnInfo.TypeInformation.TypeCategory == VariableTypeCategory::General))
 			{
-				if ((isSrcPointer(methodInfo.returnInfo.flags) || isSrcReference(methodInfo.returnInfo.flags) || 
-					isSrcValue(methodInfo.returnInfo.flags)) && !isSrcSPtr(methodInfo.returnInfo.flags))
-					returnAssignment = "*" + returnAssignment;
+				returnAssignment = "*" + returnAssignment;
 			}
 
 			call = GetReturnValueForNativeCall(methodCall.str(), methodInfo.returnInfo.TypeInformation, returnTypeMappingInformation);
@@ -2359,12 +2357,9 @@ std::string GenerateCppFieldGetterBody(const ClassInfo& classInfo, const FieldIn
 	}
 
 	// Dereference input if needed
-	if (isClassType(returnTypeMappingInformation.TypeCategory) && !methodInfo.returnInfo.TypeInformation.IsArrayOrVector())
+	if ((isClassType(returnTypeMappingInformation.TypeCategory) && methodInfo.returnInfo.TypeInformation.TypeCategory == VariableTypeCategory::General))
 	{
-		// TODO - Need to investigate why is this done this way
-		if ((isSrcPointer(methodInfo.returnInfo.flags) || isSrcReference(methodInfo.returnInfo.flags) || 
-			isSrcValue(methodInfo.returnInfo.flags)) && !isSrcSPtr(methodInfo.returnInfo.flags))
-			returnAssignment = "*" + returnAssignment;
+		returnAssignment = "*" + returnAssignment;
 	}
 
 	const std::string access = GetReturnValueForNativeCall(fieldAccess.str(), methodInfo.returnInfo.TypeInformation, returnTypeMappingInformation);
