@@ -2047,7 +2047,7 @@ std::string GenerateEventCallbackBodyBlockForArgument(const std::string& name, c
 			entryType = "MonoObject*";
 			break;
 		default: // Some object or struct type
-			entryType = GetScriptInteropTypeName(parameterTypeName, getPassAsResourceRef(parameterInformation.flags));
+			entryType = GetScriptInteropTypeName(parameterTypeName, arrayElementTypeInformation.IsParameterFlagSet(ParameterFlags::AsResourceRef));
 			break;
 		}
 
@@ -2055,14 +2055,14 @@ std::string GenerateEventCallbackBodyBlockForArgument(const std::string& name, c
 		preCallActions << "\t\tMonoArray* " << argName << ";" << std::endl;
 
 		preCallActions << "\t\tint arraySize" << name << " = ";
-		if (isVector(parameterInformation.flags) || isSmallVector(parameterInformation.flags))
+		if (parameterInformation.TypeInformation.TypeCategory == VariableTypeCategory::Vector || parameterInformation.TypeInformation.TypeCategory == VariableTypeCategory::SmallVector)
 			preCallActions << "(int)value." << name << ".size()";
 		else
-			preCallActions << parameterInformation.arraySize;
+			preCallActions << parameterInformation.TypeInformation.ArraySize;
 		preCallActions << ";\n";
 
-		std::string arrayName = "array" + name;
-		preCallActions << "\t\tScriptArray " << arrayName;
+		const std::string scriptArrayName = "array" + name;
+		preCallActions << "\t\tScriptArray " << scriptArrayName;
 		preCallActions << " = " << "ScriptArray::Create<" << entryType << ">(arraySize" << name << ");" << std::endl;
 		preCallActions << "\t\tfor(int i = 0; i < arraySize" << name << "; i++)" << std::endl;
 		preCallActions << "\t\t{" << std::endl;
@@ -2073,34 +2073,34 @@ std::string GenerateEventCallbackBodyBlockForArgument(const std::string& name, c
 		case ::ExportedClassTypeCategory::String:
 		case ::ExportedClassTypeCategory::WString:
 		case ::ExportedClassTypeCategory::Path:
-			preCallActions << "\t\t\t" << arrayName << ".Set(i, " << name << "[i]);" << std::endl;
+			preCallActions << "\t\t\t" << scriptArrayName << ".Set(i, " << name << "[i]);" << std::endl;
 			break;
 		case ::ExportedClassTypeCategory::Enum:
 		{
 			std::string enumType;
 			ParserUtility::MapBuiltinPrimitiveTypeToCppType(parameterTypeMappingInformation.EnumUnderlyingType, enumType);
 
-			if(isFlagsEnum(parameterInformation.flags))
-				preCallActions << "\t\t\t" << arrayName << ".Set(i, (" << enumType << ")(uint32_t)" << name << "[i]);" << std::endl;
+			if(arrayElementTypeInformation.TypeCategory == VariableTypeCategory::Flags)
+				preCallActions << "\t\t\t" << scriptArrayName << ".Set(i, (" << enumType << ")(uint32_t)" << name << "[i]);" << std::endl;
 			else
-				preCallActions << "\t\t\t" << arrayName << ".Set(i, (" << enumType << ")" << name << "[i]);" << std::endl;
+				preCallActions << "\t\t\t" << scriptArrayName << ".Set(i, (" << enumType << ")" << name << "[i]);" << std::endl;
 			break;
 		}
 		case ::ExportedClassTypeCategory::Struct:
-			preCallActions << "\t\t\t" << arrayName << ".Set(i, ";
+			preCallActions << "\t\t\t" << scriptArrayName << ".Set(i, ";
 
-			if (isComplexStruct(parameterInformation.flags))
+			if (arrayElementTypeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsStructWrapperUsed))
 				preCallActions << entryType << "::ToInterop(";
 
 			preCallActions << name << "[i]";
 
-			if (isComplexStruct(parameterInformation.flags))
+			if (arrayElementTypeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsStructWrapperUsed))
 				preCallActions << ")";
 
 			preCallActions << ");\n";
 			break;
 		case ::ExportedClassTypeCategory::MonoObject:
-			preCallActions << "\t\t\t\t" << arrayName << ".Set(i, " << name << "[i]);" << std::endl;
+			preCallActions << "\t\t\t\t" << scriptArrayName << ".Set(i, " << name << "[i]);" << std::endl;
 			break;
 		case ::ExportedClassTypeCategory::Class:
 		case ::ExportedClassTypeCategory::ReflectableClass:
@@ -2108,18 +2108,18 @@ std::string GenerateEventCallbackBodyBlockForArgument(const std::string& name, c
 			std::string elemName = "arrayElem" + name;
 			preCallActions << "\t\t\tMonoObject* " << elemName << ";\n";
 			preCallActions << GenerateNativeClassToMonoObject(arrayElementTypeInformation, elemName, entryType, name + "[i]", false, "\t\t\t");
-			preCallActions << "\t\t\t" << arrayName << ".Set(i, " << elemName << ");" << std::endl;
+			preCallActions << "\t\t\t" << scriptArrayName << ".Set(i, " << elemName << ");" << std::endl;
 		}
 		break;
 		default: // Some resource or game object type
 		{
-			preCallActions << GenerateNativeHandleToMonoObject(arrayElementTypeInformation, parameterTypeMappingInformation, name, "i", "script" + name, arrayName, false, "\t\t\t");
+			preCallActions << GenerateNativeHandleToMonoObject(arrayElementTypeInformation, parameterTypeMappingInformation, name, "i", "script" + name, scriptArrayName, false, "\t\t\t");
 		}
 		break;
 		}
 
 		preCallActions << "\t\t}" << std::endl;
-		preCallActions << "\t\t" << argName << " = " << arrayName << ".GetInternal();" << std::endl;
+		preCallActions << "\t\t" << argName << " = " << scriptArrayName << ".GetInternal();" << std::endl;
 
 		return argName;
 	}
