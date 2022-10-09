@@ -1690,6 +1690,8 @@ std::string GenerateFieldConvertBlock(const std::string& name, const VariableBas
 	}
 	else
 	{
+		const VariableTypeInformation& arrayElementTypeInformation = fieldInformation.TypeInformation.AssertGetUnderlyingType();
+
 		std::string entryType;
 		switch (parameterTypeMappingInformation.TypeCategory)
 		{
@@ -1704,31 +1706,29 @@ std::string GenerateFieldConvertBlock(const std::string& name, const VariableBas
 			entryType = "MonoObject*";
 			break;
 		default: // Some object or struct type
-			entryType = GetScriptInteropTypeName(fieldInformation.typeName, getPassAsResourceRef(fieldInformation.flags));
+			entryType = GetScriptInteropTypeName(fieldTypeName, arrayElementTypeInformation.IsParameterFlagSet(ParameterFlags::AsResourceRef));
 			break;
 		}
 
-		std::string argType = GetCppNativeQualifiedTypeName(fieldInformation.TypeInformation, parameterTypeMappingInformation);
-		std::string argName = "vec" + name;
-
-		const VariableTypeInformation& arrayElementTypeInformation = fieldInformation.TypeInformation.AssertGetUnderlyingType();
+		const std::string argType = GetCppNativeQualifiedTypeName(fieldInformation.TypeInformation, parameterTypeMappingInformation);
+		const std::string argName = "vec" + name;
 
 		if (!toInterop)
 		{
-			std::string arrayName = "array" + name;
+			const std::string scriptArrayName = "array" + name;
 			preActions << "\t\t" << argType << " " << argName;
-			if (isArray(fieldInformation.flags))
-				preActions << "[" << fieldInformation.arraySize << "]";
+			if (fieldInformation.TypeInformation.TypeCategory == VariableTypeCategory::Array)
+				preActions << "[" << fieldInformation.TypeInformation.ArraySize << "]";
 			preActions << ";" << std::endl;
 
 			preActions << "\t\tif(value." << name << " != nullptr)\n";
 			preActions << "\t\t{\n";
-			preActions << "\t\t\tScriptArray " << arrayName << "(value." << name << ");" << std::endl;
+			preActions << "\t\t\tScriptArray " << scriptArrayName << "(value." << name << ");\n";
 
-			if(isVector(fieldInformation.flags) || isSmallVector(fieldInformation.flags))
-				preActions << "\t\t\t" << argName << ".resize(" << arrayName << ".Size());" << std::endl;
+			if (fieldInformation.TypeInformation.TypeCategory == VariableTypeCategory::SmallVector || fieldInformation.TypeInformation.TypeCategory == VariableTypeCategory::Vector)
+				preActions << "\t\t\t" << argName << ".resize(" << scriptArrayName << ".Size());\n";
 
-			preActions << "\t\t\tfor(int i = 0; i < (int)" << arrayName << ".Size(); i++)" << std::endl;
+			preActions << "\t\t\tfor(int i = 0; i < (int)" << scriptArrayName << ".Size(); i++)" << std::endl;
 			preActions << "\t\t\t{" << std::endl;
 
 			switch (parameterTypeMappingInformation.TypeCategory)
@@ -1737,7 +1737,7 @@ std::string GenerateFieldConvertBlock(const std::string& name, const VariableBas
 			case ::ExportedClassTypeCategory::String:
 			case ::ExportedClassTypeCategory::WString:
 			case ::ExportedClassTypeCategory::Path:
-				preActions << "\t\t\t\t" << argName << "[i] = " << arrayName << ".Get<" << entryType << ">(i);" << std::endl;
+				preActions << "\t\t\t\t" << argName << "[i] = " << scriptArrayName << ".Get<" << entryType << ">(i);" << std::endl;
 				break;
 			case ::ExportedClassTypeCategory::MonoObject:
 				outs() << "Error: MonoObject type not supported as input. Ignoring. \n";
@@ -1747,27 +1747,27 @@ std::string GenerateFieldConvertBlock(const std::string& name, const VariableBas
 				std::string enumType;
 				ParserUtility::MapBuiltinPrimitiveTypeToCppType(parameterTypeMappingInformation.EnumUnderlyingType, enumType);
 
-				preActions << "\t\t\t\t" << argName << "[i] = (" << entryType << ")" << arrayName << ".get<" << enumType << ">(i);" << std::endl;
+				preActions << "\t\t\t\t" << argName << "[i] = (" << entryType << ")" << scriptArrayName << ".get<" << enumType << ">(i);" << std::endl;
 				break;
 			}
 			case ::ExportedClassTypeCategory::Struct:
 				preActions << "\t\t\t\t" << argName << "[i] = ";
 
-				if (isComplexStruct(fieldInformation.flags))
+				if (arrayElementTypeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsStructWrapperUsed))
 				{
 					preActions << entryType << "::FromInterop(";
-					preActions << arrayName << ".Get<" << GetStructInteropTypeName(fieldInformation.typeName) << ">(i)";
+					preActions << scriptArrayName << ".Get<" << GetStructInteropTypeName(fieldTypeName) << ">(i)";
 					preActions << ")";
 				}
 				else
-					preActions << arrayName << ".Get<" << fieldInformation.typeName << ">(i)";
+					preActions << scriptArrayName << ".Get<" << fieldTypeName << ">(i)";
 
 				preActions << ";\n";
 				break;
 			default: // Some object type
 			{
 				std::string scriptName = "script" + name;
-				preActions << GenerateMonoToScriptObject("\t\t\t\t", entryType, scriptName, arrayName + ".Get<MonoObject*>(i)", fieldInformation.TypeInformation, parameterTypeMappingInformation);
+				preActions << GenerateMonoToScriptObject("\t\t\t\t", entryType, scriptName, scriptArrayName + ".Get<MonoObject*>(i)", fieldInformation.TypeInformation, parameterTypeMappingInformation);
 				
 				preActions << "\t\t\t\tif(" << scriptName << " != nullptr)\n";
 				preActions << "\t\t\t\t{\n";
@@ -1780,15 +1780,29 @@ std::string GenerateFieldConvertBlock(const std::string& name, const VariableBas
 
 				if(parameterTypeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Class || parameterTypeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
 				{
-					if(isSrcPointer(fieldInformation.flags))
-						preActions << "\t\t\t\t\t" << argName << "[i] = " << elemPtrName << ".get();\n";
-					else if((isSrcReference(fieldInformation.flags) || isSrcValue(fieldInformation.flags)) && !isSrcSPtr(fieldInformation.flags))
+					// Cast from SPtr to the destination type
+					if (fieldInformation.TypeInformation.TypeCategory == VariableTypeCategory::General)
 					{
-						preActions << "\t\t\t\t\tif(" << elemPtrName << ")\n";
-						preActions << "\t\t\t\t\t\t" << argName << "[i] = *" << elemPtrName << ";\n";
+						if(fieldInformation.TypeInformation.IsQualifierFlagSet(VariableQualifierFlags::IsPointer))
+						{
+							preActions << "\t\t\t\t\t" << argName << "[i] = " << elemPtrName << ".get();\n";
+						}
+						else
+						{
+							preActions << "\t\t\t\t\tif(" << elemPtrName << ")\n";
+							preActions << "\t\t\t\t\t\t" << argName << "[i] = *" << elemPtrName << ";\n";
+						}
 					}
 					else
+					{
+						if (arrayElementTypeInformation.TypeCategory != VariableTypeCategory::SharedPointer)
+							errs() << "Error: Invalid struct member type for \"" << name << "\"\n";
+
+						if(arrayElementTypeInformation.IsQualifierFlagSet(VariableQualifierFlags::IsPointer))
+							errs() << "Error: Invalid struct member type for \"" << name << "\"\n";
+
 						preActions << "\t\t\t\t\t" << argName << "[i] = " << elemPtrName << ";\n";
+					}
 				}
 				else
 					preActions << "\t\t\t\t\t" << argName << "[i] = " << elemPtrName << ";\n";
@@ -1804,16 +1818,16 @@ std::string GenerateFieldConvertBlock(const std::string& name, const VariableBas
 		else
 		{
 			preActions << "\t\tint arraySize" << name << " = ";
-			if (isVector(fieldInformation.flags) || isSmallVector(fieldInformation.flags))
+			if (fieldInformation.TypeInformation.TypeCategory == VariableTypeCategory::Vector || fieldInformation.TypeInformation.TypeCategory == VariableTypeCategory::SmallVector)
 				preActions << "(int)value." << name << ".size()";
 			else
-				preActions << fieldInformation.arraySize;
+				preActions << fieldInformation.TypeInformation.ArraySize;
 			preActions << ";\n";
 
 			preActions << "\t\tMonoArray* " << argName << ";" << std::endl;
 
-			std::string arrayName = "array" + name;
-			preActions << "\t\tScriptArray " << arrayName;
+			const std::string scriptArrayName = "array" + name;
+			preActions << "\t\tScriptArray " << scriptArrayName;
 			preActions << " = " << "ScriptArray::Create<" << entryType << ">(arraySize" << name << ");" << std::endl;
 			preActions << "\t\tfor(int i = 0; i < arraySize" << name << "; i++)" << std::endl;
 			preActions << "\t\t{" << std::endl;
@@ -1824,31 +1838,31 @@ std::string GenerateFieldConvertBlock(const std::string& name, const VariableBas
 			case ::ExportedClassTypeCategory::String:
 			case ::ExportedClassTypeCategory::WString:
 			case ::ExportedClassTypeCategory::Path:
-				preActions << "\t\t\t" << arrayName << ".Set(i, value." << name << "[i]);" << std::endl;
+				preActions << "\t\t\t" << scriptArrayName << ".Set(i, value." << name << "[i]);" << std::endl;
 				break;
 			case ::ExportedClassTypeCategory::Enum:
 			{
 				std::string enumType;
 				ParserUtility::MapBuiltinPrimitiveTypeToCppType(parameterTypeMappingInformation.EnumUnderlyingType, enumType);
 
-				preActions << "\t\t\t" << arrayName << ".Set(i, (" << enumType << ")value." << name << "[i]);" << std::endl;
+				preActions << "\t\t\t" << scriptArrayName << ".Set(i, (" << enumType << ")value." << name << "[i]);" << std::endl;
 				break;
 			}
 			case ::ExportedClassTypeCategory::Struct:
-				preActions << "\t\t\t" << arrayName << ".Set(i, ";
+				preActions << "\t\t\t" << scriptArrayName << ".Set(i, ";
 
-				if(isComplexStruct(fieldInformation.flags))
+				if(arrayElementTypeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsStructWrapperUsed))
 					preActions << entryType << "::ToInterop(";
 
 				preActions << "value." << name << "[i]";
 
-				if (isComplexStruct(fieldInformation.flags))
+				if(arrayElementTypeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsStructWrapperUsed))
 					preActions << ")";
 
 				preActions << ");\n";
 				break;
 			case ::ExportedClassTypeCategory::MonoObject:
-				preActions << "\t\t\t" << arrayName << ".Set(i, value." << name << "[i]);" << std::endl;
+				preActions << "\t\t\t" << scriptArrayName << ".Set(i, value." << name << "[i]);" << std::endl;
 				break;
 			case ::ExportedClassTypeCategory::Class:
 			case ::ExportedClassTypeCategory::ReflectableClass:
@@ -1859,11 +1873,11 @@ std::string GenerateFieldConvertBlock(const std::string& name, const VariableBas
 				std::string elemPtrName = "arrayElemPtr" + name;
 
 				preActions << "\t\t\t" << elemPtrType << " " << elemPtrName;
-				if(IsDereferenceRequired(arrayElementTypeInformation, parameterTypeMappingInformation))
+				if(arrayElementTypeInformation.TypeCategory == VariableTypeCategory::General)
 				{
-					preActions << " = bs_shared_ptr_new<" << fieldInformation.typeName << ">();\n";
+					preActions << " = bs_shared_ptr_new<" << fieldTypeName << ">();\n";
 
-					if (isSrcPointer(fieldInformation.flags))
+					if (arrayElementTypeInformation.IsQualifierFlagSet(VariableQualifierFlags::IsPointer))
 					{
 						preActions << "\t\t\tif(value." << name << "[i])\n";
 						preActions << "\t\t\t\t*" << elemPtrName << " = *";
@@ -1876,12 +1890,20 @@ std::string GenerateFieldConvertBlock(const std::string& name, const VariableBas
 					preActions << "value." << name << "[i];\n";
 				}
 				else
+				{
+					if (arrayElementTypeInformation.TypeCategory != VariableTypeCategory::SharedPointer)
+						errs() << "Error: Invalid struct member type for \"" << name << "\"\n";
+
+					if(arrayElementTypeInformation.IsQualifierFlagSet(VariableQualifierFlags::IsPointer))
+						errs() << "Error: Invalid struct member type for \"" << name << "\"\n";
+
 					preActions << " = value." << name << "[i];\n";
+				}
 
 				preActions << "\t\t\tMonoObject* " << elemName << ";\n";
 				preActions << GenerateNativeClassToMonoObject(arrayElementTypeInformation, elemName, entryType, elemPtrName, false, "\t\t\t");
 
-				preActions << "\t\t\t" << arrayName << ".Set(i, " << elemName << ");" << std::endl;
+				preActions << "\t\t\t" << scriptArrayName << ".Set(i, " << elemName << ");" << std::endl;
 			}
 			break;
 			case ::ExportedClassTypeCategory::GUIElement:
@@ -1889,13 +1911,13 @@ std::string GenerateFieldConvertBlock(const std::string& name, const VariableBas
 				break;
 			default: // Some resource or game object type
 			{
-				preActions << GenerateNativeHandleToMonoObject(arrayElementTypeInformation, parameterTypeMappingInformation, "value." + name, "i", "script" + name, arrayName, false, "\t\t\t");
+				preActions << GenerateNativeHandleToMonoObject(arrayElementTypeInformation, parameterTypeMappingInformation, "value." + name, "i", "script" + name, scriptArrayName, false, "\t\t\t");
 			}
 			break;
 			}
 
 			preActions << "\t\t}" << std::endl;
-			preActions << "\t\t" << argName << " = " << arrayName << ".GetInternal();" << std::endl;
+			preActions << "\t\t" << argName << " = " << scriptArrayName << ".GetInternal();" << std::endl;
 		}
 
 		return argName;
