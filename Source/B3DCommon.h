@@ -130,6 +130,12 @@ struct VariableTypeInformation
 		return TypeCategory == VariableTypeCategory::Array || TypeCategory == VariableTypeCategory::SmallVector || TypeCategory == VariableTypeCategory::Vector;
 	}
 
+	/** Checks if the type category is a shared pointer, resource handle or a game object handle. */
+	bool IsPointerOrHandle() const
+	{
+		return TypeCategory == VariableTypeCategory::SharedPointer || TypeCategory == VariableTypeCategory::GameObjectHandle || TypeCategory == VariableTypeCategory::ResourceHandle || TypeCategory == VariableTypeCategory::ComponentOrActor;
+	}
+
 	/** Returns the underlying type. Asserts if the underlying type doesn't exist. */
 	const VariableTypeInformation& AssertGetUnderlyingType() const
 	{

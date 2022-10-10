@@ -819,49 +819,50 @@ void ParserUtility::GatherIncludes(const MethodInfo& methodInfo, bool isEditor, 
 
 void ParserUtility::GatherIncludes(const FieldInfo& fieldInfo, bool isEditor, IncludesInfo& output)
 {
-	TypeMappingInformation fieldTypeInfo = GetNativeToScriptTypeMapping(fieldInfo.TypeInformation);
+	const TypeMappingInformation fieldTypeMappingInformation = GetNativeToScriptTypeMapping(fieldInfo.TypeInformation);
+	const VariableTypeInformation& underlyingTypeInformation = fieldInfo.TypeInformation.IsArrayOrVector() ? fieldInfo.TypeInformation.AssertGetUnderlyingType() : fieldInfo.TypeInformation;
+
+	const std::string& fieldTypeName = underlyingTypeInformation.GetLastWrappedOrSelfTypeName();
 
 	// These types never require additional includes
-	if (fieldTypeInfo.TypeCategory == ::ExportedClassTypeCategory::Primitive || fieldTypeInfo.TypeCategory == ::ExportedClassTypeCategory::String ||
-		fieldTypeInfo.TypeCategory == ::ExportedClassTypeCategory::WString || fieldTypeInfo.TypeCategory == ::ExportedClassTypeCategory::Path)
+	if (fieldTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Primitive || fieldTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::String ||
+		fieldTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::WString || fieldTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Path)
 		return;
 
 	// If passed by value, we needs its header in our header
-	if (isSrcValue(fieldInfo.flags))
+	if (!underlyingTypeInformation.IsPointerOrHandle())
 	{
-		bool complexStruct = isComplexStruct(fieldInfo.flags);
-
-		output.includes[fieldInfo.typeName] = IncludeInfo(fieldInfo.typeName, fieldTypeInfo, IncludeType::IncludeInHeader, complexStruct ? IncludeType::IncludeInHeader : IncludeType::None, false, isEditor);
+		const bool isComplexStruct = fieldTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Struct && underlyingTypeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsStructWrapperUsed);
+		output.includes[fieldTypeName] = IncludeInfo(fieldTypeName, fieldTypeMappingInformation, IncludeType::IncludeInHeader, isComplexStruct ? IncludeType::IncludeInHeader : IncludeType::None, false, isEditor);
 	}
 
-	if (fieldTypeInfo.TypeCategory == ::ExportedClassTypeCategory::Class || fieldTypeInfo.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass ||
-		fieldTypeInfo.TypeCategory == ::ExportedClassTypeCategory::Struct || fieldTypeInfo.TypeCategory == ::ExportedClassTypeCategory::Component ||
-		fieldTypeInfo.TypeCategory == ::ExportedClassTypeCategory::SceneObject || fieldTypeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource)
+	if (fieldTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Class || fieldTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::ReflectableClass ||
+		fieldTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Struct || fieldTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Component ||
+		fieldTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::SceneObject || fieldTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Resource)
 	{
-		bool isRRef = getPassAsResourceRef(fieldInfo.flags);
-
-		if (!fieldTypeInfo.InteropFile.empty() || isRRef)
+		const bool isRRef = underlyingTypeInformation.IsParameterFlagSet(ParameterFlags::AsResourceRef);
+		if (!fieldTypeMappingInformation.InteropFile.empty() || isRRef)
 		{
-			std::string name = "__" + fieldInfo.typeName;
-			output.includes[name] = IncludeInfo(fieldInfo.typeName, fieldTypeInfo, IncludeType::IncludeInImplementation, IncludeType::IncludeInImplementation, false, isEditor);
+			std::string name = "__" + fieldTypeName;
+			output.includes[name] = IncludeInfo(fieldTypeName, fieldTypeMappingInformation, IncludeType::IncludeInImplementation, IncludeType::IncludeInImplementation, false, isEditor);
 		}
 
-		if (fieldTypeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource)
+		if (fieldTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Resource)
 		{
 			output.requiresResourceManager = true;
 
-			if (getPassAsResourceRef(fieldInfo.flags))
+			if (underlyingTypeInformation.IsParameterFlagSet(ParameterFlags::AsResourceRef))
 				output.requiresRRef = true;
 		}
-		else if (fieldTypeInfo.TypeCategory == ::ExportedClassTypeCategory::Component || fieldTypeInfo.TypeCategory == ::ExportedClassTypeCategory::SceneObject)
+		else if (fieldTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Component || fieldTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::SceneObject)
 			output.requiresGameObjectManager = true;
-		else if (fieldTypeInfo.TypeCategory == ::ExportedClassTypeCategory::Class || fieldTypeInfo.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
+		else if (fieldTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Class || fieldTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::ReflectableClass)
 		{
-			bool isBase = isBaseParam(fieldInfo.flags);
+			const bool isBase = underlyingTypeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsReferencingBaseClass);
 			if (isBase)
 			{
 				std::vector<std::string> derivedClasses;
-				getDerivedClasses(fieldInfo.typeName, derivedClasses);
+				getDerivedClasses(fieldTypeName, derivedClasses);
 
 				for (auto& entry : derivedClasses)
 					output.includes[entry] = IncludeInfo(entry, GetNativeToScriptTypeMapping(entry), IncludeType::IncludeInImplementation, IncludeType::IncludeInImplementation, false, isEditor);
@@ -870,7 +871,7 @@ void ParserUtility::GatherIncludes(const FieldInfo& fieldInfo, bool isEditor, In
 			}
 		}
 
-		if (getIsAsyncOp(fieldInfo.flags))
+		if (underlyingTypeInformation.TypeCategory == VariableTypeCategory::AsyncOp)
 			output.requiresAsyncOp = true;
 	}
 }
