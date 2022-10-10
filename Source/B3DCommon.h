@@ -581,27 +581,28 @@ struct FileInfo
 	bool inEditor;
 };
 
-enum IncludeType
+enum class IncludeType
 {
-	IT_HEADER = 1 << 0,
-	IT_IMPL = 1 << 1,
-	IT_FWD = 1 << 2,
-	IT_FWD_AND_IMPL = IT_FWD | IT_IMPL
+	None,
+	IncludeInHeader = 1 << 0,
+	IncludeInImplementation = 1 << 1,
+	ForwardDeclare = 1 << 2,
+	ForwardDeclareAndIncludeInImplementation = ForwardDeclare | IncludeInImplementation
 };
 
 struct IncludeInfo
 {
 	IncludeInfo() { }
-	IncludeInfo(const std::string& typeName, const TypeMappingInformation& typeInfo, uint32_t originIncludeFlags, 
-		uint32_t interopIncludeFlags, bool isStruct = false, bool isEditor = false)
+	IncludeInfo(const std::string& typeName, const TypeMappingInformation& typeInfo, IncludeType originIncludeFlags, 
+		IncludeType interopIncludeFlags, bool isStruct = false, bool isEditor = false)
 		: typeName(typeName), typeInfo(typeInfo), originIncludeFlags(originIncludeFlags)
 		, interopIncludeFlags(interopIncludeFlags), isStruct(isStruct), isEditor(isEditor)
 	{ }
 
 	std::string typeName;
 	TypeMappingInformation typeInfo;
-	uint32_t originIncludeFlags;
-	uint32_t interopIncludeFlags;
+	IncludeType originIncludeFlags;
+	IncludeType interopIncludeFlags;
 	bool isStruct;
 	bool isEditor;
 };

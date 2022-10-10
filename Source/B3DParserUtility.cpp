@@ -581,17 +581,17 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 
 			for (auto& entry : includesInfo.includes)
 			{
-				uint32_t originFlags = entry.second.originIncludeFlags;
-				uint32_t interopFlags = entry.second.interopIncludeFlags;
+				uint32_t originFlags = (uint32_t)entry.second.originIncludeFlags;
+				uint32_t interopFlags = (uint32_t)entry.second.interopIncludeFlags;
 
 				if (originFlags != 0)
 				{
 					std::string include = entry.second.typeInfo.NativeFile;
 
-					if ((originFlags & IT_FWD) != 0)
+					if ((originFlags & (uint32_t)IncludeType::ForwardDeclare) != 0)
 						fileInfo.second.forwardDeclarations.insert({ entry.second.typeInfo.NativeNamespace, entry.second.typeName, entry.second.isStruct });
 
-					if((originFlags & IT_IMPL) != 0)
+					if((originFlags & (uint32_t)IncludeType::IncludeInImplementation) != 0)
 						fileInfo.second.referencedSourceIncludes.push_back(include);
 					else
 						fileInfo.second.referencedHeaderIncludes.push_back(include);
@@ -605,7 +605,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 					else
 						include = entry.second.typeInfo.InteropFile;
 
-					if ((interopFlags & IT_FWD) != 0)
+					if ((interopFlags & (uint32_t)IncludeType::ForwardDeclare) != 0)
 					{
 						if(entry.second.isEditor)
 							fileInfo.second.forwardDeclarations.insert({ entry.second.typeInfo.NativeNamespace, entry.second.typeName, false });
@@ -613,7 +613,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 
 					if(!include.empty())
 					{
-						if ((interopFlags & IT_IMPL) != 0)
+						if ((interopFlags & (uint32_t)IncludeType::IncludeInImplementation) != 0)
 							fileInfo.second.referencedSourceIncludes.push_back(include);
 						else
 							fileInfo.second.referencedHeaderIncludes.push_back(include);
@@ -726,75 +726,74 @@ void ParserUtility::PostProcessDefaultParameters(MethodInfo& methodInfo, std::ve
 	}
 }
 
-void ParserUtility::GatherIncludes(const VariableTypeInformation& typeInformation, const std::string& typeName, int flags, bool isEditor, IncludesInfo& output)
+void ParserUtility::GatherIncludes(const VariableTypeInformation& typeInformation, bool isEditor, IncludesInfo& output)
 {
-	TypeMappingInformation typeInfo = GetNativeToScriptTypeMapping(typeInformation);
-	if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Class || typeInfo.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass ||
-		typeInfo.TypeCategory == ::ExportedClassTypeCategory::Struct || typeInfo.TypeCategory == ::ExportedClassTypeCategory::Component ||
-		typeInfo.TypeCategory == ::ExportedClassTypeCategory::SceneObject || typeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource ||
-		typeInfo.TypeCategory == ::ExportedClassTypeCategory::Enum)
+	const TypeMappingInformation typeMappingInformation = GetNativeToScriptTypeMapping(typeInformation);
+	const VariableTypeInformation& underlyingTypeInformation = typeInformation.IsArrayOrVector() ? typeInformation.AssertGetUnderlyingType() : typeInformation;
+
+	const std::string& typeName = underlyingTypeInformation.GetLastWrappedOrSelfTypeName();
+
+	if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Class || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::ReflectableClass ||
+		typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Struct || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Component ||
+		typeMappingInformation.TypeCategory == ExportedClassTypeCategory::SceneObject || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Resource ||
+		typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Enum)
 	{
 		auto iterFind = output.includes.find(typeName);
 		if (iterFind == output.includes.end())
 		{
-			uint32_t sourceIncludeType = 0;
-			uint32_t interopIncludeType = typeInfo.TypeCategory != ::ExportedClassTypeCategory::Enum ? IT_IMPL : 0;
+			IncludeType sourceIncludeType = IncludeType::None;
+			IncludeType interopIncludeType = typeMappingInformation.TypeCategory != ExportedClassTypeCategory::Enum ? IncludeType::IncludeInImplementation : IncludeType::None;
 			bool isStruct = false;
 
-			if (getPassAsResourceRef(flags))
+			if (underlyingTypeInformation.IsParameterFlagSet(ParameterFlags::AsResourceRef))
 			{
-				sourceIncludeType = IT_IMPL;
-				interopIncludeType = 0;
+				sourceIncludeType = IncludeType::IncludeInImplementation;
+				interopIncludeType = IncludeType::None;
 			}
 
-			if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Struct && !isComplexStruct(flags))
+			if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Struct && !underlyingTypeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsStructWrapperUsed))
 			{
-				sourceIncludeType = IT_HEADER;
+				sourceIncludeType = IncludeType::IncludeInHeader;
 				isStruct = true;
 			}
 
 			// If enum or passed by value we need to include the header for the source type
-			if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Enum || isSrcValue(flags))
-				sourceIncludeType = IT_HEADER;
+			if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Enum || underlyingTypeInformation.TypeCategory == VariableTypeCategory::General)
+				sourceIncludeType = IncludeType::IncludeInHeader;
 
-			// If a class is being passed by reference or a raw pointer then we need the declaration because we perform
-			// assignment copy
-			if (isClassType(typeInfo.TypeCategory) && !isSrcSPtr(flags))
-				sourceIncludeType = IT_HEADER;
-
-			output.includes[typeName] = IncludeInfo(typeName, typeInfo, sourceIncludeType, interopIncludeType, isStruct, isEditor);
+			output.includes[typeName] = IncludeInfo(typeName, typeMappingInformation, sourceIncludeType, interopIncludeType, isStruct, isEditor);
 		}
 
-		if (isClassType(typeInfo.TypeCategory))
+		if (isClassType(typeMappingInformation.TypeCategory))
 		{
-			bool isBase = isBaseParam(flags);
+			const bool isBase = underlyingTypeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsReferencingBaseClass);
 			if (isBase)
 			{
 				std::vector<std::string> derivedClasses;
 				getDerivedClasses(typeName, derivedClasses);
 
 				for (auto& entry : derivedClasses)
-					output.includes[entry] = IncludeInfo(entry, GetNativeToScriptTypeMapping(entry), IT_IMPL, IT_IMPL, false, isEditor);
+					output.includes[entry] = IncludeInfo(entry, GetNativeToScriptTypeMapping(entry), IncludeType::IncludeInImplementation, IncludeType::IncludeInImplementation, false, isEditor);
 
 				output.requiresRTTI = true;
 			}
 		}
 	}
 
-	if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Struct && isComplexStruct(flags))
-		output.fwdDecls[typeName] = { typeInfo.NativeNamespace, GetStructInteropTypeName(typeName), true };
+	if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Struct && underlyingTypeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsStructWrapperUsed))
+		output.fwdDecls[typeName] = { typeMappingInformation.NativeNamespace, GetStructInteropTypeName(typeName), true };
 
-	if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource)
+	if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Resource)
 	{
 		output.requiresResourceManager = true;
 
-		if (getPassAsResourceRef(flags))
+		if (underlyingTypeInformation.IsParameterFlagSet(ParameterFlags::AsResourceRef))
 			output.requiresRRef = true;
 	}
-	else if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Component || typeInfo.TypeCategory == ::ExportedClassTypeCategory::SceneObject)
+	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Component || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::SceneObject)
 		output.requiresGameObjectManager = true;
 
-	if (getIsAsyncOp(flags))
+	if (underlyingTypeInformation.TypeCategory == VariableTypeCategory::AsyncOp)
 		output.requiresAsyncOp = true;
 }
 
@@ -802,10 +801,10 @@ void ParserUtility::GatherIncludes(const MethodInfo& methodInfo, bool isEditor, 
 {
 	bool returnAsParameter = false;
 	if (!methodInfo.returnInfo.typeName.empty())
-		GatherIncludes(methodInfo.returnInfo.TypeInformation, methodInfo.returnInfo.typeName, methodInfo.returnInfo.flags, isEditor, output);
+		GatherIncludes(methodInfo.returnInfo.TypeInformation, isEditor, output);
 
 	for (auto I = methodInfo.paramInfos.begin(); I != methodInfo.paramInfos.end(); ++I)
-		GatherIncludes(I->TypeInformation, I->typeName, I->flags, isEditor, output);
+		GatherIncludes(I->TypeInformation, isEditor, output);
 
 	if ((methodInfo.flags & (int)MethodFlags::External) != 0)
 	{
@@ -813,7 +812,7 @@ void ParserUtility::GatherIncludes(const MethodInfo& methodInfo, bool isEditor, 
 		if (iterFind == output.includes.end())
 		{
 			TypeMappingInformation typeInfo = GetNativeToScriptTypeMapping(methodInfo.externalClass);
-			output.includes[methodInfo.externalClass] = IncludeInfo(methodInfo.externalClass, typeInfo, IT_FWD_AND_IMPL, 0, false, isEditor);
+			output.includes[methodInfo.externalClass] = IncludeInfo(methodInfo.externalClass, typeInfo, IncludeType::ForwardDeclareAndIncludeInImplementation, IncludeType::None, false, isEditor);
 		}
 	}
 }
@@ -832,7 +831,7 @@ void ParserUtility::GatherIncludes(const FieldInfo& fieldInfo, bool isEditor, In
 	{
 		bool complexStruct = isComplexStruct(fieldInfo.flags);
 
-		output.includes[fieldInfo.typeName] = IncludeInfo(fieldInfo.typeName, fieldTypeInfo, IT_HEADER, complexStruct ? IT_HEADER : 0, false, isEditor);
+		output.includes[fieldInfo.typeName] = IncludeInfo(fieldInfo.typeName, fieldTypeInfo, IncludeType::IncludeInHeader, complexStruct ? IncludeType::IncludeInHeader : IncludeType::None, false, isEditor);
 	}
 
 	if (fieldTypeInfo.TypeCategory == ::ExportedClassTypeCategory::Class || fieldTypeInfo.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass ||
@@ -844,7 +843,7 @@ void ParserUtility::GatherIncludes(const FieldInfo& fieldInfo, bool isEditor, In
 		if (!fieldTypeInfo.InteropFile.empty() || isRRef)
 		{
 			std::string name = "__" + fieldInfo.typeName;
-			output.includes[name] = IncludeInfo(fieldInfo.typeName, fieldTypeInfo, IT_IMPL, IT_IMPL, false, isEditor);
+			output.includes[name] = IncludeInfo(fieldInfo.typeName, fieldTypeInfo, IncludeType::IncludeInImplementation, IncludeType::IncludeInImplementation, false, isEditor);
 		}
 
 		if (fieldTypeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource)
@@ -865,7 +864,7 @@ void ParserUtility::GatherIncludes(const FieldInfo& fieldInfo, bool isEditor, In
 				getDerivedClasses(fieldInfo.typeName, derivedClasses);
 
 				for (auto& entry : derivedClasses)
-					output.includes[entry] = IncludeInfo(entry, GetNativeToScriptTypeMapping(entry), IT_IMPL, IT_IMPL, false, isEditor);
+					output.includes[entry] = IncludeInfo(entry, GetNativeToScriptTypeMapping(entry), IncludeType::IncludeInImplementation, IncludeType::IncludeInImplementation, false, isEditor);
 
 				output.requiresRTTI = true;
 			}
