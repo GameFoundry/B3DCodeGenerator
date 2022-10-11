@@ -658,13 +658,33 @@ enum FileType
 	FT_COUNT // Keep at end
 };
 
+inline bool hasAPIBED(ApiFlags api)
+{
+	return ((int)api & (int)ApiFlags::Editor) != 0;
+}
+
+inline bool hasAPIB3D(ApiFlags api)
+{
+	return ((int)api & (int)ApiFlags::Engine) != 0;
+}
+
+inline bool hasAPIBSF(ApiFlags api)
+{
+	return ((int)api & (int)ApiFlags::Framework) != 0;
+}
+
+inline bool isValidAPI(ApiFlags api, bool editor)
+{
+   return (editor && hasAPIBED(api)) || (!editor && (hasAPIB3D(api) || hasAPIBSF(api)));
+}
+
 /** Contains a map of native types to script types. The key is the native name as provided in ClassInfo.Name, StructInfo.Name or EnumInfo.Name. */
 extern std::unordered_map<std::string, TypeMappingInformation> NativeToScriptTypeMap;
 extern std::unordered_map<std::string, FileInfo> outputFileInfos;
 extern std::unordered_map<std::string, ExternalClassInfos> externalClassInfos;
 extern std::unordered_map<std::string, BaseClassInfo> baseClassLookup;
 
-inline StructInfo* findStructInfo(const std::string& name)
+inline StructInfo* FindStructInformation(const std::string& name)
 {
 	for (auto& fileInfo : outputFileInfos)
 	{
@@ -677,6 +697,40 @@ inline StructInfo* findStructInfo(const std::string& name)
 
 	return nullptr;
 };
+
+inline ClassInfo* FindClassInformation(const std::string& name, bool isEditor)
+{
+	for (auto& fileInfo : outputFileInfos)
+	{
+		for (auto& classInfo : fileInfo.second.classInfos)
+		{
+			if (classInfo.name != name)
+				continue;
+
+			// Two versions of editor and Framework class migth exist, make sure to pick the right one
+			if((isEditor && classInfo.api == ApiFlags::Framework) || (!isEditor &&  hasAPIBED(classInfo.api)))
+				continue;
+
+			return &classInfo;
+		}
+	}
+
+	return nullptr;
+}
+
+inline EnumInfo* FindEnumInformation(const std::string& name)
+{
+	for (auto& fileInfo : outputFileInfos)
+	{
+		for (auto& enumInfo : fileInfo.second.enumInfos)
+		{
+			if (enumInfo.name == name)
+				return &enumInfo;
+		}
+	}
+
+	return nullptr;
+}
 
 inline bool mapBuiltinTypeToCSType(BuiltinType::Kind kind, std::string& output)
 {
@@ -941,26 +995,6 @@ inline TypeMappingInformation GetNativeToScriptTypeMapping(const VariableTypeInf
 	case VariableTypeCategory::General:
 		return GetNativeToScriptTypeMapping(typeInformation.TypeName);
 	}
-}
-
-inline bool hasAPIBED(ApiFlags api)
-{
-	return ((int)api & (int)ApiFlags::Editor) != 0;
-}
-
-inline bool hasAPIB3D(ApiFlags api)
-{
-	return ((int)api & (int)ApiFlags::Engine) != 0;
-}
-
-inline bool hasAPIBSF(ApiFlags api)
-{
-	return ((int)api & (int)ApiFlags::Framework) != 0;
-}
-
-inline bool isValidAPI(ApiFlags api, bool editor)
-{
-   return (editor && hasAPIBED(api)) || (!editor && (hasAPIB3D(api) || hasAPIBSF(api)));
 }
 
 inline const std::string& escapeXML(const std::string& data) 

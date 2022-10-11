@@ -87,40 +87,6 @@ std::string ParserUtility::GetFullName(const NamedDecl* decl)
 void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 {
 	// Inject external methods into their appropriate class infos
-	auto findClassInfo = [](const std::string& name, bool isEditor) -> ClassInfo*
-	{
-		for (auto& fileInfo : outputFileInfos)
-		{
-			for (auto& classInfo : fileInfo.second.classInfos)
-			{
-				if (classInfo.name != name)
-					continue;
-
-				// Two versions of editor and Framework class migth exist, make sure to pick the right one
-				if((isEditor && classInfo.api == ApiFlags::Framework) || (!isEditor &&  hasAPIBED(classInfo.api)))
-					continue;
-
-				return &classInfo;
-			}
-		}
-
-		return nullptr;
-	};
-
-	auto findEnumInfo = [](const std::string& name) -> EnumInfo*
-	{
-		for (auto& fileInfo : outputFileInfos)
-		{
-			for (auto& enumInfo : fileInfo.second.enumInfos)
-			{
-				if (enumInfo.name == name)
-					return &enumInfo;
-			}
-		}
-
-		return nullptr;
-	};
-
 	for (auto& entry : externalClassInfos)
 	{
 		for (auto& fileInfo : outputFileInfos)
@@ -315,7 +281,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 				continue;
 
 			bool isEditor = hasAPIBED(classInfo.api);
-			ClassInfo* baseClassInfo = findClassInfo(classInfo.baseClass, isEditor);
+			ClassInfo* baseClassInfo = FindClassInformation(classInfo.baseClass, isEditor);
 			if (baseClassInfo == nullptr)
 			{
 				assert(false);
@@ -339,7 +305,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 			return;
 
 		int enumIdx = atoi(paramInfo.DefaultValue.c_str());
-		EnumInfo* enumInfo = findEnumInfo(paramInfo.typeName);
+		EnumInfo* enumInfo = FindEnumInformation(paramInfo.typeName);
 		if(enumInfo == nullptr)
 		{
 			outs() << "Error: Cannot map default value of \"" + paramInfo.Name + 
@@ -395,11 +361,11 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 	{
 		for (auto& structInfo : fileInfo.second.structInfos)
 		{
-			for(auto& fieldInfo : structInfo.fields)
+			for(auto& fieldInformation : structInfo.fields)
 			{
-				TypeMappingInformation typeInfo = GetNativeToScriptTypeMapping(fieldInfo.TypeInformation);
+				const TypeMappingInformation fieldTypeMappingInformation = GetNativeToScriptTypeMapping(fieldInformation.TypeInformation);
 
-				if(isArrayOrVector(fieldInfo.flags) || !(typeInfo.TypeCategory == ::ExportedClassTypeCategory::Primitive || typeInfo.TypeCategory == ::ExportedClassTypeCategory::Enum))
+				if(fieldInformation.TypeInformation.IsArrayOrVector() || !(fieldTypeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Primitive || fieldTypeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Enum))
 				{
 					structInfo.requiresInterop = true;
 					break;
@@ -416,43 +382,43 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 	// Mark parameters referencing complex structs and base types
 	for (auto& fileInfo : outputFileInfos)
 	{
-		auto markComplexType = [](const std::string& type, int& flags, VariableTypeInformation& typeInformation)
+		auto fnMarkComplexType = [](VariableTypeInformation& typeInformation)
 		{
-			TypeMappingInformation typeInfo = GetNativeToScriptTypeMapping(typeInformation);
-			if (typeInfo.TypeCategory != ::ExportedClassTypeCategory::Struct)
+			const TypeMappingInformation typeMappingInformation = GetNativeToScriptTypeMapping(typeInformation);
+			if (typeMappingInformation.TypeCategory != ExportedClassTypeCategory::Struct)
 				return;
 
-			StructInfo* structInfo = findStructInfo(type);
+			const std::string& typeName = typeInformation.GetLastWrappedOrSelfTypeName();
+			StructInfo *const structInfo = FindStructInformation(typeName);
 			if (structInfo != nullptr && structInfo->requiresInterop)
 			{
-				flags |= (int)TypeFlags::IsStructWrapperUsed;
 				typeInformation.SetPostProcessFlag(VariablePostProcessFlags::IsStructWrapperUsed, true);
 			}
 		};
 
-		auto markBaseType = [&findClassInfo](const std::string& type, int& flags, VariableTypeInformation& typeInformation)
+		auto fnMarkBaseType = [](VariableTypeInformation& typeInformation)
 		{
-			TypeMappingInformation typeInfo = GetNativeToScriptTypeMapping(typeInformation);
-			if (typeInfo.TypeCategory != ::ExportedClassTypeCategory::Class && typeInfo.TypeCategory != ::ExportedClassTypeCategory::ReflectableClass &&
-				typeInfo.TypeCategory != ::ExportedClassTypeCategory::GUIElement && !isHandleType(typeInfo.TypeCategory))
+			const TypeMappingInformation typeMappingInformation = GetNativeToScriptTypeMapping(typeInformation);
+			if (typeMappingInformation.TypeCategory != ExportedClassTypeCategory::Class && typeMappingInformation.TypeCategory != ExportedClassTypeCategory::ReflectableClass &&
+				typeMappingInformation.TypeCategory != ExportedClassTypeCategory::GUIElement && !isHandleType(typeMappingInformation.TypeCategory))
 				return;
 
-			ClassInfo* classInfo = findClassInfo(type, false);
+			const std::string& typeName = typeInformation.GetLastWrappedOrSelfTypeName();
+			ClassInfo *const classInfo = FindClassInformation(typeName, false);
 			if (classInfo != nullptr)
 			{
 				bool isBase = (classInfo->flags & (int)ClassFlags::IsBase) != 0;
 				if (isBase)
 				{
-					flags |= (int)TypeFlags::IsReferencingBaseClass;
 					typeInformation.SetPostProcessFlag(VariablePostProcessFlags::IsReferencingBaseClass, true);
 				}
 			}
 		};
 
-		auto markParam = [&markComplexType,&markBaseType](VariableInformation& paramInfo)
+		auto markParam = [&fnMarkComplexType,&fnMarkBaseType](VariableInformation& paramInfo)
 		{
-			markComplexType(paramInfo.typeName, paramInfo.flags, paramInfo.TypeInformation);
-			markBaseType(paramInfo.typeName, paramInfo.flags, paramInfo.TypeInformation);
+			fnMarkComplexType(paramInfo.TypeInformation);
+			fnMarkBaseType(paramInfo.TypeInformation);
 		};
 
 		for (auto& classInfo : fileInfo.second.classInfos)
@@ -464,8 +430,8 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 
 				if (methodInfo.returnInfo.typeName.size() != 0)
 				{
-					markComplexType(methodInfo.returnInfo.typeName, methodInfo.returnInfo.flags, methodInfo.returnInfo.TypeInformation);
-					markBaseType(methodInfo.returnInfo.typeName, methodInfo.returnInfo.flags, methodInfo.returnInfo.TypeInformation);
+					fnMarkComplexType(methodInfo.returnInfo.TypeInformation);
+					fnMarkBaseType(methodInfo.returnInfo.TypeInformation);
 				}
 			}
 
@@ -486,7 +452,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 		{
 			for(auto& fieldInfo : structInfo.fields)
 			{
-				markComplexType(fieldInfo.typeName, fieldInfo.flags, fieldInfo.TypeInformation);
+				fnMarkComplexType(fieldInfo.TypeInformation);
 				markParam(fieldInfo);
 			}
 		}
@@ -665,9 +631,9 @@ void ParserUtility::PostProcessDefaultParameters(MethodInfo& methodInfo, std::ve
 
 	for (int i = 0; i < methodInfo.paramInfos.size(); i++)
 	{
-		const VariableInformation& param = methodInfo.paramInfos[i];
+		const VariableInformation& parameterInformation = methodInfo.paramInfos[i];
 
-		if (!param.DefaultValueType.empty() && !isFlagsEnum(param.flags))
+		if (!parameterInformation.DefaultValueType.empty() && parameterInformation.TypeInformation.TypeCategory != VariableTypeCategory::Flags)
 			lastInvalidParam = i;
 	}
 

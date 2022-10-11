@@ -958,7 +958,7 @@ std::string generateCSStruct(StructInfo& input)
 	if(!input.baseClass.empty())
 	{
 		TypeMappingInformation baseTypeInfo = GetNativeToScriptTypeMapping(input.baseClass);
-		StructInfo* baseStructInfo = findStructInfo(input.baseClass);
+		StructInfo* baseStructInfo = FindStructInformation(input.baseClass);
 		if (baseStructInfo != nullptr)
 		{
 			// GetBase()
