@@ -382,10 +382,6 @@ struct TypeMappingInformation // TODO - Add a new TypeMapping file/class. Regist
 struct VariableBase
 {
 	VariableTypeInformation TypeInformation;
-
-	std::string typeName; // TODO - Remove
-	unsigned arraySize; // TODO - Remove
-	int flags; // TODO - Remove
 };
 
 struct VariableInformation : VariableBase
@@ -1302,9 +1298,6 @@ inline MethodInfo findUnusedCtorSignature(const ClassInfo& classInfo) // TODO - 
 	{
 		VariableInformation paramInfo;
 		paramInfo.Name = "__dummy" + std::to_string(i);
-		paramInfo.typeName = "bool";
-		paramInfo.flags = (int)TypeFlags::Primitive;
-
 		paramInfo.TypeInformation.TypeName = "bool";
 		paramInfo.TypeInformation.TypeCategory = VariableTypeCategory::Primitive;
 

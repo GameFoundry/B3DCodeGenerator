@@ -115,20 +115,19 @@ void addEntryToFile(FileInfo& fileInfo, T& entry, const std::string& file, std::
 		addEntry(fileInfo, entry);
 }
 
-bool parseParamOrFieldAttribute(Decl* decl, bool isField, int& typeFlags, VariableTypeInformation& typeInformation)
+/** Parses script export attributes set of a field or a parameter. Appends the parsed information (if any) to the provided type information structure. */
+bool ParseParameterOrFieldAttribute(Decl* decl, bool isField, VariableTypeInformation& typeInformation)
 {
 	for(const auto& entry : decl->specific_attrs<AnnotateAttr>())
 	{
 		if (!isField && entry->getAnnotation() == "params")
 		{
-			typeFlags |= (int)TypeFlags::VarParams;
 			typeInformation.UnsetParameterFlag(ParameterFlags::VarParams, true);
 			return true;
 		}
 
 		if (entry->getAnnotation() == "norref")
 		{
-			typeFlags &= ~(int)TypeFlags::AsResourceRef;
 			typeInformation.UnsetParameterFlag(ParameterFlags::AsResourceRef, true);
 			return true;
 		}
@@ -165,349 +164,6 @@ struct FunctionTypeInfo
 	std::vector<VariableBase> paramTypes;
 	VariableBase returnType;
 };
-
-bool BansheeCodeGeneratorASTVisitor::parseType(QualType type, VariableBase& outType, bool returnValue) // TODO - Need to be removed
-{
-	outType.flags = 0;
-	outType.arraySize = 0;
-
-	if (!ParseTypeInformation(type, outType.TypeInformation))
-		return false;
-
-	QualType realType;
-	if (type->isPointerType())
-	{
-		realType = type->getPointeeType();
-		outType.flags |= (int)TypeFlags::IsNativePointerQualifier;
-
-		if (!returnValue && !realType.isConstQualified())
-			outType.flags |= (int)TypeFlags::IsOutputQualifier;
-	}
-	else if (type->isReferenceType())
-	{
-		realType = type->getPointeeType();
-		outType.flags |= (int)TypeFlags::IsReferenceQualifier;
-
-		if (!returnValue && !realType.isConstQualified())
-			outType.flags |= (int)TypeFlags::IsOutputQualifier;
-	}
-	else
-		realType = type;
-
-	// Check for arrays & core variant types
-	if (realType->isStructureOrClassType())
-	{
-		// Note: Not supporting nested arrays
-		const TemplateSpecializationType* specType = realType->getAs<TemplateSpecializationType>();
-
-		int numArgs = 0;
-
-		if (specType != nullptr)
-			numArgs = specType->getNumArgs();
-
-		if (numArgs > 0)
-		{
-			const RecordType* recordType = realType->getAs<RecordType>();
-			const RecordDecl* recordDecl = recordType->getDecl();
-
-			std::string sourceTypeName = recordDecl->getName().str();
-
-			// Note: vector parsing code copied below
-			if (sourceTypeName == "vector" && recordDecl->isInStdNamespace())
-			{
-				realType = specType->getArg(0).getAsType();
-				outType.flags |= (int)TypeFlags::Vector;
-			}
-			else if(sourceTypeName == "SmallVector")
-			{
-				realType = specType->getArg(0).getAsType();
-				outType.flags |= (int)TypeFlags::SmallVector;
-
-				uint32_t smallVectorSize = 0;
-				if(numArgs > 1)
-				{
-					std::string tmplArgExprValue, exprType;
-					if (evaluateExpression(specType->getArg(1).getAsExpr(), tmplArgExprValue, exprType))
-					{
-						try
-						{
-							smallVectorSize = std::stoi(tmplArgExprValue);
-						}
-						catch(const std::invalid_argument& ex)
-						{
-							outs() << "Error: Cannot convert SmallVector size template argument to a number, ignoring it.\n";
-						}
-						catch(const std::out_of_range& ex)
-						{
-							outs() << "Error: Cannot convert SmallVector size template argument to a number, ignoring it.\n";
-						}
-						
-					}
-					else
-						outs() << "Error: Template argument for SmallVector cannot be constantly evaluated, ignoring it.\n";
-				}
-
-				outType.arraySize = smallVectorSize;
-			}
-			else if(sourceTypeName == "ComponentOrActor")
-			{
-				bool foundUnderlying = false;
-				const DeclContext* context = dyn_cast<DeclContext>(recordDecl);
-				for (auto I = context->decls_begin(); I != context->decls_end(); ++I)
-				{
-					if (TypeAliasDecl* typeAliasDecl = dyn_cast<TypeAliasDecl>(*I))
-					{
-						if(typeAliasDecl->getName() == "HandleType")
-						{
-							realType = typeAliasDecl->getUnderlyingType();
-							foundUnderlying = true;
-							break;
-						}
-					}
-				}
-
-				if(!foundUnderlying)
-				{
-					outs() << "Error: Cannot find underlying component type for ComponentOrActor<T>.\n";
-					return false;
-				}
-
-				outType.flags |= (int)TypeFlags::ComponentOrActor;
-			}
-			else if(sourceTypeName == "TAsyncOp")
-			{
-				realType = specType->getArg(0).getAsType();
-				outType.flags |= (int)TypeFlags::AsyncOp;
-			}
-			else
-			{
-				const TemplateDecl* templateDecl = specType->getTemplateName().getAsTemplateDecl();
-				if(templateDecl)
-				{
-					std::string templateDeclName = templateDecl->getName().str();
-					if((templateDeclName == "CoreVariantType" || templateDeclName == "CoreVariantHandleType") && specType->isTypeAlias())
-						realType = specType->getAliasedType();
-				}
-			}
-		}
-	}
-	else if(realType->isArrayType())
-	{
-		const ConstantArrayType* arrayType = dyn_cast<ConstantArrayType>(astContext->getAsArrayType(realType));
-		if (arrayType)
-		{
-			realType = arrayType->getElementType();
-
-			outType.arraySize = (unsigned)arrayType->getSize().getZExtValue();
-			outType.flags |= (int)TypeFlags::Array;
-		}
-	}
-
-	// Check for non-array template types
-	if (realType->isStructureOrClassType())
-	{
-		// Check for arrays & flags
-		// Note: Not supporting nested arrays
-		const TemplateSpecializationType* specType = realType->getAs<TemplateSpecializationType>();
-		int numArgs = 0;
-
-		if (specType != nullptr)
-			numArgs = specType->getNumArgs();
-
-		if (numArgs > 0)
-		{
-			const RecordType* recordType = realType->getAs<RecordType>();
-			const RecordDecl* recordDecl = recordType->getDecl();
-
-			std::string sourceTypeName = recordDecl->getName().str();
-
-			if (sourceTypeName == "vector" && recordDecl->isInStdNamespace())
-			{
-				realType = specType->getArg(0).getAsType();
-				outType.flags |= (int)TypeFlags::Vector;
-			}
-			else if(sourceTypeName == "SmallVector")
-			{
-				realType = specType->getArg(0).getAsType();
-				outType.flags |= (int)TypeFlags::SmallVector;
-
-				uint32_t smallVectorSize = 0;
-				if(numArgs > 1)
-				{
-					std::string tmplArgExprValue, exprType;
-					if (evaluateExpression(specType->getArg(1).getAsExpr(), tmplArgExprValue, exprType))
-					{
-						try
-						{
-							smallVectorSize = std::stoi(tmplArgExprValue);
-						}
-						catch(const std::invalid_argument& ex)
-						{
-							outs() << "Error: Cannot convert SmallVector size template argument to a number, ignoring it.\n";
-						}
-						catch(const std::out_of_range& ex)
-						{
-							outs() << "Error: Cannot convert SmallVector size template argument to a number, ignoring it.\n";
-						}
-						
-					}
-					else
-						outs() << "Error: Template argument for SmallVector cannot be constantly evaluated, ignoring it.\n";
-				}
-
-				outType.arraySize = smallVectorSize;
-			}
-
-			if(sourceTypeName == "Flags")
-			{
-				realType = specType->getArg(0).getAsType();
-				outType.flags |= (int)TypeFlags::FlagsEnum;
-
-				if(numArgs > 1)
-				{
-					QualType storageType = specType->getArg(1).getAsType();
-					bool validStorageType = false;
-					if (storageType->isBuiltinType())
-					{
-						const BuiltinType* builtinType = realType->getAs<BuiltinType>();
-						std::string storageTypeStr;
-						if (ParserUtility::MapBuiltinPrimitiveTypeToCppType(builtinType->getKind(), storageTypeStr))
-						{
-							if (storageTypeStr == "uint32_t")
-								validStorageType = true;
-						}
-
-						if(!validStorageType)
-						{
-							outs() << "Error: Invalid storage type used for Flags.\n";
-							return false;
-						}
-					}
-				}
-			}
-			else if (sourceTypeName == "basic_string" && recordDecl->isInStdNamespace())
-			{
-				realType = specType->getArg(0).getAsType();
-
-				const BuiltinType* builtinType = realType->getAs<BuiltinType>();
-				if (builtinType->getKind() == BuiltinType::Kind::WChar_U ||
-					builtinType->getKind() == BuiltinType::Kind::WChar_S)
-				{
-					outType.typeName = "WString";
-					outType.flags |= (int)TypeFlags::WString;
-				}
-				else
-				{
-					outType.typeName = "String";
-					outType.flags |= (int)TypeFlags::String;
-				}
-
-				return true;
-			}
-			else if (sourceTypeName == "shared_ptr" && recordDecl->isInStdNamespace())
-			{
-				outType.flags |= (int)TypeFlags::IsSharedPointerQualifier;
-
-				realType = specType->getArg(0).getAsType();
-				if (isGameObjectOrResource(realType))
-				{
-					outs() << "Error: Game object and resource types are only allowed to be referenced through handles"
-						<< " for scripting purposes\n";
-
-					return false;
-				}
-			}
-			else if (sourceTypeName == "TResourceHandle")
-			{
-				// Note: Not supporting weak resource handles
-
-				realType = specType->getArg(0).getAsType();
-				outType.flags |= (int)TypeFlags::IsResourceHandleQualifier;
-				outType.flags |= (int)TypeFlags::AsResourceRef;
-			}
-			else if (sourceTypeName == "GameObjectHandle")
-			{
-				realType = specType->getArg(0).getAsType();
-				outType.flags |= (int)TypeFlags::IsGameObjectHandleQualifier;
-			}
-		}
-	}
-
-	if (realType->isPointerType())
-	{
-		outs() << "Error: Only normal pointers are supported for parameter types.\n";
-		return false;
-	}
-
-	if (realType->isBuiltinType())
-	{
-		const BuiltinType* builtinType = realType->getAs<BuiltinType>();
-		if (!ParserUtility::MapBuiltinPrimitiveTypeToCppType(builtinType->getKind(), outType.typeName))
-			return false;
-
-		outType.flags |= (int)TypeFlags::Primitive;
-		return true;
-	}
-	else if (realType->isStructureOrClassType())
-	{
-		const RecordType* recordType = realType->getAs<RecordType>();
-		const RecordDecl* recordDecl = recordType->getDecl();
-
-		std::string sourceTypeName = recordDecl->getName().str();
-
-		// Handle special templated types
-		const TemplateSpecializationType* specType = realType->getAs<TemplateSpecializationType>();
-		if (specType != nullptr)
-		{
-			int numArgs = specType->getNumArgs();
-			if (numArgs > 0)
-			{
-				// Handle generic template specializations
-				sourceTypeName += parseTemplArguments(sourceTypeName, specType->getArgs(), specType->getNumArgs(), nullptr);
-			}
-		}
-		else
-		{
-			// Check for a direct pointer to a managed object
-			if(sourceTypeName == "_MonoObject")
-			{
-				if (isSrcPointer(outType.flags))
-					outType.flags |= (int)TypeFlags::MonoObject;
-				else
-				{
-					outs() << "Error: Found an object of type MonoObject but not passed by pointer. This is not supported. \n";
-					return false;
-				}
-			}
-			else if(sourceTypeName == "Path")
-			{
-				outType.flags |= (int)TypeFlags::Path;
-			}
-			else if (sourceTypeName == "StringID")
-			{
-				outType.flags |= (int)TypeFlags::String;
-			}
-		}
-
-		// Its a user-defined type
-		outType.typeName = sourceTypeName;
-		return true;
-	}
-	else if (realType->isEnumeralType())
-	{
-		const EnumType* enumType = realType->getAs<EnumType>();
-		const EnumDecl* enumDecl = enumType->getDecl();
-
-		std::string sourceTypeName = enumDecl->getName().str();
-		outType.typeName = sourceTypeName;
-		return true;
-	}
-	else
-	{
-		outs() << "Error: Unrecognized type\n";
-		return false;
-	}
-}
 
 bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, VariableTypeInformation& outType)
 {
@@ -966,14 +622,12 @@ bool BansheeCodeGeneratorASTVisitor::parseEventSignature(QualType type, Function
 					for(unsigned int i = 0; i < numParams; i++)
 					{
 						QualType paramType = funcType->getParamType(i);
-						parseType(paramType, typeInfo.paramTypes[i], false);
+						ParseTypeInformation(paramType, typeInfo.paramTypes[i].TypeInformation);
 					}
 
 					QualType returnType = funcType->getReturnType();
 					if (!returnType->isVoidType())
-						parseType(returnType, typeInfo.returnType, true);
-					else
-						typeInfo.returnType.flags = 0;
+						ParseTypeInformation(returnType, typeInfo.returnType.TypeInformation);
 				}
 
 				return true;
@@ -1148,9 +802,9 @@ bool BansheeCodeGeneratorASTVisitor::evaluateExpression(Expr* expr, std::string&
 	// Constructor or cast of some type
 	QualType parentType = ctorExp->getType();
 
-	VariableBase varTypeInfo;
-	parseType(parentType, varTypeInfo);
-	valType = varTypeInfo.typeName;
+	VariableBase variableInformation;
+	ParseTypeInformation(parentType, variableInformation.TypeInformation);
+	valType = variableInformation.TypeInformation.GetLastWrappedOrSelfTypeName();
 
 	for(int i = 0; i < ctorExp->getNumArgs(); i++)
 	{
@@ -1236,11 +890,8 @@ bool BansheeCodeGeneratorASTVisitor::parseEvent(ValueDecl* decl, const std::stri
 	mCommentParser.ParseComments(decl, eventInfo.documentation);
 	CommentParser::ClearParameterReferenceComments(eventInfo.documentation);
 
-	if (!eventSignature.returnType.typeName.empty())
+	if (!eventSignature.returnType.TypeInformation.IsEmpty())
 	{
-		eventInfo.returnInfo.typeName = eventSignature.returnType.typeName;
-		eventInfo.returnInfo.flags = eventSignature.returnType.flags;
-
 		eventInfo.returnInfo.TypeInformation = eventSignature.returnType.TypeInformation;
 	}
 
@@ -1248,10 +899,7 @@ bool BansheeCodeGeneratorASTVisitor::parseEvent(ValueDecl* decl, const std::stri
 	for(auto& entry : eventSignature.paramTypes)
 	{
 		VariableInformation paramInfo;
-		paramInfo.flags = entry.flags;
-		paramInfo.typeName = entry.typeName;
 		paramInfo.Name = "p" + std::to_string(idx);
-
 		paramInfo.TypeInformation = entry.TypeInformation;
 
 		eventInfo.paramInfos.push_back(paramInfo);
@@ -1374,10 +1022,10 @@ std::string BansheeCodeGeneratorASTVisitor::parseTemplArguments(const std::strin
 		auto& tmplArg = tmplArgs[i];
 		if(tmplArg.getKind() == TemplateArgument::Type)
 		{
-			VariableBase varTypeInfo;
-			parseType(tmplArg.getAsType(), varTypeInfo, false);
+			VariableBase variableInformation;
+			ParseTypeInformation(tmplArg.getAsType(), variableInformation.TypeInformation);
 
-			tmplArgsStream << varTypeInfo.typeName;
+			tmplArgsStream << variableInformation.TypeInformation.GetLastWrappedOrSelfTypeName();
 
 			if(templParams != nullptr)
 				templParams->push_back({ "class" });
@@ -1393,11 +1041,11 @@ std::string BansheeCodeGeneratorASTVisitor::parseTemplArguments(const std::strin
 			else
 				tmplArgsStream << tmplArgExprValue;
 
-			VariableBase varTypeInfo;
-			parseType(tmplArg.getAsExpr()->getType(), varTypeInfo, false);
+			VariableBase variableInformation;
+			ParseTypeInformation(tmplArg.getAsExpr()->getType(), variableInformation.TypeInformation);
 
 			if(templParams != nullptr)
-				templParams->push_back({ varTypeInfo.typeName });
+				templParams->push_back({ variableInformation.TypeInformation.GetLastWrappedOrSelfTypeName() });
 		}
 		else
 		{
@@ -1511,7 +1159,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 
 					std::string typeName;
 					unsigned arraySize;
-					if (!parseType(paramDecl->getType(), paramInfo))
+					if (!ParseTypeInformation(paramDecl->getType(), paramInfo.TypeInformation))
 					{
 						outs() << "Error: Unable to detect type for constructor parameter \"" << paramDecl->getName().str()
 							<< "\". Skipping.\n";
@@ -1736,17 +1384,17 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 				}
 
 				std::string typeName;
-				if (!parseType(fieldDecl->getType(), fieldInfo))
+				if (!ParseTypeInformation(fieldDecl->getType(), fieldInfo.TypeInformation))
 				{
 					outs() << "Error: Unable to detect type for field \"" << fieldDecl->getName().str() << "\" in \""
 						<< srcClassName << "\". Skipping field.\n";
 					continue;
 				}
 
-				parseParamOrFieldAttribute(fieldDecl, true, fieldInfo.flags, fieldInfo.TypeInformation);
+				ParseParameterOrFieldAttribute(fieldDecl, true, fieldInfo.TypeInformation);
 
 				// Remove the pass-as-resource-ref flag to all parameters initializing the field
-				if(!getPassAsResourceRef(fieldInfo.flags))
+				if(!fieldInfo.TypeInformation.IsParameterFlagSet(ParameterFlags::AsResourceRef))
 				{
 					for(auto& ctorInfo : structInfo.ctors)
 					{
@@ -1761,7 +1409,6 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 
 							if (iterFindParam != ctorInfo.params.end())
 							{
-								iterFindParam->flags &= ~(int)TypeFlags::AsResourceRef;
 								iterFindParam->TypeInformation.UnsetParameterFlag(ParameterFlags::AsResourceRef, true);
 							}
 						}
@@ -1888,7 +1535,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 						VariableInformation paramInfo;
 						paramInfo.Name = paramDecl->getName().str();
 
-						if (!parseType(paramType, paramInfo))
+						if (!ParseTypeInformation(paramType, paramInfo.TypeInformation))
 						{
 							outs() << "Error: Unable to parse parameter \"" << paramInfo.Name << "\" type in \"" << srcClassName << "\"'s constructor.\n";
 							invalidParam = true;
@@ -1905,7 +1552,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 							}
 						}
 
-						parseParamOrFieldAttribute(paramDecl, false, paramInfo.flags, paramInfo.TypeInformation);
+						ParseParameterOrFieldAttribute(paramDecl, false, paramInfo.TypeInformation);
 						methodInfo.paramInfos.push_back(paramInfo);
 					}
 
@@ -1991,13 +1638,13 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 					if (!returnType->isVoidType())
 					{
 						ReturnInfo returnInfo;
-						if (!parseType(returnType, returnInfo, true))
+						if (!ParseTypeInformation(returnType, returnInfo.TypeInformation))
 						{
 							outs() << "Error: Unable to parse return type for method \"" << sourceMethodName << "\". Skipping method.\n";
 							continue;
 						}
 
-						parseParamOrFieldAttribute(methodDecl, false, returnInfo.flags, returnInfo.TypeInformation);
+						ParseParameterOrFieldAttribute(methodDecl, false, returnInfo.TypeInformation);
 						methodInfo.returnInfo = returnInfo;
 					}
 				}
@@ -2021,13 +1668,13 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 							continue;
 						}
 
-						if (!parseType(returnType, methodInfo.returnInfo, true))
+						if (!ParseTypeInformation(returnType, methodInfo.returnInfo.TypeInformation))
 						{
 							outs() << "Error: Unable to parse property type for method \"" << sourceMethodName << "\". Skipping property.\n";
 							continue;
 						}
 
-						parseParamOrFieldAttribute(methodDecl, false, methodInfo.returnInfo.flags, methodInfo.returnInfo.TypeInformation);
+						ParseParameterOrFieldAttribute(methodDecl, false, methodInfo.returnInfo.TypeInformation);
 					}
 					else // Must be setter
 					{
@@ -2051,7 +1698,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 						VariableInformation paramInfo;
 						paramInfo.Name = paramDecl->getName().str();
 
-						if (!parseType(paramDecl->getType(), paramInfo))
+						if (!ParseTypeInformation(paramDecl->getType(), paramInfo.TypeInformation))
 						{
 							outs() << "Error: Unable to parse property type for method \"" << sourceMethodName << "\". Skipping property.\n";
 							continue;
@@ -2066,10 +1713,10 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 					ParmVarDecl* paramDecl = *J;
 					QualType paramType = paramDecl->getType();
 
-					VariableInformation paramInfo;
-					paramInfo.Name = paramDecl->getName().str();
+					VariableInformation parameterInformation;
+					parameterInformation.Name = paramDecl->getName().str();
 
-					if (!parseType(paramType, paramInfo))
+					if (!ParseTypeInformation(paramType, parameterInformation.TypeInformation))
 					{
 						outs() << "Error: Unable to parse return type for method \"" << sourceMethodName << "\". Skipping method.\n";
 						invalidParam = true;
@@ -2084,7 +1731,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 						else
 							defaultArg = paramDecl->getDefaultArg();
 
-						if (!evaluateExpression(defaultArg, paramInfo.DefaultValue, paramInfo.DefaultValueType))
+						if (!evaluateExpression(defaultArg, parameterInformation.DefaultValue, parameterInformation.DefaultValueType))
 						{
 							outs() << "Error: Method parameter \"" << paramDecl->getName().str() << "\" has a default "
 								<< "argument that cannot be constantly evaluated, ignoring it.\n";
@@ -2092,8 +1739,8 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 						}
 					}
 
-					parseParamOrFieldAttribute(paramDecl, false, paramInfo.flags, paramInfo.TypeInformation);
-					methodInfo.paramInfos.push_back(paramInfo);
+					ParseParameterOrFieldAttribute(paramDecl, false, parameterInformation.TypeInformation);
+					methodInfo.paramInfos.push_back(parameterInformation);
 				}
 
 				if (invalidParam)
@@ -2143,7 +1790,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 						continue;
 
 					std::string typeName;
-					if (!parseType(fieldDecl->getType(), fieldInfo))
+					if (!ParseTypeInformation(fieldDecl->getType(), fieldInfo.TypeInformation))
 					{
 						outs() << "Error: Unable to detect type for field \"" << fieldDecl->getName().str() << "\" in \""
 							<< srcClassName << "\". Skipping field.\n";
@@ -2169,24 +1816,17 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 					getterInfo.flags = (int)MethodFlags::PropertyGetter | (int)MethodFlags::FieldWrapper;
 					getterInfo.style = fieldInfo.style;
 
-					getterInfo.returnInfo.flags = fieldInfo.flags;
-					getterInfo.returnInfo.arraySize = fieldInfo.arraySize;
-					getterInfo.returnInfo.typeName = fieldInfo.typeName;
-
 					getterInfo.returnInfo.TypeInformation = fieldInfo.TypeInformation;
-					parseParamOrFieldAttribute(fieldDecl, true, getterInfo.returnInfo.flags, getterInfo.returnInfo.TypeInformation);
+					ParseParameterOrFieldAttribute(fieldDecl, true, getterInfo.returnInfo.TypeInformation);
 
 					if ((parsedFieldInfo.ExportFlags & (int)ExportFlags::InteropOnly) != 0)
 						getterInfo.flags |= (int)MethodFlags::InteropOnly;
 
 					VariableInformation paramInfo;
-					paramInfo.flags = fieldInfo.flags;
-					paramInfo.arraySize = fieldInfo.arraySize;
-					paramInfo.typeName = fieldInfo.typeName;
 					paramInfo.TypeInformation = fieldInfo.TypeInformation;
 					paramInfo.Name = "value";
 
-					parseParamOrFieldAttribute(fieldDecl, true, paramInfo.flags, paramInfo.TypeInformation);
+					ParseParameterOrFieldAttribute(fieldDecl, true, paramInfo.TypeInformation);
 
 					MethodInfo setterInfo;
 					setterInfo.sourceName = "Set" + fieldInfo.Name;
