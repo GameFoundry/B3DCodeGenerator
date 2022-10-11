@@ -108,7 +108,7 @@ static std::string GetCppNativeQualifiedTypeName(const VariableTypeInformation& 
 		output << "ResourceHandle<" + typeName + ">";
 	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::SceneObject || typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Component)
 		output << "GameObjectHandle<" + typeName + ">";
-	else if (isClassType(typeMappingInformation.TypeCategory))
+	else if (IsClassType(typeMappingInformation.TypeCategory))
 	{
 		if (isVariable || typeInformation.TypeCategory == VariableTypeCategory::SharedPointer)
 			output << "SPtr<" + typeName + ">";
@@ -215,7 +215,7 @@ static std::string GenerateGetInternalCallLine(const VariableTypeInformation& ty
 	const std::string& nativeTypeName = typeInformation.GetLastWrappedOrSelfTypeName();
 
 	std::stringstream output;
-	if (isClassType(typeMappingInformation.TypeCategory))
+	if (IsClassType(typeMappingInformation.TypeCategory))
 		output << variableName << "->GetInternal()";
 	else if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
 		output << "static_cast<" << nativeTypeName << "*>(" << variableName << "->GetGuiElement())";
@@ -2187,7 +2187,7 @@ std::string generateCppMethodBody(const ClassInfo& classInfo, const MethodInfo& 
 		bool isValid = false;
 		if (!isExternal)
 		{
-			if (isClassType(typeMappingInformation.TypeCategory))
+			if (IsClassType(typeMappingInformation.TypeCategory))
 			{
 				output << "\t\tSPtr<" << sourceClassName << "> instance = bs_shared_ptr_new<" << sourceClassName << ">(" << methodArgs.str() << ");" << std::endl;
 				output << "\t\tnew (bs_alloc<" << interopClassName << ">())" << interopClassName << "(managedInstance, instance);" << std::endl;
@@ -2198,7 +2198,7 @@ std::string generateCppMethodBody(const ClassInfo& classInfo, const MethodInfo& 
 		{
 			std::string fullMethodName = methodInfo.externalClass + "::" + methodInfo.sourceName;
 
-			if (isClassType(typeMappingInformation.TypeCategory))
+			if (IsClassType(typeMappingInformation.TypeCategory))
 			{
 				output << "\t\tSPtr<" << sourceClassName << "> instance = " << fullMethodName << "(" << methodArgs.str() << ");" << std::endl;
 				output << "\t\tnew (bs_alloc<" << interopClassName << ">())" << interopClassName << "(managedInstance, instance);" << std::endl;
@@ -2265,7 +2265,7 @@ std::string generateCppMethodBody(const ClassInfo& classInfo, const MethodInfo& 
 		if (!methodInfo.returnInfo.TypeInformation.IsEmpty())
 		{
 			// Dereference input if needed
-			if ((isClassType(returnTypeMappingInformation.TypeCategory) && methodInfo.returnInfo.TypeInformation.TypeCategory == VariableTypeCategory::General))
+			if ((IsClassType(returnTypeMappingInformation.TypeCategory) && methodInfo.returnInfo.TypeInformation.TypeCategory == VariableTypeCategory::General))
 			{
 				returnAssignment = "*" + returnAssignment;
 			}
@@ -2357,7 +2357,7 @@ std::string GenerateCppFieldGetterBody(const ClassInfo& classInfo, const FieldIn
 	}
 
 	// Dereference input if needed
-	if ((isClassType(returnTypeMappingInformation.TypeCategory) && methodInfo.returnInfo.TypeInformation.TypeCategory == VariableTypeCategory::General))
+	if ((IsClassType(returnTypeMappingInformation.TypeCategory) && methodInfo.returnInfo.TypeInformation.TypeCategory == VariableTypeCategory::General))
 	{
 		returnAssignment = "*" + returnAssignment;
 	}
@@ -2620,7 +2620,7 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 			output << "\t\t" << wrappedDataType << " GetInternal() const { return mInternal; }" << std::endl;
 	}
 
-	if(isClassType(typeMappingInformation.TypeCategory) && !isModule)
+	if(IsClassType(typeMappingInformation.TypeCategory) && !isModule)
 	{
 		// getManagedInstance() method (needed for events)
 		if (!classInfo.eventInfos.empty())
@@ -2649,7 +2649,7 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 	output << "\tprivate:" << std::endl;
 
 	// Handle (if required)
-	if (isClassType(typeMappingInformation.TypeCategory))
+	if (IsClassType(typeMappingInformation.TypeCategory))
 	{
 		if (!classInfo.eventInfos.empty())
 			output << "\t\tuint32_t mGCHandle = 0;\n\n";
@@ -2882,7 +2882,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 	output << std::endl;
 	output << "\t{" << std::endl;
 
-	if (isClassType(typeMappingInformation.TypeCategory))
+	if (IsClassType(typeMappingInformation.TypeCategory))
 	{
 		if (!classInfo.eventInfos.empty())
 			output << "\t\tmGCHandle = MonoUtil::NewWeakGcHandle(managedInstance);\n";
@@ -2936,7 +2936,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 		}
 	}
 
-	if (isClassType(typeMappingInformation.TypeCategory) && !isModule)
+	if (IsClassType(typeMappingInformation.TypeCategory) && !isModule)
 	{
 		// getManagedInstance() method (needed for events)
 		if (!classInfo.eventInfos.empty())
@@ -3011,7 +3011,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 	output << std::endl;
 
 	// create() or createInstance() methods
-	if ((isClassType(typeMappingInformation.TypeCategory) && !isModule) || typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Resource)
+	if ((IsClassType(typeMappingInformation.TypeCategory) && !isModule) || typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Resource)
 	{
 		std::stringstream ctorSignature;
 		std::stringstream ctorParamsInit;
@@ -3036,7 +3036,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 		ctorParamsInit << " };" << std::endl;
 		ctorParamsInit << std::endl;
 
-		if (isClassType(typeMappingInformation.TypeCategory))
+		if (IsClassType(typeMappingInformation.TypeCategory))
 		{
 			output << "\tMonoObject* " << interopClassName << "::Create(const " << wrappedDataType << "& value)" << std::endl;
 			output << "\t{" << std::endl;

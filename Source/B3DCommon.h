@@ -246,31 +246,6 @@ inline const std::string& VariableTypeInformation::GetLastWrappedOrSelfTypeName(
 	return TypeName;
 }
 
-enum class TypeFlags // TODO - To be removed
-{
-	Primitive = 1 << 0,
-	IsOutputQualifier = 1 << 1, /**< True if the type qualifiers don't contain 'const', and are a pointer or a reference type. */
-	Vector = 1 << 2,
-	IsNativePointerQualifier = 1 << 3,
-	IsSharedPointerQualifier = 1 << 4,
-	IsReferenceQualifier = 1 << 5,
-	IsResourceHandleQualifier = 1 << 6,
-	IsGameObjectHandleQualifier = 1 << 7,
-	String = 1 << 8,
-	WString = 1 << 9,
-	IsStructWrapperUsed = 1 << 11, /**< Special flag to be set during post-processing. Signals to the user that a struct wrapper had to be generated and should be used instead of the native type. */
-	FlagsEnum = 1 << 12,
-	IsReferencingBaseClass = 1 << 13, /**< Special flag to be set during post-processing. Signals to the user that a parameter, return value or a field is referencing a script exported base class. */
-	Array = 1 << 14,
-	MonoObject = 1 << 15,
-	VarParams = 1 << 16, /**< Flag for parameters only, that lets the generator know to generate a variable number of parameters in place of this parameter. */
-	AsResourceRef = 1 << 17, /**< Flag for parameters only, that lets the generator know to pass a resource as a resource reference, rather than directly. */
-	ComponentOrActor = 1 << 18,
-	Path = 1 << 19,
-	AsyncOp = 1 << 20,
-	SmallVector = 1 << 21
-};
-
 enum class MethodFlags
 {
 	Static = 1 << 0,
@@ -1042,100 +1017,17 @@ inline bool isReal(const TypeMappingInformation& typeInfo) // TODO - Make TypeMa
 		(typeInfo.ScriptTypeName == "float" || typeInfo.ScriptTypeName == "double");
 }
 
-inline bool isOutput(int flags) //  TODO - To be removed
-{
-	return (flags & (int)TypeFlags::IsOutputQualifier) != 0;
-}
-
-inline bool isArray(int flags) //  TODO - To be removed
-{
-	return (flags & (int)TypeFlags::Array) != 0;
-}
-
-inline bool isVector(int flags) //  TODO - To be removed
-{
-	return (flags & (int)TypeFlags::Vector) != 0;
-}
-
-inline bool isSmallVector(int flags) //  TODO - To be removed
-{
-	return (flags & (int)TypeFlags::SmallVector) != 0;
-}
-
-inline bool isArrayOrVector(int flags) //  TODO - To be removed
-{
-	return (flags & ((int)TypeFlags::Vector | (int)TypeFlags::Array | (int)TypeFlags::SmallVector)) != 0;
-}
-
-inline bool isFlagsEnum(int flags) //  TODO - To be removed
-{
-	return (flags & (int)TypeFlags::FlagsEnum) != 0;
-}
-
-inline bool isSrcPointer(int flags) //  TODO - To be removed
-{
-	return (flags & (int)TypeFlags::IsNativePointerQualifier) != 0;
-}
-
-inline bool isSrcReference(int flags) //  TODO - To be removed
-{
-	return (flags & (int)TypeFlags::IsReferenceQualifier) != 0;
-}
-
-inline bool isSrcValue(int flags) //  TODO - To be removed
-{
-	int nonValueFlags = (int)TypeFlags::IsNativePointerQualifier | (int)TypeFlags::IsReferenceQualifier | (int)TypeFlags::IsSharedPointerQualifier |
-		(int)TypeFlags::IsResourceHandleQualifier | (int)TypeFlags::IsGameObjectHandleQualifier;
-
-	return (flags & nonValueFlags) == 0;
-}
-
-inline bool isSrcSPtr(int flags) //  TODO - To be removed
-{
-	return (flags & (int)TypeFlags::IsSharedPointerQualifier) != 0;
-}
-
-inline bool isSrcRHandle(int flags) //  TODO - To be removed
-{
-	return (flags & (int)TypeFlags::IsResourceHandleQualifier) != 0;
-}
-
-inline bool isSrcGHandle(int flags) //  TODO - To be removed
-{
-	return (flags & (int)TypeFlags::IsGameObjectHandleQualifier) != 0;
-}
-
-inline bool isComplexStruct(int flags) //  TODO - To be removed
-{
-	return (flags & (int)TypeFlags::IsStructWrapperUsed) != 0;
-}
-
-inline bool isBaseParam(int flags) //  TODO - To be removed
-{
-	return (flags & (int)TypeFlags::IsReferencingBaseClass) != 0;
-}
-
-inline bool isVarParam(int flags) //  TODO - To be removed
-{
-	return (flags & (int)TypeFlags::VarParams) != 0;
-}
-
-inline bool getPassAsResourceRef(int flags) //  TODO - To be removed
-{
-	return (flags & (int)TypeFlags::AsResourceRef) != 0;
-}
-
 inline bool isStruct(int flags)
 {
 	return (flags & (int)ClassFlags::IsStruct) != 0;
 }
 
-inline bool isHandleType(::ExportedClassTypeCategory type)
+inline bool IsHandleType(ExportedClassTypeCategory type) // TODO - Move to TypeMappingInformation
 {
 	return type == ::ExportedClassTypeCategory::Resource || type == ::ExportedClassTypeCategory::SceneObject || type == ::ExportedClassTypeCategory::Component;
 }
 
-inline bool isClassType(::ExportedClassTypeCategory type)
+inline bool IsClassType(ExportedClassTypeCategory type) // TODO - Move to TypeMappingInformation
 {
 	return type == ::ExportedClassTypeCategory::Class || type == ::ExportedClassTypeCategory::ReflectableClass;
 }

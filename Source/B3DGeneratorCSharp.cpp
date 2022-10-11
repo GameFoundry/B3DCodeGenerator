@@ -164,7 +164,7 @@ static std::string GenerateCSharpStyleAttributes(const ExportStyle& style, const
 	bool passByCopy = (style.flags & (int)StyleFlags::PassByCopy) != 0;
 
 	const bool isPassedByValue = IsInternalMethodParameterValueType(typeInformation);
-	if(!isGeneratingStructFields && (isClassType(typeMappingInformation.TypeCategory) && isPassedByValue))
+	if(!isGeneratingStructFields && (IsClassType(typeMappingInformation.TypeCategory) && isPassedByValue))
 	{
 		notNull = true;
 		passByCopy = true;
@@ -777,7 +777,7 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 	output << CommentParser::GenerateXMLComments(input.documentation, "\t");
 
 	// Force non-resource and non-component types to show in inspector, except explicitly hidden
-	if (isClassType(typeInfo.TypeCategory) || (input.flags & (int)ClassFlags::HideInInspector) == 0)
+	if (IsClassType(typeInfo.TypeCategory) || (input.flags & (int)ClassFlags::HideInInspector) == 0)
 		output << "\t[ShowInInspector]\n";
 
 	if (input.visibility == CSVisibility::Internal)
