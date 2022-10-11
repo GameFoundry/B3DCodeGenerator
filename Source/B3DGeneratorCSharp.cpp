@@ -288,21 +288,21 @@ std::string generateCSMethodDefaultParamAssignments(const MethodInfo& methodInfo
 	std::stringstream output;
 	for (auto I = methodInfo.paramInfos.begin(); I != methodInfo.paramInfos.end(); ++I)
 	{
-		const VariableInformation& paramInfo = *I;
+		const VariableInformation& parameterInformation = *I;
 
-		if (paramInfo.DefaultValueType.empty() || isFlagsEnum(paramInfo.flags))
+		if (parameterInformation.DefaultValueType.empty() || parameterInformation.TypeInformation.TypeCategory == VariableTypeCategory::Flags)
 			continue;
 
-		if (paramInfo.DefaultValueType == "null" || paramInfo.DefaultValue == "null")
+		if (parameterInformation.DefaultValueType == "null" || parameterInformation.DefaultValue == "null")
 		{
-			TypeMappingInformation paramTypeInfo = GetNativeToScriptTypeMapping(paramInfo.TypeInformation);
-			output << indent << paramTypeInfo.ScriptTypeName << " " << paramInfo.Name << " = " << paramInfo.DefaultValue << ";\n";
+			TypeMappingInformation paramTypeInfo = GetNativeToScriptTypeMapping(parameterInformation.TypeInformation);
+			output << indent << paramTypeInfo.ScriptTypeName << " " << parameterInformation.Name << " = " << parameterInformation.DefaultValue << ";\n";
 		}
 		else
 		{
-			TypeMappingInformation defaultValTypeInfo = GetNativeToScriptTypeMapping(paramInfo.DefaultValueType);
-			output << indent << defaultValTypeInfo.ScriptTypeName << " " << paramInfo.Name << " = ";
-			output << "new " << defaultValTypeInfo.ScriptTypeName << "(" << paramInfo.DefaultValue << ");\n";
+			TypeMappingInformation defaultValTypeInfo = GetNativeToScriptTypeMapping(parameterInformation.DefaultValueType);
+			output << indent << defaultValTypeInfo.ScriptTypeName << " " << parameterInformation.Name << " = ";
+			output << "new " << defaultValTypeInfo.ScriptTypeName << "(" << parameterInformation.DefaultValue << ");\n";
 		}
 	}
 
@@ -876,18 +876,17 @@ std::string generateCSStruct(StructInfo& input)
 
 		for (auto I = entry.params.begin(); I != entry.params.end(); ++I)
 		{
-			const VariableInformation& paramInfo = *I;
+			const VariableInformation& parameterInformation = *I;
+			const TypeMappingInformation parameterTypeMappingInformation = GetNativeToScriptTypeMapping(parameterInformation.TypeInformation);
 
-			TypeMappingInformation typeInfo = GetNativeToScriptTypeMapping(paramInfo.TypeInformation);
-
-			if (!isValidStructType(typeInfo, paramInfo.flags))
+			if (parameterInformation.TypeInformation.IsOutputParameter())
 			{
 				// We report the error during field generation, as it checks for the same condition
 				continue;
 			}
 
 
-			if(!paramInfo.DefaultValueType.empty() && !isFlagsEnum(paramInfo.flags))
+			if(!parameterInformation.DefaultValueType.empty() && parameterInformation.TypeInformation.TypeCategory != VariableTypeCategory::Flags)
 			{
 				// We don't generate parameters that have complex default values (as they're not supported in C#).
 				// Instead the post-processor has generated different versions of this method, so we can just skip
@@ -895,10 +894,10 @@ std::string generateCSStruct(StructInfo& input)
 				continue;
 			}
 
-			output << typeInfo.ScriptTypeName << " " << paramInfo.Name;
+			output << parameterTypeMappingInformation.ScriptTypeName << " " << parameterInformation.Name;
 
-			if (!paramInfo.DefaultValue.empty())
-				output << " = " << GenerateCSharpDefaultValueAssignment(paramInfo);
+			if (!parameterInformation.DefaultValue.empty())
+				output << " = " << GenerateCSharpDefaultValueAssignment(parameterInformation);
 
 			if ((I + 1) != entry.params.end())
 				output << ", ";
@@ -918,18 +917,17 @@ std::string generateCSStruct(StructInfo& input)
 
 		for (auto I = input.fields.begin(); I != input.fields.end(); ++I)
 		{
-			const VariableInformation& fieldInfo = *I;
-
-			TypeMappingInformation typeMappingInformation = GetNativeToScriptTypeMapping(fieldInfo.TypeInformation);
-			if (!isValidStructType(typeMappingInformation, fieldInfo.flags))
+			const VariableInformation& fieldInformation = *I;
+			const TypeMappingInformation fieldTypeMappingInformation = GetNativeToScriptTypeMapping(fieldInformation.TypeInformation);
+			if (fieldInformation.TypeInformation.IsOutputParameter())
 			{
 				// We report the error during field generation, as it checks for the same condition
 				continue;
 			}
 
-			std::string fieldName = fieldInfo.Name;
+			std::string fieldName = fieldInformation.Name;
 
-			auto iterFind = entry.fieldAssignments.find(fieldInfo.Name);
+			auto iterFind = entry.fieldAssignments.find(fieldInformation.Name);
 			if (iterFind != entry.fieldAssignments.end())
 			{
 				std::string paramName = iterFind->second;
@@ -938,10 +936,10 @@ std::string generateCSStruct(StructInfo& input)
 			else
 			{
 				std::string defaultValue;
-				if (!fieldInfo.DefaultValue.empty())
-					defaultValue = GenerateCSharpDefaultValueAssignment(fieldInfo);
+				if (!fieldInformation.DefaultValue.empty())
+					defaultValue = GenerateCSharpDefaultValueAssignment(fieldInformation);
 				else
-					defaultValue = GetDefaultValueForType(fieldInfo.TypeInformation, typeMappingInformation);
+					defaultValue = GetDefaultValueForType(fieldInformation.TypeInformation, fieldTypeMappingInformation);
 
 				output << "\t\t\t" << thisPtr << "." << fieldName << " = " << defaultValue << ";" << std::endl;
 			}
@@ -1002,30 +1000,29 @@ std::string generateCSStruct(StructInfo& input)
 
 	for (auto I = input.fields.begin(); I != input.fields.end(); ++I)
 	{
-		const FieldInfo& fieldInfo = *I;
+		const FieldInfo& fieldInformation = *I;
+		const TypeMappingInformation fieldTypeMappingInformation = GetNativeToScriptTypeMapping(fieldInformation.TypeInformation);
 
-		TypeMappingInformation fieldTypeMappingInformation = GetNativeToScriptTypeMapping(fieldInfo.TypeInformation);
-
-		if (!isValidStructType(fieldTypeMappingInformation, fieldInfo.flags))
+		if (fieldInformation.TypeInformation.IsOutputParameter())
 		{
-			outs() << "Error: Invalid field type found in struct \"" << scriptName << "\" for field \"" << fieldInfo.Name << "\". Skipping.\n";
+			outs() << "Error: Invalid field type found in struct \"" << scriptName << "\" for field \"" << fieldInformation.Name << "\". Skipping.\n";
 			continue;
 		}
 
-		output << CommentParser::GenerateXMLComments(fieldInfo.documentation, "\t\t");
-		output << GenerateCSharpStyleAttributes(fieldInfo.style, fieldInfo.TypeInformation, fieldTypeMappingInformation, true);
+		output << CommentParser::GenerateXMLComments(fieldInformation.documentation, "\t\t");
+		output << GenerateCSharpStyleAttributes(fieldInformation.style, fieldInformation.TypeInformation, fieldTypeMappingInformation, true);
 
-		if ((fieldInfo.style.flags & (int)StyleFlags::ForceHide) != 0)
+		if ((fieldInformation.style.flags & (int)StyleFlags::ForceHide) != 0)
 			output << "\t\t[HideInInspector]" << std::endl;
 
 		output << "\t\tpublic ";
 
 		output << fieldTypeMappingInformation.ScriptTypeName;
-		if (isArrayOrVector(fieldInfo.flags))
+		if (fieldInformation.TypeInformation.IsArrayOrVector())
 			output << "[]";
 
 		output << " ";
-		output << fieldInfo.Name;
+		output << fieldInformation.Name;
 
 		output << ";" << std::endl;
 	}

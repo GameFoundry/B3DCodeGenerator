@@ -715,44 +715,6 @@ bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, Variabl
 
 			std::string sourceTypeName = recordDecl->getName().str();
 
-			// TODO - Remove this, it shouldn't be needed
-			//if (sourceTypeName == "vector" && recordDecl->isInStdNamespace())
-			//{
-			//	realType = specType->getArg(0).getAsType();
-			//	outType.flags |= (int)TypeFlags::Vector;
-			//}
-			//else if(sourceTypeName == "SmallVector")
-			//{
-			//	realType = specType->getArg(0).getAsType();
-			//	outType.flags |= (int)TypeFlags::SmallVector;
-
-			//	uint32_t smallVectorSize = 0;
-			//	if(numArgs > 1)
-			//	{
-			//		std::string tmplArgExprValue, exprType;
-			//		if (evaluateExpression(specType->getArg(1).getAsExpr(), tmplArgExprValue, exprType))
-			//		{
-			//			try
-			//			{
-			//				smallVectorSize = std::stoi(tmplArgExprValue);
-			//			}
-			//			catch(const std::invalid_argument& ex)
-			//			{
-			//				outs() << "Error: Cannot convert SmallVector size template argument to a number, ignoring it.\n";
-			//			}
-			//			catch(const std::out_of_range& ex)
-			//			{
-			//				outs() << "Error: Cannot convert SmallVector size template argument to a number, ignoring it.\n";
-			//			}
-			//			
-			//		}
-			//		else
-			//			outs() << "Error: Template argument for SmallVector cannot be constantly evaluated, ignoring it.\n";
-			//	}
-
-			//	outType.arraySize = smallVectorSize;
-			//}
-
 			// TODO - These can be moved above
 			if(sourceTypeName == "Flags")
 			{

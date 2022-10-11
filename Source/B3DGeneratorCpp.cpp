@@ -3336,22 +3336,22 @@ std::string generateCppStructSource(const StructInfo& structInfo)
 		output << "\t{\n";
 
 		output << "\t\t" << structInfo.name << " output;\n";
-		for (auto& fieldInfo : structInfo.fields)
+		for (auto& fieldInformation : structInfo.fields)
 		{
 			// Arrays can be assigned, so copy them entry by entry
-			if(isArray(fieldInfo.flags))
+			if(fieldInformation.TypeInformation.TypeCategory == VariableTypeCategory::Array)
 			{
-				std::string argName = GenerateFieldConvertBlock(fieldInfo.Name, fieldInfo, false, output);
+				std::string argName = GenerateFieldConvertBlock(fieldInformation.Name, fieldInformation, false, output);
 
-				output << "\t\tauto tmp" << fieldInfo.Name << " = " << argName << ";\n";
-				output << "\t\tfor(int i = 0; i < " << fieldInfo.arraySize << "; ++i)\n";
-				output << "\t\t\toutput." << fieldInfo.Name << "[i] = tmp" << fieldInfo.Name << "[i];\n";
+				output << "\t\tauto tmp" << fieldInformation.Name << " = " << argName << ";\n";
+				output << "\t\tfor(int i = 0; i < " << fieldInformation.arraySize << "; ++i)\n";
+				output << "\t\t\toutput." << fieldInformation.Name << "[i] = tmp" << fieldInformation.Name << "[i];\n";
 			}
 			else
 			{
-				std::string argName = GenerateFieldConvertBlock(fieldInfo.Name, fieldInfo, false, output);
+				std::string argName = GenerateFieldConvertBlock(fieldInformation.Name, fieldInformation, false, output);
 
-				output << "\t\toutput." << fieldInfo.Name << " = " << argName << ";\n";
+				output << "\t\toutput." << fieldInformation.Name << " = " << argName << ";\n";
 			}
 		}
 

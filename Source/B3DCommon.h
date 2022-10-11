@@ -1092,16 +1092,6 @@ inline bool getPassAsResourceRef(int flags) //  TODO - To be removed
 	return (flags & (int)TypeFlags::AsResourceRef) != 0;
 }
 
-inline bool getIsComponentOrActor(int flags) //  TODO - To be removed
-{
-	return (flags & (int)TypeFlags::ComponentOrActor) != 0;
-}
-
-inline bool getIsAsyncOp(int flags) //  TODO - To be removed
-{
-	return (flags & (int)TypeFlags::AsyncOp) != 0;
-}
-
 inline bool isStruct(int flags)
 {
 	return (flags & (int)ClassFlags::IsStruct) != 0;
@@ -1134,14 +1124,6 @@ inline ApiFlags apiFromExportFlags(int flags)
 		output = (int)ApiFlags::Any;
 
 	return (ApiFlags)output;
-}
-
-inline bool needsIntermediateArray(::ExportedClassTypeCategory type, int flags = 0) //  TODO - To be removed
-{
-	if(type == ::ExportedClassTypeCategory::Class || type == ::ExportedClassTypeCategory::ReflectableClass)
-		return !isSrcSPtr(flags);
-
-	return false;
 }
 
 inline bool isCSOnly(int flags)
@@ -1202,14 +1184,6 @@ inline std::string CleanTemplateParameters(const std::string& name)
 inline std::string GetStructInteropTypeName(const std::string& name)
 {
 	return "__" + CleanTemplateParameters(name) + "Interop";
-}
-
-inline bool isValidStructType(TypeMappingInformation& typeInfo, int flags)
-{
-	if (isOutput(flags))
-		return false;
-
-	return true;
 }
 
 inline void getDerivedClasses(const std::string& typeName, std::vector<std::string>& output, bool onlyDirect = false)
