@@ -237,16 +237,16 @@ bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, Variabl
 						}
 						catch(const std::invalid_argument& ex)
 						{
-							outs() << "Error: Cannot convert SmallVector size template argument to a number, ignoring it.\n";
+							errs() << "Error: Cannot convert SmallVector size template argument to a number, ignoring it.\n";
 						}
 						catch(const std::out_of_range& ex)
 						{
-							outs() << "Error: Cannot convert SmallVector size template argument to a number, ignoring it.\n";
+							errs() << "Error: Cannot convert SmallVector size template argument to a number, ignoring it.\n";
 						}
 						
 					}
 					else
-						outs() << "Error: Template argument for SmallVector cannot be constantly evaluated, ignoring it.\n";
+						errs() << "Error: Template argument for SmallVector cannot be constantly evaluated, ignoring it.\n";
 				}
 
 				outType.ArraySize = smallVectorSize;
@@ -255,7 +255,7 @@ bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, Variabl
 				VariableTypeInformation underlyingTypeInformation;
 				if (!ParseTypeInformation(underlyingType, underlyingTypeInformation))
 				{
-					outs() << "Error: Failed parsing underlying SmallVector<T> type.\n";
+					errs() << "Error: Failed parsing underlying SmallVector<T> type.\n";
 					return false;
 				}
 
@@ -285,14 +285,14 @@ bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, Variabl
 
 				if(!foundUnderlying)
 				{
-					outs() << "Error: Cannot find underlying component type for ComponentOrActor<T>.\n";
+					errs() << "Error: Cannot find underlying component type for ComponentOrActor<T>.\n";
 					return false;
 				}
 
 				VariableTypeInformation underlyingTypeInformation;
 				if (!ParseTypeInformation(underlyingType, underlyingTypeInformation))
 				{
-					outs() << "Error: Failed parsing underlying ComponentOrActor<T> type.\n";
+					errs() << "Error: Failed parsing underlying ComponentOrActor<T> type.\n";
 					return false;
 				}
 
@@ -308,7 +308,122 @@ bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, Variabl
 				VariableTypeInformation underlyingTypeInformation;
 				if (!ParseTypeInformation(underlyingType, underlyingTypeInformation))
 				{
-					outs() << "Error: Failed parsing underlying TAsyncOp<T> type.\n";
+					errs() << "Error: Failed parsing underlying TAsyncOp<T> type.\n";
+					return false;
+				}
+
+				outType.UnderlyingType = std::make_unique<VariableTypeInformation>(std::move(underlyingTypeInformation));
+				return true;
+			}
+			else if(sourceTypeName == "Flags")
+			{
+				outType.TypeName = "Flags";
+				outType.TypeCategory = VariableTypeCategory::Flags;
+
+				if(numArgs > 1)
+				{
+					QualType storageType = specType->getArg(1).getAsType();
+					bool validStorageType = false;
+					if (storageType->isBuiltinType())
+					{
+						const BuiltinType* builtinType = realType->getAs<BuiltinType>();
+						std::string storageTypeStr;
+						if (ParserUtility::MapBuiltinPrimitiveTypeToCppType(builtinType->getKind(), storageTypeStr))
+						{
+							if (storageTypeStr == "uint32_t")
+								validStorageType = true;
+						}
+
+						if(!validStorageType)
+						{
+							errs() << "Error: Invalid storage type used for Flags.\n";
+							return false;
+						}
+					}
+				}
+
+				QualType underlyingType = specType->getArg(0).getAsType();
+				VariableTypeInformation underlyingTypeInformation;
+				if (!ParseTypeInformation(underlyingType, underlyingTypeInformation))
+				{
+					errs() << "Error: Failed parsing underlying Flags<T> type.\n";
+					return false;
+				}
+
+				outType.UnderlyingType = std::make_unique<VariableTypeInformation>(std::move(underlyingTypeInformation));
+				return true;
+			}
+			else if (sourceTypeName == "basic_string" && recordDecl->isInStdNamespace())
+			{
+				realType = specType->getArg(0).getAsType();
+
+				const BuiltinType* builtinType = realType->getAs<BuiltinType>();
+				if (builtinType->getKind() == BuiltinType::Kind::WChar_U ||
+					builtinType->getKind() == BuiltinType::Kind::WChar_S)
+				{
+					outType.TypeName = "WString";
+					outType.TypeCategory = VariableTypeCategory::WString;
+				}
+				else
+				{
+					outType.TypeName = "String";
+					outType.TypeCategory = VariableTypeCategory::String;
+				}
+
+				return true;
+			}
+			else if (sourceTypeName == "shared_ptr" && recordDecl->isInStdNamespace())
+			{
+				outType.TypeName = "Shared";
+				outType.TypeCategory = VariableTypeCategory::SharedPointer;
+
+				QualType underlyingType = specType->getArg(0).getAsType();
+				VariableTypeInformation underlyingTypeInformation;
+				if (!ParseTypeInformation(underlyingType, underlyingTypeInformation))
+				{
+					errs() << "Error: Failed parsing underlying Shared<T> type.\n";
+					return false;
+				}
+
+				outType.UnderlyingType = std::make_unique<VariableTypeInformation>(std::move(underlyingTypeInformation));
+				if (outType.UnderlyingType->TypeCategory == VariableTypeCategory::GameObjectHandle || outType.UnderlyingType->TypeCategory == VariableTypeCategory::ResourceHandle)
+				{
+					errs() << "Error: Game object and resource types are only allowed to be referenced through handles for scripting purposes\n";
+					return false;
+				}
+
+				return true;
+			}
+			else if (sourceTypeName == "TResourceHandle")
+			{
+				// Note: Not supporting weak resource handles
+
+				outType.TypeName = "TResourceHandle";
+				outType.TypeCategory = VariableTypeCategory::ResourceHandle;
+				outType.ParameterFlags |= (uint32_t)ParameterFlags::AsResourceRef; // Set this here, as we want to make it a default
+
+				QualType underlyingType = specType->getArg(0).getAsType();
+				VariableTypeInformation underlyingTypeInformation;
+				if (!ParseTypeInformation(underlyingType, underlyingTypeInformation))
+				{
+					errs() << "Error: Failed parsing underlying TResourceHandle<T> type.\n";
+					return false;
+				}
+
+				outType.UnderlyingType = std::make_unique<VariableTypeInformation>(std::move(underlyingTypeInformation));
+				return true;
+			}
+			else if (sourceTypeName == "GameObjectHandle")
+			{
+				realType = specType->getArg(0).getAsType();
+				outType.TypeName = "GameObjectHandle";
+				outType.TypeCategory = VariableTypeCategory::GameObjectHandle;
+
+				QualType underlyingType = specType->getArg(0).getAsType();
+				VariableTypeInformation underlyingTypeInformation;
+				if (!ParseTypeInformation(underlyingType, underlyingTypeInformation))
+				{
+					errs() << "Error: Failed parsing underlying TResourceHandle<T> type.\n";
 					return false;
 				}
 
@@ -344,7 +459,7 @@ bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, Variabl
 			VariableTypeInformation underlyingTypeInformation;
 			if (!ParseTypeInformation(underlyingType, underlyingTypeInformation))
 			{
-				outs() << "Error: Failed parsing underlying Array<T> type.\n";
+				errs() << "Error: Failed parsing underlying Array<T> type.\n";
 				return false;
 			}
 
@@ -353,149 +468,9 @@ bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, Variabl
 		}
 	}
 
-	// Check for non-array template types
-	if (realType->isStructureOrClassType())
-	{
-		// Check for arrays & flags
-		// Note: Not supporting nested arrays
-		const TemplateSpecializationType* specType = realType->getAs<TemplateSpecializationType>();
-		int numArgs = 0;
-
-		if (specType != nullptr)
-			numArgs = specType->getNumArgs();
-
-		if (numArgs > 0)
-		{
-			const RecordType* recordType = realType->getAs<RecordType>();
-			const RecordDecl* recordDecl = recordType->getDecl();
-
-			std::string sourceTypeName = recordDecl->getName().str();
-
-			// TODO - These can be moved above
-			if(sourceTypeName == "Flags")
-			{
-				outType.TypeName = "Flags";
-				outType.TypeCategory = VariableTypeCategory::Flags;
-
-				if(numArgs > 1)
-				{
-					QualType storageType = specType->getArg(1).getAsType();
-					bool validStorageType = false;
-					if (storageType->isBuiltinType())
-					{
-						const BuiltinType* builtinType = realType->getAs<BuiltinType>();
-						std::string storageTypeStr;
-						if (ParserUtility::MapBuiltinPrimitiveTypeToCppType(builtinType->getKind(), storageTypeStr))
-						{
-							if (storageTypeStr == "uint32_t")
-								validStorageType = true;
-						}
-
-						if(!validStorageType)
-						{
-							outs() << "Error: Invalid storage type used for Flags.\n";
-							return false;
-						}
-					}
-				}
-
-				QualType underlyingType = specType->getArg(0).getAsType();
-				VariableTypeInformation underlyingTypeInformation;
-				if (!ParseTypeInformation(underlyingType, underlyingTypeInformation))
-				{
-					outs() << "Error: Failed parsing underlying Flags<T> type.\n";
-					return false;
-				}
-
-				outType.UnderlyingType = std::make_unique<VariableTypeInformation>(std::move(underlyingTypeInformation));
-				return true;
-			}
-			else if (sourceTypeName == "basic_string" && recordDecl->isInStdNamespace())
-			{
-				realType = specType->getArg(0).getAsType();
-
-				const BuiltinType* builtinType = realType->getAs<BuiltinType>();
-				if (builtinType->getKind() == BuiltinType::Kind::WChar_U ||
-					builtinType->getKind() == BuiltinType::Kind::WChar_S)
-				{
-					outType.TypeName = "WString";
-					outType.TypeCategory = VariableTypeCategory::WString;
-				}
-				else
-				{
-					outType.TypeName = "String";
-					outType.TypeCategory = VariableTypeCategory::String;
-				}
-
-				return true;
-			}
-			else if (sourceTypeName == "shared_ptr" && recordDecl->isInStdNamespace())
-			{
-				outType.TypeName = "Shared";
-				outType.TypeCategory = VariableTypeCategory::SharedPointer;
-
-				QualType underlyingType = specType->getArg(0).getAsType();
-				VariableTypeInformation underlyingTypeInformation;
-				if (!ParseTypeInformation(underlyingType, underlyingTypeInformation))
-				{
-					outs() << "Error: Failed parsing underlying Shared<T> type.\n";
-					return false;
-				}
-
-				outType.UnderlyingType = std::make_unique<VariableTypeInformation>(std::move(underlyingTypeInformation));
-
-				//if (isGameObjectOrResource(underlyingType)) // TODO - Restore this? Or check elsewhere.
-				//{
-				//	outs() << "Error: Game object and resource types are only allowed to be referenced through handles"
-				//		<< " for scripting purposes\n";
-
-				//	return false;
-				//}
-
-				return true;
-			}
-			else if (sourceTypeName == "TResourceHandle")
-			{
-				// Note: Not supporting weak resource handles
-
-				outType.TypeName = "TResourceHandle";
-				outType.TypeCategory = VariableTypeCategory::ResourceHandle;
-				outType.ParameterFlags |= (uint32_t)ParameterFlags::AsResourceRef; // Set this here, as we want to make it a default
-
-				QualType underlyingType = specType->getArg(0).getAsType();
-				VariableTypeInformation underlyingTypeInformation;
-				if (!ParseTypeInformation(underlyingType, underlyingTypeInformation))
-				{
-					outs() << "Error: Failed parsing underlying TResourceHandle<T> type.\n";
-					return false;
-				}
-
-				outType.UnderlyingType = std::make_unique<VariableTypeInformation>(std::move(underlyingTypeInformation));
-				return true;
-			}
-			else if (sourceTypeName == "GameObjectHandle")
-			{
-				realType = specType->getArg(0).getAsType();
-				outType.TypeName = "GameObjectHandle";
-				outType.TypeCategory = VariableTypeCategory::GameObjectHandle;
-
-				QualType underlyingType = specType->getArg(0).getAsType();
-				VariableTypeInformation underlyingTypeInformation;
-				if (!ParseTypeInformation(underlyingType, underlyingTypeInformation))
-				{
-					outs() << "Error: Failed parsing underlying TResourceHandle<T> type.\n";
-					return false;
-				}
-
-				outType.UnderlyingType = std::make_unique<VariableTypeInformation>(std::move(underlyingTypeInformation));
-				return true;
-			}
-		}
-	}
-
 	if (realType->isPointerType())
 	{
-		outs() << "Error: Only normal pointers are supported for parameter types.\n";
+		errs() << "Error: Only normal pointers are supported for parameter types.\n";
 		return false;
 	}
 
@@ -531,11 +506,11 @@ bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, Variabl
 			// Check for a direct pointer to a managed object
 			if(sourceTypeName == "_MonoObject")
 			{
-				//if (!isSrcPointer(outType.flags)) // TODO - Restore this? Or check elsewhere.
-				//{
-				//	outs() << "Error: Found an object of type MonoObject but not passed by pointer. This is not supported. \n";
-				//	return false;
-				//}
+				if (!outType.IsQualifierFlagSet(VariableQualifierFlags::IsPointer))
+				{
+					errs() << "Error: Found an object of type MonoObject but not passed by pointer. This is not supported. \n";
+					return false;
+				}
 
 				outType.TypeName = "_MonoObject";
 				outType.TypeCategory = VariableTypeCategory::MonoObject;
@@ -577,7 +552,7 @@ bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, Variabl
 	}
 	else
 	{
-		outs() << "Error: Unrecognized type\n";
+		errs() << "Error: Unrecognized type\n";
 		return false;
 	}
 }
