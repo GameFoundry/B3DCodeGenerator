@@ -100,13 +100,13 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 				{
 					if (((int)method.flags & (int)MethodFlags::Constructor) != 0)
 					{
-						if (method.returnInfo.typeName.size() == 0)
+						if (method.returnInfo.TypeInformation.IsEmpty())
 						{
 							outs() << "Error: Found an external constructor \"" << method.sourceName << "\" with no return value, skipping.\n";
 							continue;
 						}
 
-						if (method.returnInfo.typeName != entry.first)
+						if (method.returnInfo.TypeInformation.GetLastWrappedOrSelfTypeName() != entry.first)
 						{
 							outs() << "Error: Found an external constructor \"" << method.sourceName << "\" whose return value doesn't match the external class, skipping.\n";
 							continue;
@@ -120,7 +120,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 							continue;
 						}
 
-						if (method.paramInfos[0].typeName != entry.first)
+						if (method.paramInfos[0].TypeInformation.GetLastWrappedOrSelfTypeName() != entry.first)
 						{
 							outs() << "Error: Found an external method \"" << method.sourceName << "\" whose first parameter doesn't "
 								" accept the class its operating on. This is not supported, skipping. \n";
@@ -305,25 +305,24 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 			return;
 
 		int enumIdx = atoi(paramInfo.DefaultValue.c_str());
-		EnumInfo* enumInfo = FindEnumInformation(paramInfo.typeName);
-		if(enumInfo == nullptr)
+		const std::string typeName = paramInfo.TypeInformation.GetLastWrappedOrSelfTypeName();
+		EnumInfo *const enumInformation = FindEnumInformation(typeName);
+		if(enumInformation == nullptr)
 		{
-			outs() << "Error: Cannot map default value of \"" + paramInfo.Name + 
-				"\" to enum entry for enum type \"" + paramInfo.typeName + "\". Ignoring.";
+			errs() << "Error: Cannot map default value of \"" + paramInfo.Name + "\" to enum entry for enum type \"" + typeName + "\". Ignoring.";
 			paramInfo.DefaultValue = "";
 			return;
 		}
 
-		auto iterFind = enumInfo->entries.find(enumIdx);
-		if(iterFind == enumInfo->entries.end())
+		auto iterFind = enumInformation->entries.find(enumIdx);
+		if(iterFind == enumInformation->entries.end())
 		{
-			outs() << "Error: Cannot map default value of \"" + paramInfo.Name + 
-				"\" to enum entry for enum type \"" + paramInfo.typeName + "\". Ignoring.";
+			errs() << "Error: Cannot map default value of \"" + paramInfo.Name + "\" to enum entry for enum type \"" + typeName + "\". Ignoring.";
 			paramInfo.DefaultValue = "";
 			return;
 		}
 
-		paramInfo.DefaultValue = enumInfo->scriptName + "." + iterFind->second.ScriptName;
+		paramInfo.DefaultValue = enumInformation->scriptName + "." + iterFind->second.ScriptName;
 	};
 
 	for (auto& fileInfo : outputFileInfos)
@@ -428,7 +427,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 				for (auto& paramInfo : methodInfo.paramInfos)
 					markParam(paramInfo);
 
-				if (methodInfo.returnInfo.typeName.size() != 0)
+				if (!methodInfo.returnInfo.TypeInformation.IsEmpty())
 				{
 					fnMarkComplexType(methodInfo.returnInfo.TypeInformation);
 					fnMarkBaseType(methodInfo.returnInfo.TypeInformation);
@@ -765,8 +764,7 @@ void ParserUtility::GatherIncludes(const VariableTypeInformation& typeInformatio
 
 void ParserUtility::GatherIncludes(const MethodInfo& methodInfo, bool isEditor, IncludesInfo& output)
 {
-	bool returnAsParameter = false;
-	if (!methodInfo.returnInfo.typeName.empty())
+	if (!methodInfo.returnInfo.TypeInformation.IsEmpty())
 		GatherIncludes(methodInfo.returnInfo.TypeInformation, isEditor, output);
 
 	for (auto I = methodInfo.paramInfos.begin(); I != methodInfo.paramInfos.end(); ++I)

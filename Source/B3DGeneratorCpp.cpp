@@ -639,7 +639,7 @@ static std::string GenerateEventCallbackSignature(const MethodInfo& eventInfo, c
 		output << " p" << parameterIndex;
 
 		if (I->TypeInformation.TypeCategory == VariableTypeCategory::Array)
-			output << "[" << I->arraySize << "]";
+			output << "[" << I->TypeInformation.ArraySize << "]";
 
 		if ((I + 1) != eventInfo.paramInfos.end())
 			output << ", ";
@@ -1702,7 +1702,7 @@ std::string GenerateFieldConvertBlock(const std::string& name, const VariableBas
 		case ::ExportedClassTypeCategory::WString:
 		case ::ExportedClassTypeCategory::Path:
 		case ::ExportedClassTypeCategory::Enum:
-			entryType = fieldInformation.typeName;
+			entryType = arrayElementTypeInformation.GetLastWrappedOrSelfTypeName();
 			break;
 		case ::ExportedClassTypeCategory::MonoObject:
 			entryType = "MonoObject*";
@@ -2142,7 +2142,7 @@ std::string generateCppMethodBody(const ClassInfo& classInfo, const MethodInfo& 
 
 	bool returnAsParameter = false;
 	TypeMappingInformation returnTypeMappingInformation;
-	if (!methodInfo.returnInfo.typeName.empty() && !isCtor)
+	if (!methodInfo.returnInfo.TypeInformation.IsEmpty() && !isCtor)
 	{
 		returnTypeMappingInformation = GetNativeToScriptTypeMapping(methodInfo.returnInfo.TypeInformation);
 		if (!CanBeReturned(methodInfo.returnInfo.TypeInformation, returnTypeMappingInformation))
@@ -2262,7 +2262,7 @@ std::string generateCppMethodBody(const ClassInfo& classInfo, const MethodInfo& 
 		}
 
 		std::string call;
-		if (!methodInfo.returnInfo.typeName.empty())
+		if (!methodInfo.returnInfo.TypeInformation.IsEmpty())
 		{
 			// Dereference input if needed
 			if ((isClassType(returnTypeMappingInformation.TypeCategory) && methodInfo.returnInfo.TypeInformation.TypeCategory == VariableTypeCategory::General))
@@ -3024,7 +3024,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 		for (int i = 0; i < numDummyParams; i++)
 		{
 			ctorParamsInit << "&dummy";
-			ctorSignature << unusedCtor.paramInfos[i].typeName;
+			ctorSignature << unusedCtor.paramInfos[i].TypeInformation.GetLastWrappedOrSelfTypeName();
 
 			if ((i + 1) < numDummyParams)
 			{
@@ -3344,7 +3344,7 @@ std::string generateCppStructSource(const StructInfo& structInfo)
 				std::string argName = GenerateFieldConvertBlock(fieldInformation.Name, fieldInformation, false, output);
 
 				output << "\t\tauto tmp" << fieldInformation.Name << " = " << argName << ";\n";
-				output << "\t\tfor(int i = 0; i < " << fieldInformation.arraySize << "; ++i)\n";
+				output << "\t\tfor(int i = 0; i < " << fieldInformation.TypeInformation.ArraySize << "; ++i)\n";
 				output << "\t\t\toutput." << fieldInformation.Name << "[i] = tmp" << fieldInformation.Name << "[i];\n";
 			}
 			else

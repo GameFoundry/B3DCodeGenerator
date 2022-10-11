@@ -121,6 +121,9 @@ struct VariableTypeInformation
 	void UnsetParameterFlag(enum ParameterFlags flags, bool recursive);
 	void SetPostProcessFlag(VariablePostProcessFlags flags, bool recursive);
 
+	/** Returns true if there is not type information assigned. */
+	bool IsEmpty() const { return TypeName.empty(); }
+
 	/** Returns true if the variable type is a non-const pointer or reference, which is recognized as a parameter output. */
 	bool IsOutputParameter() const { return (IsQualifierFlagSet(VariableQualifierFlags::IsPointer) || IsQualifierFlagSet(VariableQualifierFlags::IsReference)) && !IsQualifierFlagSet(VariableQualifierFlags::IsConst); }
 

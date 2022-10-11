@@ -351,7 +351,7 @@ std::string generateCSInteropMethodSignature(const MethodInfo& methodInfo, const
 	std::stringstream output;
 
 	bool returnAsParameter = false;
-	if (methodInfo.returnInfo.typeName.empty() || isCtor)
+	if (methodInfo.returnInfo.TypeInformation.IsEmpty() || isCtor)
 		output << "void";
 	else
 	{
@@ -544,7 +544,7 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 			{
 				TypeMappingInformation returnTypeMappingInformation;
 				std::string returnType;
-				if (entry.returnInfo.typeName.empty())
+				if (entry.returnInfo.TypeInformation.IsEmpty())
 					returnType = "void";
 				else
 				{
@@ -570,7 +570,7 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 				methods << generateCSMethodDefaultParamAssignments(entry, "\t\t\t");
 
 				bool returnByParam = false;
-				if (!entry.returnInfo.typeName.empty())
+				if (!entry.returnInfo.TypeInformation.IsEmpty())
 				{
 					if (!CanBeReturned(entry.returnInfo.TypeInformation, returnTypeMappingInformation))
 					{
@@ -1146,7 +1146,7 @@ std::string generateXMLMethodInfo(const MethodInfo& methodInfo, const std::strin
 	for(auto& param : methodInfo.paramInfos)
 		output << generateXMLParamInfo(param, methodInfo.documentation, indent + "\t");
 
-	if(!ctor && !methodInfo.returnInfo.typeName.empty())
+	if(!ctor && !methodInfo.returnInfo.TypeInformation.IsEmpty())
 	{
 		output << indent << "\t<returns type=\"" << escapeXML(GetNativeToScriptTypeMapping(methodInfo.returnInfo.TypeInformation).ScriptTypeName) << "\">\n";
 
@@ -1212,7 +1212,7 @@ std::string generateXMLEventInfo(const MethodInfo& eventInfo, const std::string&
 	for(auto& param : eventInfo.paramInfos)
 		output << generateXMLParamInfo(param, eventInfo.documentation, indent + "\t");
 
-	if(!eventInfo.returnInfo.typeName.empty())
+	if(!eventInfo.returnInfo.TypeInformation.IsEmpty())
 	{
 		output << indent << "\t<returns type=\"" << escapeXML(GetNativeToScriptTypeMapping(eventInfo.returnInfo.TypeInformation).ScriptTypeName) << "\">\n";
 
