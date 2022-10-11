@@ -4,24 +4,6 @@
 #include "B3DCommentParser.h"
 #include "B3DParserUtility.h"
 
-/**
- * Returns true if dereferencing is required when passing this type from/to script.
- *
- * @param	typeInformation				Information about the native type to generate the interop type for.
- * @param	typeMappingInformation		Mapping of the provided type in script.
- * @return								True if the type should be dereferenced.
- */
-static bool IsDereferenceRequired(const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation)
-{
-	// TODO - All uses of this can be removed and replaced with a SharedPointer check
-
-	// Other types aren't allowed to be dereferenced
-	if (typeMappingInformation.TypeCategory != ExportedClassTypeCategory::Class && typeMappingInformation.TypeCategory != ExportedClassTypeCategory::ReflectableClass)
-		return false;
-
-	return typeInformation.TypeCategory != VariableTypeCategory::SharedPointer;
-}
-
 /** Returns true if the provided type is passed as value type to an internal method parameter. */
 static bool IsInternalMethodParameterValueType(const VariableTypeInformation& typeInformation)
 {
@@ -997,7 +979,7 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 					const std::string arrayElementPtrName = "arrayElemPtr" + parameterName;
 
 					postCallActions << "\t\t\t\t" << arrayElementPtrType << " " << arrayElementPtrName;
-					if (IsDereferenceRequired(arrayElementTypeInformation, parameterTypeMappingInformation))
+					if (arrayElementTypeInformation.TypeCategory != VariableTypeCategory::SharedPointer)
 					{
 						postCallActions << " = bs_shared_ptr_new<" << parameterInformation.TypeInformation.TypeName << ">();\n";
 
@@ -1014,7 +996,9 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 						postCallActions << "nativeObj[i];\n";
 					}
 					else
+					{
 						postCallActions << " = nativeObj[i];\n";
+					}
 
 					postCallActions << "\t\t\t\tMonoObject* " << arrayElementName << ";\n";
 					postCallActions << GenerateNativeClassToMonoObject(arrayElementTypeInformation, arrayElementName, scriptType, arrayElementPtrName, false, "\t\t\t\t");
@@ -1091,7 +1075,7 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
 			const std::string fullTypeName = GetCppNativeQualifiedTypeName(parameterInformation.TypeInformation, parameterTypeMappingInformation);
 			preCallActions << "\t\t" << fullTypeName << " " << argumentName;
 
-			if (isClassType && (returnValue || isOutputParameter) && IsDereferenceRequired(parameterInformation.TypeInformation, parameterTypeMappingInformation))
+			if (isClassType && (returnValue || isOutputParameter) && parameterInformation.TypeInformation.TypeCategory != VariableTypeCategory::SharedPointer)
 				preCallActions << " = bs_shared_ptr_new<" << parameterTypeName << ">()"; // We'll be copying by value rather than just assigning the pointer, so initialize the destination
 
 			preCallActions << ";\n";
