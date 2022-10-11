@@ -1281,7 +1281,7 @@ std::string generateXMLClass(ClassInfo& input, bool editor, const std::string& i
 	for (auto& entry : input.ctorInfos)
 	{
 		bool interopOnly = (entry.flags & (int)MethodFlags::InteropOnly) != 0;
-		if(isValidAPI(entry.api, editor) && !interopOnly)
+		if(IsAPIValid(entry.api, editor) && !interopOnly)
 			output << generateXMLMethodInfo(entry, indent + "\t", true);
 	}
 
@@ -1291,13 +1291,13 @@ std::string generateXMLClass(ClassInfo& input, bool editor, const std::string& i
 		bool isConstructor = (entry.flags & (int)MethodFlags::Constructor) != 0;
 		bool isProperty = entry.flags & ((int)MethodFlags::PropertyGetter | (int)MethodFlags::PropertySetter);
 
-		if(isValidAPI(entry.api, editor) && !interopOnly && !isProperty)
+		if(IsAPIValid(entry.api, editor) && !interopOnly && !isProperty)
 			output << generateXMLMethodInfo(entry, indent + "\t", isConstructor);
 	}
 
    for(auto& entry : input.propertyInfos)
    {
-		if(isValidAPI(entry.api, editor))
+		if(IsAPIValid(entry.api, editor))
 			output << generateXMLPropertyInfo(entry, indent + "\t");
    }
 
@@ -1322,14 +1322,14 @@ void generateMappingXMLFile(bool editor, const std::string& outputFolder)
 		auto& enumInfos = fileInfo.second.enumInfos;
 		for (auto& entry : enumInfos)
 		{
-			if (isValidAPI(entry.api, editor))
+			if (IsAPIValid(entry.api, editor))
 				body << generateXMLEnum(entry, "\t");
 		}
 
 		auto& structInfos = fileInfo.second.structInfos;
 		for (auto& entry : structInfos)
 		{
-			if (isValidAPI(entry.api, editor))
+			if (IsAPIValid(entry.api, editor))
 				body << generateXMLStruct(entry, "\t");
 		}
 
@@ -1337,7 +1337,7 @@ void generateMappingXMLFile(bool editor, const std::string& outputFolder)
 		auto& classInfos = fileInfo.second.classInfos;
 		for (auto& entry : classInfos)
 		{
-			if (isValidAPI(entry.api, editor))
+			if (IsAPIValid(entry.api, editor))
 				body << generateXMLClass(entry, editor, "\t");
 		}
 	}

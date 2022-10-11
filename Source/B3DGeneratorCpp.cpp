@@ -2450,7 +2450,7 @@ std::string generateCppEventCallbackBody(const MethodInfo& eventInfo, bool isMod
 
 std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappingInformation& typeMappingInformation)
 {
-	bool inEditor = hasAPIBED (classInfo.api);
+	bool inEditor = IsAPIEditor (classInfo.api);
 	bool isBase = (classInfo.flags & (int)ClassFlags::IsBase) != 0;
 	bool isModule = (classInfo.flags & (int)ClassFlags::IsModule) != 0;
 	bool isRootBase = classInfo.baseClass.empty();
@@ -3238,7 +3238,7 @@ std::string generateCppStructHeader(const StructInfo& structInfo)
 
 	output << "\tclass ";
 
-	bool inEditor = hasAPIBED (structInfo.api);
+	bool inEditor = IsAPIEditor (structInfo.api);
 	if (!inEditor)
 		output << sFrameworkExportMacro << " ";
 	else

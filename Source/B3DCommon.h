@@ -632,24 +632,25 @@ enum FileType
 	FT_COUNT // Keep at end
 };
 
-inline bool hasAPIBED(ApiFlags api)
+inline bool IsAPIEditor(ApiFlags api)
 {
 	return ((int)api & (int)ApiFlags::Editor) != 0;
 }
 
-inline bool hasAPIB3D(ApiFlags api)
+inline bool IsAPIEngine(ApiFlags api)
 {
 	return ((int)api & (int)ApiFlags::Engine) != 0;
 }
 
-inline bool hasAPIBSF(ApiFlags api)
+inline bool IsAPIFramework(ApiFlags api)
 {
 	return ((int)api & (int)ApiFlags::Framework) != 0;
 }
 
-inline bool isValidAPI(ApiFlags api, bool editor)
+/** Determines if the provided API is usable depending on whether we're building the editor scripting or not. */
+inline bool IsAPIValid(ApiFlags api, bool editor)
 {
-   return (editor && hasAPIBED(api)) || (!editor && (hasAPIB3D(api) || hasAPIBSF(api)));
+   return (editor && IsAPIEditor(api)) || (!editor && (IsAPIEngine(api) || IsAPIFramework(api)));
 }
 
 /** Contains a map of native types to script types. The key is the native name as provided in ClassInfo.Name, StructInfo.Name or EnumInfo.Name. */
@@ -682,7 +683,7 @@ inline ClassInfo* FindClassInformation(const std::string& name, bool isEditor)
 				continue;
 
 			// Two versions of editor and Framework class migth exist, make sure to pick the right one
-			if((isEditor && classInfo.api == ApiFlags::Framework) || (!isEditor &&  hasAPIBED(classInfo.api)))
+			if((isEditor && classInfo.api == ApiFlags::Framework) || (!isEditor &&  IsAPIEditor(classInfo.api)))
 				continue;
 
 			return &classInfo;

@@ -280,7 +280,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 			if (classInfo.baseClass.empty())
 				continue;
 
-			bool isEditor = hasAPIBED(classInfo.api);
+			bool isEditor = IsAPIEditor(classInfo.api);
 			ClassInfo* baseClassInfo = FindClassInformation(classInfo.baseClass, isEditor);
 			if (baseClassInfo == nullptr)
 			{
@@ -503,7 +503,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 				{
 					TypeMappingInformation& baseTypeInfo = NativeToScriptTypeMap[classInfo.baseClass];
 
-					if(hasAPIBED(classInfo.api))
+					if(IsAPIEditor(classInfo.api))
 						fileInfo.second.referencedHeaderIncludes.push_back(baseTypeInfo.EditorInteropFile);
 					else
 						fileInfo.second.referencedHeaderIncludes.push_back(baseTypeInfo.InteropFile);
@@ -842,7 +842,7 @@ void ParserUtility::GatherIncludes(const FieldInfo& fieldInfo, bool isEditor, In
 
 void ParserUtility::GatherIncludes(const ClassInfo& classInfo, IncludesInfo& output)
 {
-	bool isEditor = hasAPIBED(classInfo.api);
+	bool isEditor = IsAPIEditor(classInfo.api);
 
 	for (auto& methodInfo : classInfo.ctorInfos)
 		GatherIncludes(methodInfo, isEditor, output);
@@ -856,7 +856,7 @@ void ParserUtility::GatherIncludes(const ClassInfo& classInfo, IncludesInfo& out
 
 void ParserUtility::GatherIncludes(const StructInfo& structInfo, IncludesInfo& output)
 {
-	bool isEditor = hasAPIBED(structInfo.api);
+	bool isEditor = IsAPIEditor(structInfo.api);
 
 	if (structInfo.requiresInterop)
 	{

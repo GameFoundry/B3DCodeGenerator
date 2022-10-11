@@ -3,7 +3,8 @@
 
 #include "B3DParserUtility.h"
 
-::ExportedClassTypeCategory getObjectType(const CXXRecordDecl* decl)
+/** Parses the declaration and determines what exported type category should be used to represent this type in scripting. */
+static ExportedClassTypeCategory DetermineExportedTypeCategory(const CXXRecordDecl* decl)
 {
 	std::stack<const CXXRecordDecl*> todo;
 	todo.push(decl);
@@ -43,22 +44,8 @@
 	return ::ExportedClassTypeCategory::Class;
 }
 
-bool isGameObjectOrResource(QualType type)
-{
-	const RecordType* recordType = type->getAs<RecordType>();
-	if (recordType == nullptr)
-		return false;
-
-	const RecordDecl* recordDecl = recordType->getDecl();
-	const CXXRecordDecl* cxxDecl = dyn_cast<CXXRecordDecl>(recordDecl);
-	if (cxxDecl == nullptr)
-		return false;
-
-	::ExportedClassTypeCategory objType = getObjectType(cxxDecl);
-	return objType == ::ExportedClassTypeCategory::Component || objType == ::ExportedClassTypeCategory::SceneObject || objType == ::ExportedClassTypeCategory::Resource;
-}
-
-std::string getNamespace(const RecordDecl* decl)
+/** Returns the namespace the provided declaration is in. */
+std::string ParseNamespace(const RecordDecl* decl)
 {
 	std::string nsName;
 	const DeclContext* nsContext = decl->getEnclosingNamespaceContext();
@@ -80,7 +67,7 @@ void registerUserTypeInfo(const SmallVector<std::string, 4>& classNs, const std:
 	std::string destFileEditor = destFile;
 
 	// Going to need separate file for editor?
-	if (hasAPIBED(api) && hasAPIBSF(api))
+	if (IsAPIEditor(api) && IsAPIFramework(api))
 		destFileEditor = "BsScript" + exportFile + ".editor.generated.h";
 
 	NativeToScriptTypeMap[className] = TypeMappingInformation(classNs, exportName, type, declFile, destFile, destFileEditor);
@@ -89,10 +76,10 @@ void registerUserTypeInfo(const SmallVector<std::string, 4>& classNs, const std:
 template<class T>
 void addEntryToFile(FileInfo& fileInfo, T& entry, const std::string& file, std::function<void(FileInfo&, const T&)> addEntry)
 {
-	if (hasAPIBED(entry.api))
+	if (IsAPIEditor(entry.api))
 	{
 		// Editor only file
-		if(!hasAPIBSF(entry.api))
+		if(!IsAPIFramework(entry.api))
 		{
 			fileInfo.inEditor = true;
 			addEntry(fileInfo, entry);
@@ -573,7 +560,7 @@ bool BansheeCodeGeneratorASTVisitor::parseEventSignature(QualType type, Function
 			const RecordDecl* recordDecl = recordType->getDecl();
 
 			std::string sourceTypeName = recordDecl->getName().str();
-			std::string nsName = getNamespace(recordDecl);
+			std::string nsName = ParseNamespace(recordDecl);
 
 			bool isEvent = false;
 			if (sourceTypeName == "Event" && nsName == sFrameworkCppNs)
@@ -1459,7 +1446,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 		if (decl->isStruct())
 			classInfo.flags |= (int)ClassFlags::IsStruct;
 
-		::ExportedClassTypeCategory classType = getObjectType(decl);
+		::ExportedClassTypeCategory classType = DetermineExportedTypeCategory(decl);
 
 		std::string declFile = astContext->getSourceManager().getFilename(decl->getSourceRange().getBegin()).str();
 		registerUserTypeInfo(classInfo.ns, srcClassName, classInfo.api, declFile, parsedClassInfo.ExportedTypeName,
