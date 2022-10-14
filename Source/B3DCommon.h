@@ -42,24 +42,6 @@ extern std::string sEditorExportMacro;
 extern std::string sFrameworkCopyrightNotice;
 extern std::string sEditorCopyrightNotice;
 
-/** Determines the high level type of the exported class/struct declaration. */
-enum class ExportedClassTypeCategory
-{
-	Component, /**< Child of native builtin Component type. */
-	SceneObject,/**< Child of native builtin SceneObject type. */
-	Resource, /**< Child of native builtin Resource type. */
-	GUIElement, /**< Child of native builtin GUIElementBase type. */
-	Class, /**< Generic class (no known builtin type is a base). */
-	ReflectableClass, /**< Child of native builtin IReflectable type. */
-	Struct, /**< Generic struct (no known builtin type is a base). */
-	Enum, /**< enum or enum class. */
-	Primitive, /**< int, float, bool, etc. */
-	String, /**< Builtin String type. */
-	WString, /**< Builtin WString type. */
-	Path, /**< Builtin Path type. */
-	MonoObject /**< Builtin MonoObject type. */
-};
-
 /** Determines the type of variable contained in VariableTypeInformation. */
 enum class VariableTypeCategory
 {
@@ -326,6 +308,26 @@ struct ExportStyle
 	int flags = 0;
 };
 
+/** Determines the high level type of the exported class/struct declaration. */
+enum class ExportedClassTypeCategory
+{
+	Component, /**< Child of native builtin Component type. */
+	SceneObject,/**< Child of native builtin SceneObject type. */
+	Resource, /**< Child of native builtin Resource type. */
+	GUIElement, /**< Child of native builtin GUIElementBase type. */
+	Class, /**< Generic class (no known builtin type is a base). */
+	ReflectableClass, /**< Child of native builtin IReflectable type. */
+	Struct, /**< Generic struct (no known builtin type is a base). */
+	Enum, /**< enum or enum class. */
+	Primitive, /**< int, float, bool, etc. */
+	String, /**< Builtin String type. */
+	WString, /**< Builtin WString type. */
+	Path, /**< Builtin Path type. */
+	MonoObject /**< Builtin MonoObject type. */
+};
+
+#pragma region Type Mapping
+
 /**
  * Contains information about how a native type maps to a script type.
  *
@@ -356,7 +358,7 @@ struct TypeMappingInformation // TODO - Add a new TypeMapping file/class. Regist
 	std::string NativeFile; /**< File in which the native type is defined in. Used for resolving includes. */
 	std::string InteropFile; /**< File in which the interop for this type is defined in. Used for resolving includes. */
 	std::string EditorInteropFile; /**< Same as @p InteropFile, but if a type is exported in both framework and editor, then we need to generate two interop files. */
-	::ExportedClassTypeCategory TypeCategory; /**< Determines a high level category that this type belongs to. */
+	ExportedClassTypeCategory TypeCategory; /**< Determines a high level category that this type belongs to. */
 	BuiltinType::Kind EnumUnderlyingType; /**< Underlying primitive type for enum or enum class. */
 };
 
@@ -385,428 +387,7 @@ inline bool TypeMappingInformation::IsClassType() const
 	return TypeCategory == ExportedClassTypeCategory::Class || TypeCategory == ExportedClassTypeCategory::ReflectableClass;
 }
 
-struct VariableBase
-{
-	VariableTypeInformation TypeInformation;
-};
-
-struct VariableInformation : VariableBase
-{
-	std::string Name;
-
-	std::string DefaultValue;
-	std::string DefaultValueType;
-};
-
-struct ReturnInfo : VariableBase
-{ };
-
-/** Represents a reference to another type, method or parameter within a comment. */
-struct CommentReference
-{
-	uint32_t PositionInText; /**< Position in the corresponding text, at which to insert the reference. */
-	std::string Name; /**< Name of the type, method, field or parameter that's being referenced. */
-};
-
-/** Contains a single paragraph of comment text for a particular type, method, field or parameter. */
-struct CommentText
-{
-	std::string Text;
-	SmallVector<CommentReference, 2> ParameterReferences; /**< Locations within @p text at which method parameters are referenced. Only relevant if the current comment is part of a method comment. */
-	SmallVector<CommentReference, 2> DeclarationReferences; /**< Locations within @p text at which other declarations are referenced (e.g. other types, methods, fields). */
-};
-
-/** Contains zero or multiple paragraphs of comment text for a method parameter. */
-struct CommentParameterEntry
-{
-	std::string Name; /**< Name of the parameter that's being commented. */
-	SmallVector<CommentText, 2> comments; /**< Zero or multiple comment text paragraphs. */
-};
-
-/** Contains comment text for a particular type, method or field. */
-struct CommentEntry
-{
-	SmallVector<CommentText, 2> brief; /**< Summary comment describing the type, method or field. */
-
-	SmallVector<CommentParameterEntry, 4> params; /**< Comments for method parameters, if this is a method comment. */
-	SmallVector<CommentText, 2> returns; /**< Zero or multiple comment paragraphs describing method return value, if this is a method comment. */
-};
-
-struct FieldInfo : VariableInformation
-{
-	CommentEntry documentation;
-	ExportStyle style;
-};
-
-struct TemplateParamInfo
-{
-	std::string type;
-};
-
-struct MethodInfo
-{
-	std::string sourceName;
-	std::string interopName;
-	std::string scriptName;
-	CSVisibility visibility;
-	ApiFlags api;
-
-	ReturnInfo returnInfo;
-	std::vector<VariableInformation> paramInfos;
-	CommentEntry documentation;
-
-	std::string externalClass;
-	int flags;
-	ExportStyle style;
-};
-
-struct PropertyInfo
-{
-	VariableTypeInformation TypeInformation;
-	std::string name;
-
-	std::string getter;
-	std::string setter;
-
-	CSVisibility visibility;
-	ApiFlags api;
-	bool isStatic;
-	ExportStyle style;
-	CommentEntry documentation;
-};
-
-struct ClassInfo
-{
-	std::string name;
-	std::string cleanName;
-	CSVisibility visibility;
-	ApiFlags api;
-	int flags;
-	SmallVector<std::string, 4> ns;
-	SmallVector<TemplateParamInfo, 0> templParams;
-
-	std::vector<MethodInfo> ctorInfos;
-	std::vector<PropertyInfo> propertyInfos;
-	std::vector<MethodInfo> methodInfos;
-	std::vector<MethodInfo> eventInfos;
-	std::vector<FieldInfo> fieldInfos;
-	std::string baseClass;
-
-	CommentEntry documentation;
-	std::string module;
-};
-
-struct ExternalClassInfos
-{
-	std::vector<MethodInfo> methods;
-};
-
-struct SimpleConstructorInfo
-{
-	std::vector<VariableInformation> params;
-	std::unordered_map<std::string, std::string> fieldAssignments;
-	CommentEntry documentation;
-};
-
-struct StructInfo
-{
-	std::string name;
-	std::string cleanName;
-	std::string interopName;
-	std::string baseClass;
-	CSVisibility visibility;
-	ApiFlags api;
-	SmallVector<std::string, 4> ns;
-	SmallVector<TemplateParamInfo, 0> templParams;
-
-	std::vector<SimpleConstructorInfo> ctors;
-	std::vector<FieldInfo> fields;
-	bool requiresInterop : 1;
-	bool isTemplateInst : 1;
-
-	CommentEntry documentation;
-	std::string module;
-};
-
-/** Information about a single entry within an enum. */
-struct EnumEntryInfo
-{
-	std::string NativeName;
-	std::string ScriptName;
-	std::string Value;
-	CommentEntry Documentation;
-};
-
-struct EnumInfo
-{
-	std::string name;
-	std::string scriptName;
-	CSVisibility visibility;
-	ApiFlags api;
-	SmallVector<std::string, 4> ns;
-
-	std::string explicitType;
-	std::unordered_map<int, EnumEntryInfo> entries;
-
-	CommentEntry documentation;
-	std::string module;
-};
-
-struct ForwardDeclInfo
-{
-	SmallVector<std::string, 4> ns;
-	std::string name;
-	bool isStruct;
-	SmallVector<TemplateParamInfo, 0> templParams;
-
-	bool operator==(const ForwardDeclInfo& rhs) const
-	{
-		return name == rhs.name && ns == rhs.ns;
-	}
-};
-
-template<>
-struct std::hash<ForwardDeclInfo>
-{
-	std::size_t operator()(const ForwardDeclInfo& value) const
-	{
-		std::hash<std::string> hasher;
-		size_t hash = hasher(value.name);
-
-		for (auto& entry : value.ns)
-			hash = hash_combine(hash, hasher(entry));
-		
-		return hash;
-	}
-};
-
-struct FileInfo
-{
-	std::vector<ClassInfo> classInfos;
-	std::vector<StructInfo> structInfos;
-	std::vector<EnumInfo> enumInfos;
-
-	std::unordered_set<ForwardDeclInfo> forwardDeclarations;
-	std::vector<std::string> referencedHeaderIncludes;
-	std::vector<std::string> referencedSourceIncludes;
-	bool inEditor;
-};
-
-enum class IncludeType
-{
-	None,
-	IncludeInHeader = 1 << 0,
-	IncludeInImplementation = 1 << 1,
-	ForwardDeclare = 1 << 2,
-	ForwardDeclareAndIncludeInImplementation = ForwardDeclare | IncludeInImplementation
-};
-
-struct IncludeInfo
-{
-	IncludeInfo() { }
-	IncludeInfo(const std::string& typeName, const TypeMappingInformation& typeInfo, IncludeType originIncludeFlags, 
-		IncludeType interopIncludeFlags, bool isStruct = false, bool isEditor = false)
-		: typeName(typeName), typeInfo(typeInfo), originIncludeFlags(originIncludeFlags)
-		, interopIncludeFlags(interopIncludeFlags), isStruct(isStruct), isEditor(isEditor)
-	{ }
-
-	std::string typeName;
-	TypeMappingInformation typeInfo;
-	IncludeType originIncludeFlags;
-	IncludeType interopIncludeFlags;
-	bool isStruct;
-	bool isEditor;
-};
-
-struct IncludesInfo
-{
-	bool requiresResourceManager = false;
-	bool requiresGameObjectManager = false;
-	bool requiresRRef = false;
-	bool requiresRTTI = false;
-	bool requiresAsyncOp = false;
-	std::unordered_map<std::string, IncludeInfo> includes;
-	std::unordered_map<std::string, ForwardDeclInfo> fwdDecls;
-};
-
-struct CommentMethodInformation
-{
-	SmallVector<std::string, 3> params;
-	CommentEntry comment;
-};
-
-struct CommentInformation
-{
-	std::string name;
-	std::string fullName;
-
-	SmallVector<std::string, 2> namespaces;
-	SmallVector<CommentMethodInformation, 2> overloads;
-
-	CommentEntry comment;
-	bool isFunction = false;
-};
-
-struct BaseClassInfo
-{
-	std::vector<std::string> childClasses;
-};
-
-enum FileType
-{
-	FT_ENGINE_H,
-	FT_ENGINE_CPP,
-	FT_EDITOR_H,
-	FT_EDITOR_CPP,
-	FT_ENGINE_CS,
-	FT_EDITOR_CS,
-	FT_COUNT // Keep at end
-};
-
-inline bool IsAPIEditor(ApiFlags api)
-{
-	return ((int)api & (int)ApiFlags::Editor) != 0;
-}
-
-inline bool IsAPIEngine(ApiFlags api)
-{
-	return ((int)api & (int)ApiFlags::Engine) != 0;
-}
-
-inline bool IsAPIFramework(ApiFlags api)
-{
-	return ((int)api & (int)ApiFlags::Framework) != 0;
-}
-
-/** Determines if the provided API is usable depending on whether we're building the editor scripting or not. */
-inline bool IsAPIValid(ApiFlags api, bool editor)
-{
-   return (editor && IsAPIEditor(api)) || (!editor && (IsAPIEngine(api) || IsAPIFramework(api)));
-}
-
-/** Contains a map of native types to script types. The key is the native name as provided in ClassInfo.Name, StructInfo.Name or EnumInfo.Name. */
 extern std::unordered_map<std::string, TypeMappingInformation> NativeToScriptTypeMap;
-extern std::unordered_map<std::string, FileInfo> outputFileInfos;
-extern std::unordered_map<std::string, ExternalClassInfos> externalClassInfos;
-extern std::unordered_map<std::string, BaseClassInfo> baseClassLookup;
-
-inline StructInfo* FindStructInformation(const std::string& name)
-{
-	for (auto& fileInfo : outputFileInfos)
-	{
-		for (auto& structInfo : fileInfo.second.structInfos)
-		{
-			if (structInfo.name == name)
-				return &structInfo;
-		}
-	}
-
-	return nullptr;
-};
-
-inline ClassInfo* FindClassInformation(const std::string& name, bool isEditor)
-{
-	for (auto& fileInfo : outputFileInfos)
-	{
-		for (auto& classInfo : fileInfo.second.classInfos)
-		{
-			if (classInfo.name != name)
-				continue;
-
-			// Two versions of editor and Framework class migth exist, make sure to pick the right one
-			if((isEditor && classInfo.api == ApiFlags::Framework) || (!isEditor &&  IsAPIEditor(classInfo.api)))
-				continue;
-
-			return &classInfo;
-		}
-	}
-
-	return nullptr;
-}
-
-inline EnumInfo* FindEnumInformation(const std::string& name)
-{
-	for (auto& fileInfo : outputFileInfos)
-	{
-		for (auto& enumInfo : fileInfo.second.enumInfos)
-		{
-			if (enumInfo.name == name)
-				return &enumInfo;
-		}
-	}
-
-	return nullptr;
-}
-
-inline bool mapBuiltinTypeToCSType(BuiltinType::Kind kind, std::string& output)
-{
-	switch (kind)
-	{
-	case BuiltinType::Void:
-		output = "void";
-		return true;
-	case BuiltinType::Bool:
-		output = "bool";
-		return true;
-	case BuiltinType::Char_S:
-		output = "byte";
-		return true;
-	case BuiltinType::Char_U:
-		output = "byte";
-		return true;
-	case BuiltinType::SChar:
-		output = "byte";
-		return true;
-	case BuiltinType::Short:
-		output = "short";
-		return true;
-	case BuiltinType::Int:
-		output = "int";
-		return true;
-	case BuiltinType::Long:
-		output = "long";
-		return true;
-	case BuiltinType::LongLong:
-		output = "long";
-		return true;
-	case BuiltinType::UChar:
-		output = "byte";
-		return true;
-	case BuiltinType::UShort:
-		output = "short";
-		return true;
-	case BuiltinType::UInt:
-		output = "int";
-		return true;
-	case BuiltinType::ULong:
-		output = "long";
-		return true;
-	case BuiltinType::ULongLong:
-		output = "long";
-		return true;
-	case BuiltinType::Float:
-		output = "float";
-		return true;
-	case BuiltinType::Double:
-		output = "double";
-		return true;
-	case BuiltinType::WChar_S:
-	case BuiltinType::WChar_U:
-		output = "short";
-		return true;
-	case BuiltinType::Char16:
-		output = "short";
-		return true;
-	case BuiltinType::Char32:
-		output = "int";
-		return true;
-	default:
-		break;
-	}
-
-	errs() << "Unrecognized builtin type found.\n";
-	return false;
-}
 
 inline std::string mapCppTypeToCSType(const std::string& cppType)
 {
@@ -845,15 +426,6 @@ inline std::string mapCppTypeToCSType(const std::string& cppType)
 
 	return cppType;
 }
-
-inline std::string getCSLiteralSuffix(const std::string& cppType)
-{
-	if (cppType == "float")
-		return "f";
-
-	return "";
-}
-
 /** Returns the information about a native type maps to a script type. */
 inline TypeMappingInformation GetNativeToScriptTypeMapping(const std::string& typeName)
 {
@@ -1003,6 +575,362 @@ inline TypeMappingInformation GetNativeToScriptTypeMapping(const VariableTypeInf
 	}
 }
 
+#pragma endregion Type Mapping
+
+struct VariableBase
+{
+	VariableTypeInformation TypeInformation;
+};
+
+struct VariableInformation : VariableBase
+{
+	std::string Name;
+
+	std::string DefaultValue;
+	std::string DefaultValueType;
+};
+
+struct ReturnInfo : VariableBase
+{ };
+
+/** Represents a reference to another type, method or parameter within a comment. */
+struct CommentReference
+{
+	uint32_t PositionInText; /**< Position in the corresponding text, at which to insert the reference. */
+	std::string Name; /**< Name of the type, method, field or parameter that's being referenced. */
+};
+
+/** Contains a single paragraph of comment text for a particular type, method, field or parameter. */
+struct CommentText
+{
+	std::string Text;
+	SmallVector<CommentReference, 2> ParameterReferences; /**< Locations within @p text at which method parameters are referenced. Only relevant if the current comment is part of a method comment. */
+	SmallVector<CommentReference, 2> DeclarationReferences; /**< Locations within @p text at which other declarations are referenced (e.g. other types, methods, fields). */
+};
+
+/** Contains zero or multiple paragraphs of comment text for a method parameter. */
+struct CommentParameterEntry
+{
+	std::string Name; /**< Name of the parameter that's being commented. */
+	SmallVector<CommentText, 2> Comments; /**< Zero or multiple comment text paragraphs. */
+};
+
+/** Contains comment text for a particular type, method or field. */
+struct CommentEntry
+{
+	SmallVector<CommentText, 2> Brief; /**< Summary comment describing the type, method or field. */
+
+	SmallVector<CommentParameterEntry, 4> ParameterComments; /**< Comments for method parameters, if this is a method comment. */
+	SmallVector<CommentText, 2> ReturnValueComments; /**< Zero or multiple comment paragraphs describing method return value, if this is a method comment. */
+};
+
+struct FieldInfo : VariableInformation
+{
+	CommentEntry Documentation;
+	ExportStyle Style;
+};
+
+struct TemplateParamInfo
+{
+	std::string Name;
+};
+
+struct MethodInfo
+{
+	std::string NativeName;
+	std::string InteropName;
+	std::string ScriptName;
+	CSVisibility Visibility = CSVisibility::Public;
+	ApiFlags API = ApiFlags::Framework;
+
+	ReturnInfo ReturnValue;
+	std::vector<VariableInformation> Parameters;
+	CommentEntry Documentation;
+
+	std::string ExternalClass;
+	int MethodFlags = 0;
+	ExportStyle Style;
+};
+
+struct PropertyInfo
+{
+	VariableTypeInformation TypeInformation;
+	std::string ScriptName;
+
+	std::string GetterName;
+	std::string SetterName;
+
+	CSVisibility Visibility = CSVisibility::Public;
+	ApiFlags API = ApiFlags::Framework;
+	bool IsStatic = false;
+	ExportStyle Style;
+	CommentEntry Documentation;
+};
+
+struct GeneratedTypeInformation
+{
+	std::string NativeName;
+	std::string BaseClassName;
+	SmallVector<std::string, 4> Namespace;
+
+	CSVisibility Visibility = CSVisibility::Public;
+	ApiFlags API = ApiFlags::Framework;
+
+	std::string NativeNameWithoutTemplateArguments;
+	SmallVector<TemplateParamInfo, 0> TemplateParameters;
+	
+	CommentEntry Documentation;
+	std::string DocumentationGroup;
+};
+
+struct ClassInfo : GeneratedTypeInformation
+{
+	int ClassFlags = 0;
+
+	std::vector<MethodInfo> Constructors;
+	std::vector<PropertyInfo> Properties;
+	std::vector<MethodInfo> Methods;
+	std::vector<MethodInfo> Events;
+	std::vector<FieldInfo> Fields;
+};
+
+struct ExternalClassInfos
+{
+	std::vector<MethodInfo> Methods;
+};
+
+struct SimpleConstructorInfo
+{
+	std::vector<VariableInformation> Parameters;
+	std::unordered_map<std::string, std::string> FieldAssignments; /**< Maps which class/struct field maps to which constructor parameter, by name. */
+	CommentEntry Documentation;
+};
+
+struct StructInfo : GeneratedTypeInformation
+{
+	std::string InteropName;
+
+	std::vector<SimpleConstructorInfo> Constructors;
+	std::vector<FieldInfo> Fields;
+	bool RequiresInteropType = false;
+	bool IsTemplateInstatiation = false;
+};
+
+/** Information about a single entry within an enum. */
+struct EnumEntryInfo
+{
+	std::string NativeName;
+	std::string ScriptName;
+	std::string Value;
+	CommentEntry Documentation;
+};
+
+struct EnumInfo : GeneratedTypeInformation
+{
+	std::string ScriptName;
+
+	std::string ExplicitUnderlyingCSharpType; /**< Explicit underlying type of the enum, as a C# type. */
+	std::unordered_map<int, EnumEntryInfo> Entries;
+};
+
+struct ForwardDeclInfo
+{
+	ForwardDeclInfo() = default;
+	ForwardDeclInfo(const std::string& typeName, const SmallVector<std::string, 4>& nameSpace, const SmallVector<TemplateParamInfo, 0>& templateParameters = {}, bool isStruct = false)
+		:TypeName(typeName), Namespace(nameSpace), TemplateParameters(templateParameters), IsStruct(isStruct)
+	{ }
+
+	bool operator==(const ForwardDeclInfo& rhs) const
+	{
+		return TypeName == rhs.TypeName && Namespace == rhs.Namespace;
+	}
+
+	std::string TypeName;
+	SmallVector<std::string, 4> Namespace;
+	SmallVector<TemplateParamInfo, 0> TemplateParameters;
+	bool IsStruct = false;
+};
+
+template<>
+struct std::hash<ForwardDeclInfo>
+{
+	std::size_t operator()(const ForwardDeclInfo& value) const
+	{
+		std::hash<std::string> hasher;
+		size_t hash = hasher(value.TypeName);
+
+		for (auto& entry : value.Namespace)
+			hash = hash_combine(hash, hasher(entry));
+		
+		return hash;
+	}
+};
+
+struct FileInfo
+{
+	std::vector<ClassInfo> Classes;
+	std::vector<StructInfo> Structs;
+	std::vector<EnumInfo> Enums;
+
+	std::unordered_set<ForwardDeclInfo> ForwardDeclarations;
+	std::vector<std::string> ReferencedHeaderIncludes;
+	std::vector<std::string> ReferencedSourceIncludes;
+	bool InEditor = false;
+};
+
+enum class IncludeType
+{
+	None,
+	IncludeInHeader = 1 << 0,
+	IncludeInImplementation = 1 << 1,
+	ForwardDeclare = 1 << 2,
+	ForwardDeclareAndIncludeInImplementation = ForwardDeclare | IncludeInImplementation
+};
+
+struct IncludeInfo
+{
+	IncludeInfo() { }
+	IncludeInfo(const std::string& typeName, const TypeMappingInformation& typeInfo, IncludeType originIncludeFlags, 
+		IncludeType interopIncludeFlags, bool isStruct = false, bool isEditor = false)
+		: typeName(typeName), typeInfo(typeInfo), originIncludeFlags(originIncludeFlags)
+		, interopIncludeFlags(interopIncludeFlags), isStruct(isStruct), isEditor(isEditor)
+	{ }
+
+	std::string typeName;
+	TypeMappingInformation typeInfo;
+	IncludeType originIncludeFlags;
+	IncludeType interopIncludeFlags;
+	bool isStruct;
+	bool isEditor;
+};
+
+struct IncludesInfo
+{
+	bool requiresResourceManager = false;
+	bool requiresGameObjectManager = false;
+	bool requiresRRef = false;
+	bool requiresRTTI = false;
+	bool requiresAsyncOp = false;
+	std::unordered_map<std::string, IncludeInfo> includes;
+	std::unordered_map<std::string, ForwardDeclInfo> fwdDecls;
+};
+
+struct CommentMethodInformation
+{
+	SmallVector<std::string, 3> params;
+	CommentEntry comment;
+};
+
+struct CommentInformation
+{
+	std::string name;
+	std::string fullName;
+
+	SmallVector<std::string, 2> namespaces;
+	SmallVector<CommentMethodInformation, 2> overloads;
+
+	CommentEntry comment;
+	bool isFunction = false;
+};
+
+struct BaseClassInfo
+{
+	std::vector<std::string> childClasses;
+};
+
+enum FileType
+{
+	FT_ENGINE_H,
+	FT_ENGINE_CPP,
+	FT_EDITOR_H,
+	FT_EDITOR_CPP,
+	FT_ENGINE_CS,
+	FT_EDITOR_CS,
+	FT_COUNT // Keep at end
+};
+
+inline bool IsAPIEditor(ApiFlags api)
+{
+	return ((int)api & (int)ApiFlags::Editor) != 0;
+}
+
+inline bool IsAPIEngine(ApiFlags api)
+{
+	return ((int)api & (int)ApiFlags::Engine) != 0;
+}
+
+inline bool IsAPIFramework(ApiFlags api)
+{
+	return ((int)api & (int)ApiFlags::Framework) != 0;
+}
+
+/** Determines if the provided API is usable depending on whether we're building the editor scripting or not. */
+inline bool IsAPIValid(ApiFlags api, bool editor)
+{
+   return (editor && IsAPIEditor(api)) || (!editor && (IsAPIEngine(api) || IsAPIFramework(api)));
+}
+
+/** Contains a map of native types to script types. The key is the native name as provided in ClassInfo.Name, StructInfo.Name or EnumInfo.Name. */
+extern std::unordered_map<std::string, FileInfo> outputFileInfos;
+extern std::unordered_map<std::string, ExternalClassInfos> externalClassInfos;
+extern std::unordered_map<std::string, BaseClassInfo> baseClassLookup;
+
+inline StructInfo* FindStructInformation(const std::string& name)
+{
+	for (auto& fileInfo : outputFileInfos)
+	{
+		for (auto& structInfo : fileInfo.second.Structs)
+		{
+			if (structInfo.NativeName == name)
+				return &structInfo;
+		}
+	}
+
+	return nullptr;
+};
+
+inline ClassInfo* FindClassInformation(const std::string& name, bool isEditor)
+{
+	for (auto& fileInfo : outputFileInfos)
+	{
+		for (auto& classInfo : fileInfo.second.Classes)
+		{
+			if (classInfo.NativeName != name)
+				continue;
+
+			// Two versions of editor and Framework class migth exist, make sure to pick the right one
+			if((isEditor && classInfo.API == ApiFlags::Framework) || (!isEditor &&  IsAPIEditor(classInfo.API)))
+				continue;
+
+			return &classInfo;
+		}
+	}
+
+	return nullptr;
+}
+
+inline EnumInfo* FindEnumInformation(const std::string& name)
+{
+	for (auto& fileInfo : outputFileInfos)
+	{
+		for (auto& enumInfo : fileInfo.second.Enums)
+		{
+			if (enumInfo.NativeName == name)
+				return &enumInfo;
+		}
+	}
+
+	return nullptr;
+}
+
+inline std::string getCSLiteralSuffix(const std::string& cppType)
+{
+	if (cppType == "float")
+		return "f";
+
+	return "";
+}
+
 inline const std::string& escapeXML(const std::string& data) 
 {
 	std::string::size_type first = data.find_first_of("\"&<>", 0);
@@ -1139,10 +1067,10 @@ inline MethodInfo FindUnusedConstructorSignature(const ClassInfo& classInfo) // 
 {
 	auto checkSignature = [](int numParams, const MethodInfo& info)
 	{
-		if ((int)info.paramInfos.size() != numParams)
+		if ((int)info.Parameters.size() != numParams)
 			return true;
 
-		for (auto& paramInfo : info.paramInfos)
+		for (auto& paramInfo : info.Parameters)
 		{
 			if (paramInfo.TypeInformation.TypeName != "bool")
 				return true;
@@ -1157,7 +1085,7 @@ inline MethodInfo FindUnusedConstructorSignature(const ClassInfo& classInfo) // 
 		bool isSignatureValid = true;
 
 		// Check normal constructors
-		for (auto& entry : classInfo.ctorInfos)
+		for (auto& entry : classInfo.Constructors)
 		{
 			if(!checkSignature(numBools, entry))
 			{
@@ -1169,9 +1097,9 @@ inline MethodInfo FindUnusedConstructorSignature(const ClassInfo& classInfo) // 
 		// Check external constructors
 		if(isSignatureValid)
 		{
-			for (auto& entry : classInfo.methodInfos)
+			for (auto& entry : classInfo.Methods)
 			{
-				bool isConstructor = (entry.flags & (int)MethodFlags::Constructor) != 0;
+				bool isConstructor = (entry.MethodFlags & (int)MethodFlags::Constructor) != 0;
 				if (!isConstructor)
 					continue;
 
@@ -1190,10 +1118,10 @@ inline MethodInfo FindUnusedConstructorSignature(const ClassInfo& classInfo) // 
 	}
 
 	MethodInfo output;
-	output.sourceName = classInfo.cleanName;
-	output.scriptName = classInfo.cleanName;
-	output.flags = (int)MethodFlags::Constructor;
-	output.visibility = CSVisibility::Private;
+	output.NativeName = classInfo.NativeNameWithoutTemplateArguments;
+	output.ScriptName = classInfo.NativeNameWithoutTemplateArguments;
+	output.MethodFlags = (int)MethodFlags::Constructor;
+	output.Visibility = CSVisibility::Private;
 
 	for (int i = 0; i < numBools; i++)
 	{
@@ -1202,7 +1130,7 @@ inline MethodInfo FindUnusedConstructorSignature(const ClassInfo& classInfo) // 
 		paramInfo.TypeInformation.TypeName = "bool";
 		paramInfo.TypeInformation.TypeCategory = VariableTypeCategory::Primitive;
 
-		output.paramInfos.push_back(paramInfo);
+		output.Parameters.push_back(paramInfo);
 	}
 
 	return output;

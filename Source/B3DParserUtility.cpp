@@ -91,46 +91,46 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 	{
 		for (auto& fileInfo : outputFileInfos)
 		{
-			for (auto& classInfo : fileInfo.second.classInfos)
+			for (auto& classInfo : fileInfo.second.Classes)
 			{
-				if (classInfo.name != entry.first)
+				if (classInfo.NativeName != entry.first)
 					continue;
 
-				for (auto& method : entry.second.methods)
+				for (auto& method : entry.second.Methods)
 				{
-					if (((int)method.flags & (int)MethodFlags::Constructor) != 0)
+					if (((int)method.MethodFlags & (int)MethodFlags::Constructor) != 0)
 					{
-						if (method.returnInfo.TypeInformation.IsEmpty())
+						if (method.ReturnValue.TypeInformation.IsEmpty())
 						{
-							outs() << "Error: Found an external constructor \"" << method.sourceName << "\" with no return value, skipping.\n";
+							outs() << "Error: Found an external constructor \"" << method.NativeName << "\" with no return value, skipping.\n";
 							continue;
 						}
 
-						if (method.returnInfo.TypeInformation.GetLastWrappedOrSelfTypeName() != entry.first)
+						if (method.ReturnValue.TypeInformation.GetLastWrappedOrSelfTypeName() != entry.first)
 						{
-							outs() << "Error: Found an external constructor \"" << method.sourceName << "\" whose return value doesn't match the external class, skipping.\n";
+							outs() << "Error: Found an external constructor \"" << method.NativeName << "\" whose return value doesn't match the external class, skipping.\n";
 							continue;
 						}
 					}
 					else
 					{
-						if (method.paramInfos.size() == 0)
+						if (method.Parameters.size() == 0)
 						{
-							outs() << "Error: Found an external method \"" << method.sourceName << "\" with no parameters. This isn't supported, skipping.\n";
+							outs() << "Error: Found an external method \"" << method.NativeName << "\" with no parameters. This isn't supported, skipping.\n";
 							continue;
 						}
 
-						if (method.paramInfos[0].TypeInformation.GetLastWrappedOrSelfTypeName() != entry.first)
+						if (method.Parameters[0].TypeInformation.GetLastWrappedOrSelfTypeName() != entry.first)
 						{
-							outs() << "Error: Found an external method \"" << method.sourceName << "\" whose first parameter doesn't "
+							outs() << "Error: Found an external method \"" << method.NativeName << "\" whose first parameter doesn't "
 								" accept the class its operating on. This is not supported, skipping. \n";
 							continue;
 						}
 
-						method.paramInfos.erase(method.paramInfos.begin());
+						method.Parameters.erase(method.Parameters.begin());
 					}
 
-					classInfo.methodInfos.push_back(method);
+					classInfo.Methods.push_back(method);
 				}
 			}
 		}
@@ -139,29 +139,29 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 	// Resolve copydoc comment commands
 	for (auto& fileInfo : outputFileInfos)
 	{
-		for (auto& classInfo : fileInfo.second.classInfos)
+		for (auto& classInfo : fileInfo.second.Classes)
 		{
-			commentParser.ResolveCopydocComments(classInfo.documentation, classInfo.name, classInfo.ns);
+			commentParser.ResolveCopydocComments(classInfo.Documentation, classInfo.NativeName, classInfo.Namespace);
 
-			for (auto& methodInfo : classInfo.methodInfos)
-				commentParser.ResolveCopydocComments(methodInfo.documentation, classInfo.name, classInfo.ns);
+			for (auto& methodInfo : classInfo.Methods)
+				commentParser.ResolveCopydocComments(methodInfo.Documentation, classInfo.NativeName, classInfo.Namespace);
 
-			for (auto& ctorInfo : classInfo.ctorInfos)
-				commentParser.ResolveCopydocComments(ctorInfo.documentation, classInfo.name, classInfo.ns);
+			for (auto& ctorInfo : classInfo.Constructors)
+				commentParser.ResolveCopydocComments(ctorInfo.Documentation, classInfo.NativeName, classInfo.Namespace);
 
-			for (auto& eventInfo : classInfo.eventInfos)
-				commentParser.ResolveCopydocComments(eventInfo.documentation, classInfo.name, classInfo.ns);
+			for (auto& eventInfo : classInfo.Events)
+				commentParser.ResolveCopydocComments(eventInfo.Documentation, classInfo.NativeName, classInfo.Namespace);
 		}
 
-		for (auto& structInfo : fileInfo.second.structInfos)
-			commentParser.ResolveCopydocComments(structInfo.documentation, structInfo.name, structInfo.ns);
+		for (auto& structInfo : fileInfo.second.Structs)
+			commentParser.ResolveCopydocComments(structInfo.Documentation, structInfo.NativeName, structInfo.Namespace);
 
-		for(auto& enumInfo : fileInfo.second.enumInfos)
+		for(auto& enumInfo : fileInfo.second.Enums)
 		{
-			commentParser.ResolveCopydocComments(enumInfo.documentation, enumInfo.name, enumInfo.ns);
+			commentParser.ResolveCopydocComments(enumInfo.Documentation, enumInfo.NativeName, enumInfo.Namespace);
 
-			for (auto& enumEntryInfo : enumInfo.entries)
-				commentParser.ResolveCopydocComments(enumEntryInfo.second.Documentation, enumInfo.name, enumInfo.ns);
+			for (auto& enumEntryInfo : enumInfo.Entries)
+				commentParser.ResolveCopydocComments(enumEntryInfo.second.Documentation, enumInfo.NativeName, enumInfo.Namespace);
 		}
 	}
 
@@ -169,13 +169,13 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 	std::unordered_set<std::string> usedNames;
 	for (auto& fileInfo : outputFileInfos)
 	{
-		for (auto& classInfo : fileInfo.second.classInfos)
+		for (auto& classInfo : fileInfo.second.Classes)
 		{
 			usedNames.clear();
 
 			auto generateInteropName = [&usedNames](MethodInfo& methodInfo)
 			{
-				std::string interopName = methodInfo.sourceName;
+				std::string interopName = methodInfo.NativeName;
 				int counter = 0;
 				while (true)
 				{
@@ -183,21 +183,21 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 					if (iterFind == usedNames.end())
 						break;
 
-					interopName = methodInfo.sourceName + std::to_string(counter);
+					interopName = methodInfo.NativeName + std::to_string(counter);
 					counter++;
 				}
 
 				usedNames.insert(interopName);
-				methodInfo.interopName = interopName;
+				methodInfo.InteropName = interopName;
 			};
 
-			for (auto& methodInfo : classInfo.methodInfos)
+			for (auto& methodInfo : classInfo.Methods)
 				generateInteropName(methodInfo);
 
-			for (auto& methodInfo : classInfo.ctorInfos)
+			for (auto& methodInfo : classInfo.Constructors)
 				generateInteropName(methodInfo);
 
-			for (auto& eventInfo : classInfo.eventInfos)
+			for (auto& eventInfo : classInfo.Events)
 				generateInteropName(eventInfo);
 		}
 	}
@@ -205,67 +205,67 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 	// Generate property infos
 	for (auto& fileInfo : outputFileInfos)
 	{
-		for (auto& classInfo : fileInfo.second.classInfos)
+		for (auto& classInfo : fileInfo.second.Classes)
 		{
-			for (auto& methodInfo : classInfo.methodInfos)
+			for (auto& methodInfo : classInfo.Methods)
 			{
-				bool isGetter = (methodInfo.flags & (int)MethodFlags::PropertyGetter) != 0;
-				bool isSetter = (methodInfo.flags & (int)MethodFlags::PropertySetter) != 0;
+				bool isGetter = (methodInfo.MethodFlags & (int)MethodFlags::PropertyGetter) != 0;
+				bool isSetter = (methodInfo.MethodFlags & (int)MethodFlags::PropertySetter) != 0;
 
 				if (!isGetter && !isSetter)
 					continue;
 
 				PropertyInfo propertyInfo;
-				propertyInfo.name = methodInfo.scriptName;
-				propertyInfo.documentation = methodInfo.documentation;
-				propertyInfo.isStatic = (methodInfo.flags & (int)MethodFlags::Static);
-				propertyInfo.visibility = methodInfo.visibility;
-				propertyInfo.api = methodInfo.api;
-				propertyInfo.style = methodInfo.style;
+				propertyInfo.ScriptName = methodInfo.ScriptName;
+				propertyInfo.Documentation = methodInfo.Documentation;
+				propertyInfo.IsStatic = (methodInfo.MethodFlags & (int)MethodFlags::Static);
+				propertyInfo.Visibility = methodInfo.Visibility;
+				propertyInfo.API = methodInfo.API;
+				propertyInfo.Style = methodInfo.Style;
 
 				if (isGetter)
 				{
-					propertyInfo.getter = methodInfo.interopName;
-					propertyInfo.TypeInformation = methodInfo.returnInfo.TypeInformation;
+					propertyInfo.GetterName = methodInfo.InteropName;
+					propertyInfo.TypeInformation = methodInfo.ReturnValue.TypeInformation;
 				}
 				else // Setter
 				{
-					propertyInfo.setter = methodInfo.interopName;
-					propertyInfo.TypeInformation = methodInfo.paramInfos[0].TypeInformation;
+					propertyInfo.SetterName = methodInfo.InteropName;
+					propertyInfo.TypeInformation = methodInfo.Parameters[0].TypeInformation;
 				}
 
-				auto iterFind = std::find_if(classInfo.propertyInfos.begin(), classInfo.propertyInfos.end(),
+				auto iterFind = std::find_if(classInfo.Properties.begin(), classInfo.Properties.end(),
 					[&propertyInfo](const PropertyInfo& info)
 				{
-					return propertyInfo.name == info.name;
+					return propertyInfo.ScriptName == info.ScriptName;
 				});
 
-				if (iterFind == classInfo.propertyInfos.end())
-					classInfo.propertyInfos.push_back(propertyInfo);
+				if (iterFind == classInfo.Properties.end())
+					classInfo.Properties.push_back(propertyInfo);
 				else
 				{
 					PropertyInfo& existingInfo = *iterFind;
-					if (existingInfo.TypeInformation.GetLastWrappedOrSelfTypeName() != propertyInfo.TypeInformation.GetLastWrappedOrSelfTypeName() || existingInfo.isStatic != propertyInfo.isStatic)
+					if (existingInfo.TypeInformation.GetLastWrappedOrSelfTypeName() != propertyInfo.TypeInformation.GetLastWrappedOrSelfTypeName() || existingInfo.IsStatic != propertyInfo.IsStatic)
 					{
-						outs() << "Error: Getter and setter types for the property \"" << propertyInfo.name << "\" don't match. Skipping property." << existingInfo.TypeInformation.GetLastWrappedOrSelfTypeName() << " " << propertyInfo.TypeInformation.GetLastWrappedOrSelfTypeName() << "\n";
+						outs() << "Error: Getter and setter types for the property \"" << propertyInfo.ScriptName << "\" don't match. Skipping property." << existingInfo.TypeInformation.GetLastWrappedOrSelfTypeName() << " " << propertyInfo.TypeInformation.GetLastWrappedOrSelfTypeName() << "\n";
 						continue;
 					}
 
-					if (!propertyInfo.getter.empty())
+					if (!propertyInfo.GetterName.empty())
 					{
-						existingInfo.getter = propertyInfo.getter;
+						existingInfo.GetterName = propertyInfo.GetterName;
 
 						// Prefer documentation from setter, but use getter if no other available
-						if (existingInfo.documentation.brief.empty())
-							existingInfo.documentation = propertyInfo.documentation;
+						if (existingInfo.Documentation.Brief.empty())
+							existingInfo.Documentation = propertyInfo.Documentation;
 					}
 					else
 					{
-						existingInfo.setter = propertyInfo.setter;
-						existingInfo.style = propertyInfo.style; // Always prefer style flags from the setter
+						existingInfo.SetterName = propertyInfo.SetterName;
+						existingInfo.Style = propertyInfo.Style; // Always prefer style flags from the setter
 
-						if (!propertyInfo.documentation.brief.empty())
-							existingInfo.documentation = propertyInfo.documentation;
+						if (!propertyInfo.Documentation.Brief.empty())
+							existingInfo.Documentation = propertyInfo.Documentation;
 					}
 				}
 			}
@@ -275,21 +275,21 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 	// Generate meta-data about base classes
 	for (auto& fileInfo : outputFileInfos)
 	{
-		for (auto& classInfo : fileInfo.second.classInfos)
+		for (auto& classInfo : fileInfo.second.Classes)
 		{
-			if (classInfo.baseClass.empty())
+			if (classInfo.BaseClassName.empty())
 				continue;
 
-			bool isEditor = IsAPIEditor(classInfo.api);
-			ClassInfo* baseClassInfo = FindClassInformation(classInfo.baseClass, isEditor);
+			bool isEditor = IsAPIEditor(classInfo.API);
+			ClassInfo* baseClassInfo = FindClassInformation(classInfo.BaseClassName, isEditor);
 			if (baseClassInfo == nullptr)
 			{
 				assert(false);
 				continue;
 			}
 
-			baseClassInfo->flags |= (int)ClassFlags::IsBase;
-			baseClassLookup[baseClassInfo->name].childClasses.push_back(classInfo.name);
+			baseClassInfo->ClassFlags |= (int)ClassFlags::IsBase;
+			baseClassLookup[baseClassInfo->NativeName].childClasses.push_back(classInfo.NativeName);
 		}
 	}
 
@@ -314,42 +314,42 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 			return;
 		}
 
-		auto iterFind = enumInformation->entries.find(enumIdx);
-		if(iterFind == enumInformation->entries.end())
+		auto iterFind = enumInformation->Entries.find(enumIdx);
+		if(iterFind == enumInformation->Entries.end())
 		{
 			errs() << "Error: Cannot map default value of \"" + paramInfo.Name + "\" to enum entry for enum type \"" + typeName + "\". Ignoring.";
 			paramInfo.DefaultValue = "";
 			return;
 		}
 
-		paramInfo.DefaultValue = enumInformation->scriptName + "." + iterFind->second.ScriptName;
+		paramInfo.DefaultValue = enumInformation->ScriptName + "." + iterFind->second.ScriptName;
 	};
 
 	for (auto& fileInfo : outputFileInfos)
 	{
-		for (auto& classInfo : fileInfo.second.classInfos)
+		for (auto& classInfo : fileInfo.second.Classes)
 		{
-			for(auto& methodInfo : classInfo.methodInfos)
+			for(auto& methodInfo : classInfo.Methods)
 			{
-				for (auto& paramInfo : methodInfo.paramInfos)
+				for (auto& paramInfo : methodInfo.Parameters)
 					parseDefaultValue(paramInfo);
 			}
 
-			for (auto& ctorInfo : classInfo.ctorInfos)
+			for (auto& ctorInfo : classInfo.Constructors)
 			{
-				for (auto& paramInfo : ctorInfo.paramInfos)
+				for (auto& paramInfo : ctorInfo.Parameters)
 					parseDefaultValue(paramInfo);
 			}
 		}
 
-		for(auto& structInfo : fileInfo.second.structInfos)
+		for(auto& structInfo : fileInfo.second.Structs)
 		{
-			for(auto& fieldInfo : structInfo.fields)
+			for(auto& fieldInfo : structInfo.Fields)
 				parseDefaultValue(fieldInfo);
 
-			for (auto& ctorInfo : structInfo.ctors)
+			for (auto& ctorInfo : structInfo.Constructors)
 			{
-				for (auto& paramInfo : ctorInfo.params)
+				for (auto& paramInfo : ctorInfo.Parameters)
 					parseDefaultValue(paramInfo);
 			}
 		}
@@ -358,23 +358,23 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 	// Find structs requiring special conversion
 	for (auto& fileInfo : outputFileInfos)
 	{
-		for (auto& structInfo : fileInfo.second.structInfos)
+		for (auto& structInfo : fileInfo.second.Structs)
 		{
-			for(auto& fieldInformation : structInfo.fields)
+			for(auto& fieldInformation : structInfo.Fields)
 			{
 				const TypeMappingInformation fieldTypeMappingInformation = GetNativeToScriptTypeMapping(fieldInformation.TypeInformation);
 
 				if(fieldInformation.TypeInformation.IsArrayOrVector() || !(fieldTypeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Primitive || fieldTypeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Enum))
 				{
-					structInfo.requiresInterop = true;
+					structInfo.RequiresInteropType = true;
 					break;
 				}
 			}
 
-			if (structInfo.requiresInterop)
-				structInfo.interopName = GetStructInteropTypeName(structInfo.name);
+			if (structInfo.RequiresInteropType)
+				structInfo.InteropName = GetStructInteropTypeName(structInfo.NativeName);
 			else
-				structInfo.interopName = structInfo.name;
+				structInfo.InteropName = structInfo.NativeName;
 		}
 	}
 
@@ -389,7 +389,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 
 			const std::string& typeName = typeInformation.GetLastWrappedOrSelfTypeName();
 			StructInfo *const structInfo = FindStructInformation(typeName);
-			if (structInfo != nullptr && structInfo->requiresInterop)
+			if (structInfo != nullptr && structInfo->RequiresInteropType)
 			{
 				typeInformation.SetPostProcessFlag(VariablePostProcessFlags::IsStructWrapperUsed, true);
 			}
@@ -406,7 +406,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 			ClassInfo *const classInfo = FindClassInformation(typeName, false);
 			if (classInfo != nullptr)
 			{
-				bool isBase = (classInfo->flags & (int)ClassFlags::IsBase) != 0;
+				bool isBase = (classInfo->ClassFlags & (int)ClassFlags::IsBase) != 0;
 				if (isBase)
 				{
 					typeInformation.SetPostProcessFlag(VariablePostProcessFlags::IsReferencingBaseClass, true);
@@ -420,36 +420,36 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 			fnMarkBaseType(paramInfo.TypeInformation);
 		};
 
-		for (auto& classInfo : fileInfo.second.classInfos)
+		for (auto& classInfo : fileInfo.second.Classes)
 		{
-			for(auto& methodInfo : classInfo.methodInfos)
+			for(auto& methodInfo : classInfo.Methods)
 			{
-				for (auto& paramInfo : methodInfo.paramInfos)
+				for (auto& paramInfo : methodInfo.Parameters)
 					markParam(paramInfo);
 
-				if (!methodInfo.returnInfo.TypeInformation.IsEmpty())
+				if (!methodInfo.ReturnValue.TypeInformation.IsEmpty())
 				{
-					fnMarkComplexType(methodInfo.returnInfo.TypeInformation);
-					fnMarkBaseType(methodInfo.returnInfo.TypeInformation);
+					fnMarkComplexType(methodInfo.ReturnValue.TypeInformation);
+					fnMarkBaseType(methodInfo.ReturnValue.TypeInformation);
 				}
 			}
 
-			for (auto& eventInfo : classInfo.eventInfos)
+			for (auto& eventInfo : classInfo.Events)
 			{
-				for (auto& paramInfo : eventInfo.paramInfos)
+				for (auto& paramInfo : eventInfo.Parameters)
 					markParam(paramInfo);
 			}
 
-			for (auto& ctorInfo : classInfo.ctorInfos)
+			for (auto& ctorInfo : classInfo.Constructors)
 			{
-				for (auto& paramInfo : ctorInfo.paramInfos)
+				for (auto& paramInfo : ctorInfo.Parameters)
 					markParam(paramInfo);
 			}
 		}
 
-		for(auto& structInfo : fileInfo.second.structInfos)
+		for(auto& structInfo : fileInfo.second.Structs)
 		{
-			for(auto& fieldInfo : structInfo.fields)
+			for(auto& fieldInfo : structInfo.Fields)
 			{
 				fnMarkComplexType(fieldInfo.TypeInformation);
 				markParam(fieldInfo);
@@ -462,87 +462,87 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 		for (auto& fileInfo : outputFileInfos)
 		{
 			IncludesInfo includesInfo;
-			for (auto& classInfo : fileInfo.second.classInfos)
+			for (auto& classInfo : fileInfo.second.Classes)
 				GatherIncludes(classInfo, includesInfo);
 
-			for (auto& structInfo : fileInfo.second.structInfos)
+			for (auto& structInfo : fileInfo.second.Structs)
 				GatherIncludes(structInfo, includesInfo);
 
 			// Needed for all .h files
-			if (!fileInfo.second.inEditor)
-				fileInfo.second.referencedHeaderIncludes.push_back("BsScriptEnginePrerequisites.h");
+			if (!fileInfo.second.InEditor)
+				fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptEnginePrerequisites.h");
 			else
-				fileInfo.second.referencedHeaderIncludes.push_back("BsScriptEditorPrerequisites.h");
+				fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptEditorPrerequisites.h");
 
 			// Needed for all .cpp files
-			fileInfo.second.referencedSourceIncludes.push_back("BsScript" + fileInfo.first + ".generated.h");
-			fileInfo.second.referencedSourceIncludes.push_back("BsMonoMethod.h");
-			fileInfo.second.referencedSourceIncludes.push_back("BsMonoClass.h");
-			fileInfo.second.referencedSourceIncludes.push_back("BsMonoUtil.h");
+			fileInfo.second.ReferencedSourceIncludes.push_back("BsScript" + fileInfo.first + ".generated.h");
+			fileInfo.second.ReferencedSourceIncludes.push_back("BsMonoMethod.h");
+			fileInfo.second.ReferencedSourceIncludes.push_back("BsMonoClass.h");
+			fileInfo.second.ReferencedSourceIncludes.push_back("BsMonoUtil.h");
 
-			for (auto& classInfo : fileInfo.second.classInfos)
+			for (auto& classInfo : fileInfo.second.Classes)
 			{
-				TypeMappingInformation& typeInfo = NativeToScriptTypeMap[classInfo.name];
+				TypeMappingInformation& typeInfo = NativeToScriptTypeMap[classInfo.NativeName];
 
-				fileInfo.second.forwardDeclarations.insert({ classInfo.ns, classInfo.cleanName, isStruct(classInfo.flags), classInfo.templParams });
+				fileInfo.second.ForwardDeclarations.insert(ForwardDeclInfo(classInfo.NativeNameWithoutTemplateArguments, classInfo.Namespace, classInfo.TemplateParameters, isStruct(classInfo.ClassFlags)));
 
 				if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource)
-					fileInfo.second.referencedHeaderIncludes.push_back("Wrappers/BsScriptResource.h");
+					fileInfo.second.ReferencedHeaderIncludes.push_back("Wrappers/BsScriptResource.h");
 				else if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Component)
-					fileInfo.second.referencedHeaderIncludes.push_back("Wrappers/BsScriptComponent.h");
+					fileInfo.second.ReferencedHeaderIncludes.push_back("Wrappers/BsScriptComponent.h");
 				else if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::SceneObject)
-					fileInfo.second.referencedHeaderIncludes.push_back("Wrappers/BsScriptSceneObject.h");
+					fileInfo.second.ReferencedHeaderIncludes.push_back("Wrappers/BsScriptSceneObject.h");
 				else if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
-					fileInfo.second.referencedHeaderIncludes.push_back("Wrappers/GUI/BsScriptGUIElement.h");
+					fileInfo.second.ReferencedHeaderIncludes.push_back("Wrappers/GUI/BsScriptGUIElement.h");
 				else if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
-					fileInfo.second.referencedHeaderIncludes.push_back("Wrappers/BsScriptReflectable.h");
+					fileInfo.second.ReferencedHeaderIncludes.push_back("Wrappers/BsScriptReflectable.h");
 				else // Class
-					fileInfo.second.referencedHeaderIncludes.push_back("BsScriptObject.h");
+					fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptObject.h");
 
-				if (!classInfo.baseClass.empty())
+				if (!classInfo.BaseClassName.empty())
 				{
-					TypeMappingInformation& baseTypeInfo = NativeToScriptTypeMap[classInfo.baseClass];
+					TypeMappingInformation& baseTypeInfo = NativeToScriptTypeMap[classInfo.BaseClassName];
 
-					if(IsAPIEditor(classInfo.api))
-						fileInfo.second.referencedHeaderIncludes.push_back(baseTypeInfo.EditorInteropFile);
+					if(IsAPIEditor(classInfo.API))
+						fileInfo.second.ReferencedHeaderIncludes.push_back(baseTypeInfo.EditorInteropFile);
 					else
-						fileInfo.second.referencedHeaderIncludes.push_back(baseTypeInfo.InteropFile);
+						fileInfo.second.ReferencedHeaderIncludes.push_back(baseTypeInfo.InteropFile);
 				}
 
-				if (typeInfo.TypeCategory != ::ExportedClassTypeCategory::ReflectableClass && classInfo.templParams.empty())
-					fileInfo.second.referencedSourceIncludes.push_back(typeInfo.NativeFile);
+				if (typeInfo.TypeCategory != ::ExportedClassTypeCategory::ReflectableClass && classInfo.TemplateParameters.empty())
+					fileInfo.second.ReferencedSourceIncludes.push_back(typeInfo.NativeFile);
 				else
 				{
 					// Templated classes need to be included in header, so the linker doesn't instantiate them multiple times for different libraries
 					// (in case template is exported).
 					// Reflectable classes need to be included in the header because they provide a getInternal<T>() method
 					// which requires information about T.
-					fileInfo.second.referencedHeaderIncludes.push_back(typeInfo.NativeFile);
+					fileInfo.second.ReferencedHeaderIncludes.push_back(typeInfo.NativeFile);
 				}
 			}
 
-			for(auto& structInfo : fileInfo.second.structInfos)
+			for(auto& structInfo : fileInfo.second.Structs)
 			{
-				TypeMappingInformation& typeInfo = NativeToScriptTypeMap[structInfo.name];
+				TypeMappingInformation& typeInfo = NativeToScriptTypeMap[structInfo.NativeName];
 
-				fileInfo.second.referencedHeaderIncludes.push_back("BsScriptObject.h");
-				fileInfo.second.referencedHeaderIncludes.push_back(typeInfo.NativeFile);
+				fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptObject.h");
+				fileInfo.second.ReferencedHeaderIncludes.push_back(typeInfo.NativeFile);
 			}
 
 			if(includesInfo.requiresResourceManager)
-				fileInfo.second.referencedSourceIncludes.push_back("BsScriptResourceManager.h");
+				fileInfo.second.ReferencedSourceIncludes.push_back("BsScriptResourceManager.h");
 
 			if (includesInfo.requiresRRef)
-				fileInfo.second.referencedSourceIncludes.push_back("Wrappers/BsScriptRRefBase.h");
+				fileInfo.second.ReferencedSourceIncludes.push_back("Wrappers/BsScriptRRefBase.h");
 
 			if (includesInfo.requiresAsyncOp)
-				fileInfo.second.referencedSourceIncludes.push_back("Wrappers/BsScriptAsyncOp.h");
+				fileInfo.second.ReferencedSourceIncludes.push_back("Wrappers/BsScriptAsyncOp.h");
 
 			if(includesInfo.requiresGameObjectManager)
-				fileInfo.second.referencedSourceIncludes.push_back("BsScriptGameObjectManager.h");
+				fileInfo.second.ReferencedSourceIncludes.push_back("BsScriptGameObjectManager.h");
 
 			if(includesInfo.requiresRTTI)
-				fileInfo.second.referencedSourceIncludes.push_back("Reflection/BsRTTIType.h");
+				fileInfo.second.ReferencedSourceIncludes.push_back("Reflection/BsRTTIType.h");
 
 			for (auto& entry : includesInfo.includes)
 			{
@@ -554,12 +554,12 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 					std::string include = entry.second.typeInfo.NativeFile;
 
 					if ((originFlags & (uint32_t)IncludeType::ForwardDeclare) != 0)
-						fileInfo.second.forwardDeclarations.insert({ entry.second.typeInfo.NativeNamespace, entry.second.typeName, entry.second.isStruct });
+						fileInfo.second.ForwardDeclarations.insert(ForwardDeclInfo(entry.second.typeName, entry.second.typeInfo.NativeNamespace, {}, entry.second.isStruct));
 
 					if((originFlags & (uint32_t)IncludeType::IncludeInImplementation) != 0)
-						fileInfo.second.referencedSourceIncludes.push_back(include);
+						fileInfo.second.ReferencedSourceIncludes.push_back(include);
 					else
-						fileInfo.second.referencedHeaderIncludes.push_back(include);
+						fileInfo.second.ReferencedHeaderIncludes.push_back(include);
 				}
 
 				if (interopFlags != 0)
@@ -573,42 +573,42 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 					if ((interopFlags & (uint32_t)IncludeType::ForwardDeclare) != 0)
 					{
 						if(entry.second.isEditor)
-							fileInfo.second.forwardDeclarations.insert({ entry.second.typeInfo.NativeNamespace, entry.second.typeName, false });
+							fileInfo.second.ForwardDeclarations.insert(ForwardDeclInfo(entry.second.typeName, entry.second.typeInfo.NativeNamespace));
 					}
 
 					if(!include.empty())
 					{
 						if ((interopFlags & (uint32_t)IncludeType::IncludeInImplementation) != 0)
-							fileInfo.second.referencedSourceIncludes.push_back(include);
+							fileInfo.second.ReferencedSourceIncludes.push_back(include);
 						else
-							fileInfo.second.referencedHeaderIncludes.push_back(include);
+							fileInfo.second.ReferencedHeaderIncludes.push_back(include);
 					}
 				}
 			}
 
 			for (auto& entry : includesInfo.fwdDecls)
-				fileInfo.second.forwardDeclarations.insert(entry.second);
+				fileInfo.second.ForwardDeclarations.insert(entry.second);
 		}
 	}
 
 	// Generate overloads for unsupported default parameters
 	for (auto& fileInfo : outputFileInfos)
 	{
-		for (auto& classInfo : fileInfo.second.classInfos)
+		for (auto& classInfo : fileInfo.second.Classes)
 		{
 			std::vector<MethodInfo> newMethodInfos;
-			for (auto& methodInfo : classInfo.methodInfos)
+			for (auto& methodInfo : classInfo.Methods)
 				PostProcessDefaultParameters(methodInfo, newMethodInfos);
 
 			for (auto& methodInfo : newMethodInfos)
-				classInfo.methodInfos.push_back(methodInfo);
+				classInfo.Methods.push_back(methodInfo);
 
 			std::vector<MethodInfo> newCtorInfos;
-			for (auto& ctorInfo : classInfo.ctorInfos)
+			for (auto& ctorInfo : classInfo.Constructors)
 				PostProcessDefaultParameters(ctorInfo, newCtorInfos);
 
 			for (auto& ctorInfo : newCtorInfos)
-				classInfo.ctorInfos.push_back(ctorInfo);
+				classInfo.Constructors.push_back(ctorInfo);
 		}
 	}
 }
@@ -617,9 +617,9 @@ void ParserUtility::PostProcessDefaultParameters(MethodInfo& methodInfo, std::ve
 {
 	int firstDefaultParam = -1;
 	int lastInvalidParam = -1;
-	for (int i = 0; i < methodInfo.paramInfos.size(); i++)
+	for (int i = 0; i < methodInfo.Parameters.size(); i++)
 	{
-		const VariableInformation& param = methodInfo.paramInfos[i];
+		const VariableInformation& param = methodInfo.Parameters[i];
 
 		if (!param.DefaultValue.empty())
 		{
@@ -628,9 +628,9 @@ void ParserUtility::PostProcessDefaultParameters(MethodInfo& methodInfo, std::ve
 		}
 	}
 
-	for (int i = 0; i < methodInfo.paramInfos.size(); i++)
+	for (int i = 0; i < methodInfo.Parameters.size(); i++)
 	{
-		const VariableInformation& parameterInformation = methodInfo.paramInfos[i];
+		const VariableInformation& parameterInformation = methodInfo.Parameters[i];
 
 		if (!parameterInformation.DefaultValueType.empty() && parameterInformation.TypeInformation.TypeCategory != VariableTypeCategory::Flags)
 			lastInvalidParam = i;
@@ -644,7 +644,7 @@ void ParserUtility::PostProcessDefaultParameters(MethodInfo& methodInfo, std::ve
 	// must follow them, which they can't because at least one is complex)
 	for (int i = firstDefaultParam; i <= lastInvalidParam; i++)
 	{
-		VariableInformation& param = methodInfo.paramInfos[i];
+		VariableInformation& param = methodInfo.Parameters[i];
 
 		if (param.DefaultValueType.empty())
 			param.DefaultValueType = "null";
@@ -658,34 +658,34 @@ void ParserUtility::PostProcessDefaultParameters(MethodInfo& methodInfo, std::ve
 		// Clear all param default values
 		for (int j = firstDefaultParam; j < i; j++)
 		{
-			VariableInformation& param = copyMethodInfo.paramInfos[j];
+			VariableInformation& param = copyMethodInfo.Parameters[j];
 			param.DefaultValue = "";
 			param.DefaultValueType = "";
 		}
 
 		// Erase docs for the params we'll skip during generation
-		CommentEntry& docs = copyMethodInfo.documentation;
+		CommentEntry& docs = copyMethodInfo.Documentation;
 		for (int j = i; j <= lastInvalidParam; j++)
 		{
-			const std::string& paramName = copyMethodInfo.paramInfos[j].Name;
+			const std::string& paramName = copyMethodInfo.Parameters[j].Name;
 
-			for (auto iter = docs.params.begin(); iter != docs.params.end();)
+			for (auto iter = docs.ParameterComments.begin(); iter != docs.ParameterComments.end();)
 			{
 				if (iter->Name == paramName)
-					iter = docs.params.erase(iter);
+					iter = docs.ParameterComments.erase(iter);
 				else
 					++iter;
 			}
 		}
 
-		copyMethodInfo.flags |= (int)MethodFlags::CSOnly;
+		copyMethodInfo.MethodFlags |= (int)MethodFlags::CSOnly;
 		newMethodInfos.push_back(copyMethodInfo);
 	}
 
 	// Clear default params from this method
 	for (int i = firstDefaultParam; i <= lastInvalidParam; i++)
 	{
-		VariableInformation& param = methodInfo.paramInfos[i];
+		VariableInformation& param = methodInfo.Parameters[i];
 		param.DefaultValue = "";
 		param.DefaultValueType = "";
 	}
@@ -746,7 +746,7 @@ void ParserUtility::GatherIncludes(const VariableTypeInformation& typeInformatio
 	}
 
 	if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Struct && underlyingTypeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsStructWrapperUsed))
-		output.fwdDecls[typeName] = { typeMappingInformation.NativeNamespace, GetStructInteropTypeName(typeName), true };
+		output.fwdDecls[typeName] = ForwardDeclInfo(GetStructInteropTypeName(typeName), typeMappingInformation.NativeNamespace, {}, true);
 
 	if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Resource)
 	{
@@ -764,19 +764,19 @@ void ParserUtility::GatherIncludes(const VariableTypeInformation& typeInformatio
 
 void ParserUtility::GatherIncludes(const MethodInfo& methodInfo, bool isEditor, IncludesInfo& output)
 {
-	if (!methodInfo.returnInfo.TypeInformation.IsEmpty())
-		GatherIncludes(methodInfo.returnInfo.TypeInformation, isEditor, output);
+	if (!methodInfo.ReturnValue.TypeInformation.IsEmpty())
+		GatherIncludes(methodInfo.ReturnValue.TypeInformation, isEditor, output);
 
-	for (auto I = methodInfo.paramInfos.begin(); I != methodInfo.paramInfos.end(); ++I)
+	for (auto I = methodInfo.Parameters.begin(); I != methodInfo.Parameters.end(); ++I)
 		GatherIncludes(I->TypeInformation, isEditor, output);
 
-	if ((methodInfo.flags & (int)MethodFlags::External) != 0)
+	if ((methodInfo.MethodFlags & (int)MethodFlags::External) != 0)
 	{
-		auto iterFind = output.includes.find(methodInfo.externalClass);
+		auto iterFind = output.includes.find(methodInfo.ExternalClass);
 		if (iterFind == output.includes.end())
 		{
-			TypeMappingInformation typeInfo = GetNativeToScriptTypeMapping(methodInfo.externalClass);
-			output.includes[methodInfo.externalClass] = IncludeInfo(methodInfo.externalClass, typeInfo, IncludeType::ForwardDeclareAndIncludeInImplementation, IncludeType::None, false, isEditor);
+			TypeMappingInformation typeInfo = GetNativeToScriptTypeMapping(methodInfo.ExternalClass);
+			output.includes[methodInfo.ExternalClass] = IncludeInfo(methodInfo.ExternalClass, typeInfo, IncludeType::ForwardDeclareAndIncludeInImplementation, IncludeType::None, false, isEditor);
 		}
 	}
 }
@@ -842,25 +842,25 @@ void ParserUtility::GatherIncludes(const FieldInfo& fieldInfo, bool isEditor, In
 
 void ParserUtility::GatherIncludes(const ClassInfo& classInfo, IncludesInfo& output)
 {
-	bool isEditor = IsAPIEditor(classInfo.api);
+	bool isEditor = IsAPIEditor(classInfo.API);
 
-	for (auto& methodInfo : classInfo.ctorInfos)
+	for (auto& methodInfo : classInfo.Constructors)
 		GatherIncludes(methodInfo, isEditor, output);
 
-	for (auto& methodInfo : classInfo.methodInfos)
+	for (auto& methodInfo : classInfo.Methods)
 		GatherIncludes(methodInfo, isEditor, output);
 
-	for (auto& eventInfo : classInfo.eventInfos)
+	for (auto& eventInfo : classInfo.Events)
 		GatherIncludes(eventInfo, isEditor, output);
 }
 
 void ParserUtility::GatherIncludes(const StructInfo& structInfo, IncludesInfo& output)
 {
-	bool isEditor = IsAPIEditor(structInfo.api);
+	bool isEditor = IsAPIEditor(structInfo.API);
 
-	if (structInfo.requiresInterop)
+	if (structInfo.RequiresInteropType)
 	{
-		for (auto& fieldInfo : structInfo.fields)
+		for (auto& fieldInfo : structInfo.Fields)
 			GatherIncludes(fieldInfo, isEditor, output);
 	}
 }

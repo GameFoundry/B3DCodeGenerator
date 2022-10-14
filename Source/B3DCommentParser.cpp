@@ -207,9 +207,9 @@ bool CommentParser::ParseComments(const Decl* decl, CommentEntry& output)
 	};
 
 	if (brief != nullptr)
-		parseParagraphComments({ brief->getParagraph() }, output.brief);
+		parseParagraphComments({ brief->getParagraph() }, output.Brief);
 
-	parseParagraphComments(headerParagraphs, output.brief);
+	parseParagraphComments(headerParagraphs, output.Brief);
 
 	for (auto& entry : params)
 	{
@@ -220,13 +220,13 @@ bool CommentParser::ParseComments(const Decl* decl, CommentEntry& output)
 		else
 			paramEntry.Name = entry->getParamNameAsWritten().str();
 
-		parseParagraphComments({ entry->getParagraph() }, paramEntry.comments);
+		parseParagraphComments({ entry->getParagraph() }, paramEntry.Comments);
 
-		output.params.push_back(paramEntry);
+		output.ParameterComments.push_back(paramEntry);
 	}
 
 	if (returns != nullptr)
-		parseParagraphComments({ returns->getParagraph() }, output.returns);
+		parseParagraphComments({ returns->getParagraph() }, output.ReturnValueComments);
 
 	return hasAnyData;
 }
@@ -706,7 +706,7 @@ bool CommentParser::TryLookupComment(const std::string& value, const std::string
 void CommentParser::ResolveCopydocComments(CommentEntry& comment, const std::string& parentType, const SmallVector<std::string, 4>& currentNamespace)
 {
 	StringRef copydocArg;
-	for (auto& entry : comment.brief)
+	for (auto& entry : comment.Brief)
 	{
 		StringRef commentRef(entry.Text.data(), entry.Text.length());
 
@@ -758,16 +758,16 @@ void CommentParser::EnsureValidParameterReferenceComments(const std::vector<Vari
 
 void CommentParser::EnsureValidParameterReferenceComments(const std::vector<VariableInformation>& paramInfos, CommentEntry& comment)
 {
-	for (auto& entry : comment.brief)
+	for (auto& entry : comment.Brief)
 		EnsureValidParameterReferenceComments(paramInfos, entry);
 
-	for (auto& entry : comment.params)
+	for (auto& entry : comment.ParameterComments)
 	{
-		for(auto& textEntry : entry.comments)
+		for(auto& textEntry : entry.Comments)
 			EnsureValidParameterReferenceComments(paramInfos, textEntry);
 	}
 
-	for (auto& entry : comment.returns)
+	for (auto& entry : comment.ReturnValueComments)
 		EnsureValidParameterReferenceComments(paramInfos, entry);
 }
 
@@ -920,24 +920,24 @@ std::string CommentParser::GenerateXMLComments(const CommentEntry& commentEntry,
 		}
 	};
 
-	if (!commentEntry.brief.empty())
-		printParagraphs("<summary>", "</summary>", commentEntry.brief);
+	if (!commentEntry.Brief.empty())
+		printParagraphs("<summary>", "</summary>", commentEntry.Brief);
 	else
 	{
-		if (!commentEntry.params.empty() || !commentEntry.returns.empty())
+		if (!commentEntry.ParameterComments.empty() || !commentEntry.ReturnValueComments.empty())
 			output << indent << "/// <summary></summary>" << std::endl;
 	}
 
-	for (auto& entry : commentEntry.params)
+	for (auto& entry : commentEntry.ParameterComments)
 	{
-		if (entry.comments.empty())
+		if (entry.Comments.empty())
 			continue;
 
-		printParagraphs("<param name=\"" + entry.Name + "\">", "</param>", entry.comments);
+		printParagraphs("<param name=\"" + entry.Name + "\">", "</param>", entry.Comments);
 	}
 
-	if (!commentEntry.returns.empty())
-		printParagraphs("<returns>", "</returns>", commentEntry.returns);
+	if (!commentEntry.ReturnValueComments.empty())
+		printParagraphs("<returns>", "</returns>", commentEntry.ReturnValueComments);
 
 	return output.str();
 }
