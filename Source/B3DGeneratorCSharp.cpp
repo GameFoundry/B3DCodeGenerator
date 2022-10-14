@@ -259,7 +259,7 @@ std::string GenerateCSharpMethodParameters(const MethodInfo& methodInfo, bool fo
  *
  * @param methodInfo			Structure describing the method to call.
  * @param forInternalMethod		True if the arguments are generated for an Internal_ method call, or false if for a regular method call.
- * @return						String containing a comma (,) separate list of arguments.
+ * @return						String containing a comma (,) separated list of arguments.
  */
 std::string GenerateCSharpMethodArguments(const MethodInfo& methodInfo, bool forInternalMethod)
 {
@@ -283,7 +283,14 @@ std::string GenerateCSharpMethodArguments(const MethodInfo& methodInfo, bool for
 	return output.str();
 }
 
-std::string generateCSMethodDefaultParamAssignments(const MethodInfo& methodInfo, const std::string& indent)
+/**
+ * Generates variable containing default values, for types that cannot have their default values specified in the parameter list directly.
+ *
+ * @param methodInfo		Structure describing the method that will be called with the arguments.
+ * @param indent			Whitespace to insert before the generated lines of code.
+ * @return					Code creating local variables (using parameter names) initialized for default values, for types that need it.
+ */
+std::string GenerateCSharpMethodDefaultArgumentAssignments(const MethodInfo& methodInfo, const std::string& indent)
 {
 	std::stringstream output;
 	for (auto I = methodInfo.paramInfos.begin(); I != methodInfo.paramInfos.end(); ++I)
@@ -310,7 +317,13 @@ std::string generateCSMethodDefaultParamAssignments(const MethodInfo& methodInfo
 
 }
 
-std::string generateCSEventSignature(const MethodInfo& methodInfo)
+/**
+ * Generates a parameter list for an event signature.
+ *
+ * @param methodInfo		Information about the event to generate the parameters for.
+ * @return					String containing a comma (,) separated list of parameters.
+ */
+std::string GenerateCSharpEventSignature(const MethodInfo& methodInfo)
 {
 	std::stringstream output;
 	for (auto I = methodInfo.paramInfos.begin(); I != methodInfo.paramInfos.end(); ++I)
@@ -328,7 +341,13 @@ std::string generateCSEventSignature(const MethodInfo& methodInfo)
 	return output.str();
 }
 
-std::string generateCSEventArgs(const MethodInfo& methodInfo)
+/**
+ * Generates a list of arguments used for calling an event.
+ *
+ * @param methodInfo		Information about the event to generate the arguments for.
+ * @return					String containing a comma (,) separated list of arguments.
+ */
+std::string GenerateCSharpEventArguments(const MethodInfo& methodInfo)
 {
 	std::stringstream output;
 
@@ -343,58 +362,67 @@ std::string generateCSEventArgs(const MethodInfo& methodInfo)
 	return output.str();
 }
 
-std::string generateCSInteropMethodSignature(const MethodInfo& methodInfo, const std::string& csClassName, bool isModule)
+/**
+ * Generates the full method signature for an 'Internal' method.
+ *
+ * @param classInformation			Information about the class we're generating the method for.
+ * @param methodInformation			Information about the method to generate.
+ * @param typeMappingInformation	Information about the mapping of the native type to script type.
+ * @return							Signature of the method, with return value, method name and parameter list.
+ */
+std::string GenerateCSharpInternalMethodSignature(const ClassInfo& classInformation, const MethodInfo& methodInformation, TypeMappingInformation& typeMappingInformation)
 {
-	bool isStatic = (methodInfo.flags & (int)MethodFlags::Static) != 0;
-	bool isCtor = (methodInfo.flags & (int)MethodFlags::Constructor) != 0;
+	const bool isClassModule = (classInformation.flags & (int)ClassFlags::IsModule) != 0;
+	const bool isStatic = (methodInformation.flags & (int)MethodFlags::Static) != 0;
+	const bool isCtor = (methodInformation.flags & (int)MethodFlags::Constructor) != 0;
 
 	std::stringstream output;
 
 	bool returnAsParameter = false;
-	if (methodInfo.returnInfo.TypeInformation.IsEmpty() || isCtor)
+	if (methodInformation.returnInfo.TypeInformation.IsEmpty() || isCtor)
 		output << "void";
 	else
 	{
-		const TypeMappingInformation returnTypeMappingInformation = GetNativeToScriptTypeMapping(methodInfo.returnInfo.TypeInformation);
-		if (!CanBeReturned(methodInfo.returnInfo.TypeInformation, returnTypeMappingInformation))
+		const TypeMappingInformation returnTypeMappingInformation = GetNativeToScriptTypeMapping(methodInformation.returnInfo.TypeInformation);
+		if (!CanBeReturned(methodInformation.returnInfo.TypeInformation, returnTypeMappingInformation))
 		{
 			output << "void";
 			returnAsParameter = true;
 		}
 		else
 		{
-			const std::string qualifiedType = GetScriptQualifiedType(methodInfo.returnInfo.TypeInformation, returnTypeMappingInformation);
+			const std::string qualifiedType = GetScriptQualifiedType(methodInformation.returnInfo.TypeInformation, returnTypeMappingInformation);
 			output << qualifiedType;
 		}
 	}
 
 	output << " ";
 
-	output << "Internal_" << methodInfo.interopName << "(";
+	output << "Internal_" << methodInformation.interopName << "(";
 
 	if (isCtor)
 	{
-		output << csClassName << " managedInstance";
+		output << typeMappingInformation.ScriptTypeName << " managedInstance";
 
-		if (methodInfo.paramInfos.size() > 0)
+		if (methodInformation.paramInfos.size() > 0)
 			output << ", ";
 	}
-	else if (!isStatic && !isModule)
+	else if (!isStatic && !isClassModule)
 	{
 		output << "IntPtr thisPtr";
 
-		if (methodInfo.paramInfos.size() > 0 || returnAsParameter)
+		if (methodInformation.paramInfos.size() > 0 || returnAsParameter)
 			output << ", ";
 	}
 
-	output << GenerateCSharpMethodParameters(methodInfo, true);
+	output << GenerateCSharpMethodParameters(methodInformation, true);
 
 	if (returnAsParameter)
 	{
-		const TypeMappingInformation returnTypeMappingInformation = GetNativeToScriptTypeMapping(methodInfo.returnInfo.TypeInformation);
-		const std::string qualifiedType = GetScriptQualifiedType(methodInfo.returnInfo.TypeInformation, returnTypeMappingInformation);
+		const TypeMappingInformation returnTypeMappingInformation = GetNativeToScriptTypeMapping(methodInformation.returnInfo.TypeInformation);
+		const std::string qualifiedType = GetScriptQualifiedType(methodInformation.returnInfo.TypeInformation, returnTypeMappingInformation);
 
-		if (methodInfo.paramInfos.size() > 0)
+		if (methodInformation.paramInfos.size() > 0)
 			output << ", ";
 
 		output << "out " << qualifiedType << " __output";
@@ -404,9 +432,16 @@ std::string generateCSInteropMethodSignature(const MethodInfo& methodInfo, const
 	return output.str();
 }
 
-std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
+/**
+ * Generates a full declaration of a C# class.
+ *
+ * @param classInformation			Information about the class to generate.
+ * @param typeMappingInformation	Information about the mapping of the native type to script type.
+ * @return							Code with the class declaration.
+ */
+std::string GenerateCSharpClass(const ClassInfo& classInformation, TypeMappingInformation& typeMappingInformation)
 {
-	bool isModule = (input.flags & (int)ClassFlags::IsModule) != 0;
+	const bool isModule = (classInformation.flags & (int)ClassFlags::IsModule) != 0;
 
 	std::stringstream ctors;
 	std::stringstream properties;
@@ -415,24 +450,24 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 	std::stringstream interops;
 
 	// Private constructor for runtime use
-	MethodInfo pvtCtor = findUnusedCtorSignature(input);
-	ctors << "\t\tprivate " << typeInfo.ScriptTypeName << "(" << GenerateCSharpMethodParameters(pvtCtor, false) << ") { }" << std::endl;
+	MethodInfo privateConstructorInformation = FindUnusedConstructorSignature(classInformation);
+	ctors << "\t\tprivate " << typeMappingInformation.ScriptTypeName << "(" << GenerateCSharpMethodParameters(privateConstructorInformation, false) << ") { }" << std::endl;
 
 	// Parameterless constructor in case anything derives from this class
-	if (!HasParameterlessConstructor(input))
-		ctors << "\t\tprotected " << typeInfo.ScriptTypeName << "() { }" << std::endl;
+	if (!HasParameterlessConstructor(classInformation))
+		ctors << "\t\tprotected " << typeMappingInformation.ScriptTypeName << "() { }" << std::endl;
 
 	ctors << std::endl;
 
 	// Constructors
-	for (auto& entry : input.ctorInfos)
+	for (auto& entry : classInformation.ctorInfos)
 	{
 		if (!isCSOnly(entry.flags))
 		{
 			// Generate interop
 			interops << GenerateAPICheckBegin(entry.api);
 			interops << "\t\t[MethodImpl(MethodImplOptions.InternalCall)]" << std::endl;
-			interops << "\t\tprivate static extern void Internal_" << entry.interopName << "(" << typeInfo.ScriptTypeName << " managedInstance";
+			interops << "\t\tprivate static extern void Internal_" << entry.interopName << "(" << typeMappingInformation.ScriptTypeName << " managedInstance";
 
 			if (entry.paramInfos.size() > 0)
 				interops << ", " << GenerateCSharpMethodParameters(entry, true);
@@ -455,9 +490,9 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 		else
 			ctors << "\t\tpublic ";
 
-		ctors << typeInfo.ScriptTypeName << "(" << GenerateCSharpMethodParameters(entry, false) << ")" << std::endl;
+		ctors << typeMappingInformation.ScriptTypeName << "(" << GenerateCSharpMethodParameters(entry, false) << ")" << std::endl;
 		ctors << "\t\t{" << std::endl;
-		ctors << generateCSMethodDefaultParamAssignments(entry, "\t\t\t");
+		ctors << GenerateCSharpMethodDefaultArgumentAssignments(entry, "\t\t\t");
 		ctors << "\t\t\tInternal_" << entry.interopName << "(this";
 
 		if (entry.paramInfos.size() > 0)
@@ -470,20 +505,20 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 	}
 
 	// 'Ref' property & conversion operator to RRef<T>
-	if(typeInfo.TypeCategory == ExportedClassTypeCategory::Resource)
+	if(typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Resource)
 	{
 		interops << "\t\t[MethodImpl(MethodImplOptions.InternalCall)]\n";
-		interops << "\t\tprivate static extern RRef<" << typeInfo.ScriptTypeName << "> Internal_GetRef(IntPtr thisPtr);\n";
+		interops << "\t\tprivate static extern RRef<" << typeMappingInformation.ScriptTypeName << "> Internal_GetRef(IntPtr thisPtr);\n";
 
 		properties << "\t\t/// <summary>Returns a reference wrapper for this resource.</summary>\n";
-		properties << "\t\tpublic RRef<" << typeInfo.ScriptTypeName << "> Ref\n";
+		properties << "\t\tpublic RRef<" << typeMappingInformation.ScriptTypeName << "> Ref\n";
 		properties << "\t\t{\n";
 		properties << "\t\t\tget { return Internal_GetRef(mCachedPtr); }\n";
 		properties << "\t\t}\n";
 		properties << "\n";
 
 		methods << "\t\t/// <summary>Returns a reference wrapper for this resource.</summary>\n";
-		methods << "\t\tpublic static implicit operator RRef<" << typeInfo.ScriptTypeName << ">(" << typeInfo.ScriptTypeName << " x)\n";
+		methods << "\t\tpublic static implicit operator RRef<" << typeMappingInformation.ScriptTypeName << ">(" << typeMappingInformation.ScriptTypeName << " x)\n";
 		methods << "\t\t{\n";
 		methods << "\t\t\tif(x != null)\n";
 		methods << "\t\t\t\treturn Internal_GetRef(x.mCachedPtr);\n";
@@ -493,14 +528,14 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 	}
 
 	// External constructors, methods and interop stubs
-	for (auto& entry : input.methodInfos)
+	for (auto& entry : classInformation.methodInfos)
 	{
 		// Generate interop
 		if (!isCSOnly(entry.flags))
 		{
 			interops << GenerateAPICheckBegin(entry.api);
 			interops << "\t\t[MethodImpl(MethodImplOptions.InternalCall)]" << std::endl;
-			interops << "\t\tprivate static extern " << generateCSInteropMethodSignature(entry, typeInfo.ScriptTypeName, isModule) << ";";
+			interops << "\t\tprivate static extern " << GenerateCSharpInternalMethodSignature(classInformation, entry, typeMappingInformation) << ";";
 			interops << std::endl;
 			interops << GenerateApiCheckEnd(entry.api);
 		}
@@ -524,9 +559,9 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 			else
 				ctors << "\t\tpublic ";
 
-			ctors << typeInfo.ScriptTypeName << "(" << GenerateCSharpMethodParameters(entry, false) << ")" << std::endl;
+			ctors << typeMappingInformation.ScriptTypeName << "(" << GenerateCSharpMethodParameters(entry, false) << ")" << std::endl;
 			ctors << "\t\t{" << std::endl;
-			ctors << generateCSMethodDefaultParamAssignments(entry, "\t\t\t");
+			ctors << GenerateCSharpMethodDefaultArgumentAssignments(entry, "\t\t\t");
 			ctors << "\t\t\tInternal_" << entry.interopName << "(this";
 
 			if (entry.paramInfos.size() > 0)
@@ -567,7 +602,7 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 
 				methods << returnType << " " << entry.scriptName << "(" << GenerateCSharpMethodParameters(entry, false) << ")" << std::endl;
 				methods << "\t\t{" << std::endl;
-				methods << generateCSMethodDefaultParamAssignments(entry, "\t\t\t");
+				methods << GenerateCSharpMethodDefaultArgumentAssignments(entry, "\t\t\t");
 
 				bool returnByParam = false;
 				if (!entry.returnInfo.TypeInformation.IsEmpty())
@@ -615,7 +650,7 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 	}
 
 	// Properties
-	for (auto& entry : input.propertyInfos)
+	for (auto& entry : classInformation.propertyInfos)
 	{
 		const TypeMappingInformation propertyTypeMappingInformation = GetNativeToScriptTypeMapping(entry.TypeInformation);
 		const std::string propertyQualifiedTypeName = GetScriptQualifiedType(entry.TypeInformation, propertyTypeMappingInformation);
@@ -701,7 +736,7 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 	}
 
 	// Events & callbacks
-	for(auto& entry : input.eventInfos)
+	for(auto& entry : classInformation.eventInfos)
 	{
 		bool isStatic = (entry.flags & (int)MethodFlags::Static) != 0;
 		bool isCallback = (entry.flags & (int)MethodFlags::Callback) != 0;
@@ -729,7 +764,7 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 			events << "event Action";
 
 			if (!entry.paramInfos.empty())
-				events << "<" << generateCSEventSignature(entry) << ">";
+				events << "<" << GenerateCSharpEventSignature(entry) << ">";
 
 			events << " " << entry.scriptName << ";\n\n";
 		}
@@ -756,55 +791,55 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 		interops << "void Internal_" << entry.interopName << "(" << GenerateCSharpMethodParameters(entry, true) << ")" << std::endl;
 		interops << "\t\t{" << std::endl;
 		if (!isCallback && !isInternal)
-			interops << "\t\t\t" << entry.scriptName << "?.Invoke(" << generateCSEventArgs(entry) << ");\n";
+			interops << "\t\t\t" << entry.scriptName << "?.Invoke(" << GenerateCSharpEventArguments(entry) << ");\n";
 		else
-			interops << "\t\t\tCallback_" << entry.scriptName << "(" << generateCSEventArgs(entry) << ");\n";
+			interops << "\t\t\tCallback_" << entry.scriptName << "(" << GenerateCSharpEventArguments(entry) << ");\n";
 		interops << "\t\t}" << std::endl;
 		interops << GenerateApiCheckEnd(entry.api);
 	}
 
 	std::stringstream output;
-	output << GenerateAPICheckBegin(input.api);
+	output << GenerateAPICheckBegin(classInformation.api);
 
-	if(!input.module.empty())
+	if(!classInformation.module.empty())
 	{
-		output << "\t/** @addtogroup " << input.module << "\n";
+		output << "\t/** @addtogroup " << classInformation.module << "\n";
 		output << "\t *  @{\n";
 		output << "\t */\n";
 		output << "\n";
 	}
 
-	output << CommentParser::GenerateXMLComments(input.documentation, "\t");
+	output << CommentParser::GenerateXMLComments(classInformation.documentation, "\t");
 
 	// Force non-resource and non-component types to show in inspector, except explicitly hidden
-	if (IsClassType(typeInfo.TypeCategory) || (input.flags & (int)ClassFlags::HideInInspector) == 0)
+	if (IsClassType(typeMappingInformation.TypeCategory) || (classInformation.flags & (int)ClassFlags::HideInInspector) == 0)
 		output << "\t[ShowInInspector]\n";
 
-	if (input.visibility == CSVisibility::Internal)
+	if (classInformation.visibility == CSVisibility::Internal)
 		output << "\tinternal ";
-	else if (input.visibility == CSVisibility::Public)
+	else if (classInformation.visibility == CSVisibility::Public)
 		output << "\tpublic ";
-	else if (input.visibility == CSVisibility::Private)
+	else if (classInformation.visibility == CSVisibility::Private)
 		output << "\tprivate ";
 	else
 		output << "\t";
 
 	std::string baseType;
-	if (!input.baseClass.empty())
+	if (!classInformation.baseClass.empty())
 	{
-		TypeMappingInformation baseTypeInfo = GetNativeToScriptTypeMapping(input.baseClass);
+		TypeMappingInformation baseTypeInfo = GetNativeToScriptTypeMapping(classInformation.baseClass);
 		baseType = baseTypeInfo.ScriptTypeName;
 	}
-	else if (typeInfo.TypeCategory == ExportedClassTypeCategory::Resource)
+	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Resource)
 		baseType = "Resource";
-	else if (typeInfo.TypeCategory == ExportedClassTypeCategory::Component)
+	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Component)
 		baseType = "Component";
-	else if (typeInfo.TypeCategory == ExportedClassTypeCategory::GUIElement)
+	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GUIElement)
 		baseType = "GUIElement";
 	else
 		baseType = "ScriptObject";
 
-	output << "partial class " << typeInfo.ScriptTypeName << " : " << baseType;
+	output << "partial class " << typeMappingInformation.ScriptTypeName << " : " << baseType;
 
 	output << std::endl;
 	output << "\t{" << std::endl;
@@ -817,13 +852,13 @@ std::string generateCSClass(ClassInfo& input, TypeMappingInformation& typeInfo)
 
 	output << "\t}" << std::endl;
 
-	if(!input.module.empty())
+	if(!classInformation.module.empty())
 	{
 		output << "\n";
 		output << "\t/** @} */\n";
 	}
 
-	output << GenerateApiCheckEnd(input.api);
+	output << GenerateApiCheckEnd(classInformation.api);
 
 	return output.str();
 }
@@ -1380,7 +1415,7 @@ void GenerateCSharp(StringRef engineOutputFolder, StringRef editorOutputFolder, 
 			ClassInfo& classInfo = *I;
 			TypeMappingInformation& typeInfo = NativeToScriptTypeMap[classInfo.name];
 
-			body << generateCSClass(classInfo, typeInfo);
+			body << GenerateCSharpClass(classInfo, typeInfo);
 
 			if ((I + 1) != classInfos.end() || !structInfos.empty() || !enumInfos.empty())
 				body << std::endl;

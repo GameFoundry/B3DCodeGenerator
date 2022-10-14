@@ -1127,7 +1127,13 @@ inline void getDerivedClasses(const std::string& typeName, std::vector<std::stri
 	}
 }
 
-inline MethodInfo findUnusedCtorSignature(const ClassInfo& classInfo) // TODO - Move to GeneratorUtility
+/**
+ * Scans the class information for a constructor that is not already used, and return the signature of the first such constructor.
+ *
+ * @param classInfo			Information about the class in which to look for constructors.
+ * @return					Information about the constructors signature.
+ */
+inline MethodInfo FindUnusedConstructorSignature(const ClassInfo& classInfo) // TODO - Move to ClassInfo
 {
 	auto checkSignature = [](int numParams, const MethodInfo& info)
 	{

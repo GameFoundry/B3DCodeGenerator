@@ -2999,7 +2999,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 	{
 		std::stringstream ctorSignature;
 		std::stringstream ctorParamsInit;
-		MethodInfo unusedCtor = findUnusedCtorSignature(classInfo);
+		MethodInfo unusedCtor = FindUnusedConstructorSignature(classInfo);
 		int numDummyParams = (int)unusedCtor.paramInfos.size();
 
 		ctorParamsInit << "\t\tbool dummy = false;" << std::endl;
