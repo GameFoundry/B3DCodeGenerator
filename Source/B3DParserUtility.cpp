@@ -399,7 +399,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 		{
 			const TypeMappingInformation typeMappingInformation = GetNativeToScriptTypeMapping(typeInformation);
 			if (typeMappingInformation.TypeCategory != ExportedClassTypeCategory::Class && typeMappingInformation.TypeCategory != ExportedClassTypeCategory::ReflectableClass &&
-				typeMappingInformation.TypeCategory != ExportedClassTypeCategory::GUIElement && !IsHandleType(typeMappingInformation.TypeCategory))
+				typeMappingInformation.TypeCategory != ExportedClassTypeCategory::GUIElement && !typeMappingInformation.IsHandleType())
 				return;
 
 			const std::string& typeName = typeInformation.GetLastWrappedOrSelfTypeName();
@@ -729,7 +729,7 @@ void ParserUtility::GatherIncludes(const VariableTypeInformation& typeInformatio
 			output.includes[typeName] = IncludeInfo(typeName, typeMappingInformation, sourceIncludeType, interopIncludeType, isStruct, isEditor);
 		}
 
-		if (IsClassType(typeMappingInformation.TypeCategory))
+		if (typeMappingInformation.IsClassType())
 		{
 			const bool isBase = underlyingTypeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsReferencingBaseClass);
 			if (isBase)

@@ -345,6 +345,12 @@ struct TypeMappingInformation // TODO - Add a new TypeMapping file/class. Regist
 		:NativeNamespace(std::move(nativeNamespace)), ScriptTypeName(scriptName), TypeCategory(typeCategory), NativeFile(nativeFile), InteropFile(destFile), EditorInteropFile(destFileEditor)
 	{ }
 
+	bool IsInt64() const;
+	bool IsInteger() const;
+	bool IsReal() const;
+	bool IsHandleType() const;
+	bool IsClassType() const;
+
 	std::string ScriptTypeName; /**< Name of the type in the script code. */
 	SmallVector<std::string, 4> NativeNamespace; /**< Namespace in which the native type is located in. Used for e.g. forward declares in generated native interop code. */
 	std::string NativeFile; /**< File in which the native type is defined in. Used for resolving includes. */
@@ -353,6 +359,31 @@ struct TypeMappingInformation // TODO - Add a new TypeMapping file/class. Regist
 	::ExportedClassTypeCategory TypeCategory; /**< Determines a high level category that this type belongs to. */
 	BuiltinType::Kind EnumUnderlyingType; /**< Underlying primitive type for enum or enum class. */
 };
+
+inline bool TypeMappingInformation::IsInt64() const
+{
+	return TypeCategory == ExportedClassTypeCategory::Primitive && (ScriptTypeName == "long" || ScriptTypeName == "ulong");
+}
+
+inline bool TypeMappingInformation::IsInteger() const
+{
+	return TypeCategory == ExportedClassTypeCategory::Primitive && (ScriptTypeName == "int" || ScriptTypeName == "uint" || ScriptTypeName == "long" || ScriptTypeName == "ulong" || ScriptTypeName == "short" || ScriptTypeName == "ushort" || ScriptTypeName == "byte");
+}
+
+inline bool TypeMappingInformation::IsReal() const
+{
+	return TypeCategory == ExportedClassTypeCategory::Primitive && (ScriptTypeName == "float" || ScriptTypeName == "double");
+}
+
+inline bool TypeMappingInformation::IsHandleType() const
+{
+	return TypeCategory == ExportedClassTypeCategory::Resource || TypeCategory == ExportedClassTypeCategory::SceneObject || TypeCategory == ExportedClassTypeCategory::Component;
+}
+
+inline bool TypeMappingInformation::IsClassType() const
+{
+	return TypeCategory == ExportedClassTypeCategory::Class || TypeCategory == ExportedClassTypeCategory::ReflectableClass;
+}
 
 struct VariableBase
 {
@@ -998,40 +1029,11 @@ inline const std::string& escapeXML(const std::string& data)
 	return buffer;
 }
 
-inline bool isInt64(const TypeMappingInformation& typeInfo) // TODO - Make TypeMappingInformation member
-{
-	return typeInfo.TypeCategory == ::ExportedClassTypeCategory::Primitive && (typeInfo.ScriptTypeName == "long" || typeInfo.ScriptTypeName == "ulong");
-}
-
-inline bool isInteger(const TypeMappingInformation& typeInfo) // TODO - Make TypeMappingInformation member
-{
-	return typeInfo.TypeCategory == ::ExportedClassTypeCategory::Primitive &&
-		(typeInfo.ScriptTypeName == "int" || typeInfo.ScriptTypeName == "uint" ||
-			typeInfo.ScriptTypeName == "long" || typeInfo.ScriptTypeName == "ulong" ||
-			typeInfo.ScriptTypeName == "short" || typeInfo.ScriptTypeName == "ushort" ||
-			typeInfo.ScriptTypeName == "byte");
-}
-
-inline bool isReal(const TypeMappingInformation& typeInfo) // TODO - Make TypeMappingInformation member
-{
-	return typeInfo.TypeCategory == ::ExportedClassTypeCategory::Primitive &&
-		(typeInfo.ScriptTypeName == "float" || typeInfo.ScriptTypeName == "double");
-}
-
 inline bool isStruct(int flags)
 {
 	return (flags & (int)ClassFlags::IsStruct) != 0;
 }
 
-inline bool IsHandleType(ExportedClassTypeCategory type) // TODO - Move to TypeMappingInformation
-{
-	return type == ::ExportedClassTypeCategory::Resource || type == ::ExportedClassTypeCategory::SceneObject || type == ::ExportedClassTypeCategory::Component;
-}
-
-inline bool IsClassType(ExportedClassTypeCategory type) // TODO - Move to TypeMappingInformation
-{
-	return type == ::ExportedClassTypeCategory::Class || type == ::ExportedClassTypeCategory::ReflectableClass;
-}
 
 inline ApiFlags apiFromExportFlags(int flags)
 {

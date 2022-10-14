@@ -137,7 +137,7 @@ static std::string GenerateCSharpStyleAttributes(const ExportStyle& style, const
 {
 	std::stringstream output;
 
-	if(((style.flags & (int)StyleFlags::AsLayerMask) != 0) && isInt64(typeMappingInformation))
+	if(((style.flags & (int)StyleFlags::AsLayerMask) != 0) && typeMappingInformation.IsInt64())
 		output << "\t\t[LayerMask]\n";
 
 	if ((style.flags & (int)StyleFlags::Step) != 0)
@@ -164,7 +164,7 @@ static std::string GenerateCSharpStyleAttributes(const ExportStyle& style, const
 	bool passByCopy = (style.flags & (int)StyleFlags::PassByCopy) != 0;
 
 	const bool isPassedByValue = IsInternalMethodParameterValueType(typeInformation);
-	if(!isGeneratingStructFields && (IsClassType(typeMappingInformation.TypeCategory) && isPassedByValue))
+	if(!isGeneratingStructFields && (typeMappingInformation.IsClassType() && isPassedByValue))
 	{
 		notNull = true;
 		passByCopy = true;
@@ -812,7 +812,7 @@ std::string GenerateCSharpClass(const ClassInfo& classInformation, TypeMappingIn
 	output << CommentParser::GenerateXMLComments(classInformation.documentation, "\t");
 
 	// Force non-resource and non-component types to show in inspector, except explicitly hidden
-	if (IsClassType(typeMappingInformation.TypeCategory) || (classInformation.flags & (int)ClassFlags::HideInInspector) == 0)
+	if (typeMappingInformation.IsClassType() || (classInformation.flags & (int)ClassFlags::HideInInspector) == 0)
 		output << "\t[ShowInInspector]\n";
 
 	if (classInformation.visibility == CSVisibility::Internal)
