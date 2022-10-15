@@ -28,7 +28,6 @@ std::string sEditorCopyrightNotice =
 	"//************** Copyright (c) 2016-2019 Marko Pintera (marko.pintera@gmail.com). All rights reserved. *******************//\n";
 
 std::unordered_map<std::string, TypeMappingInformation> NativeToScriptTypeMap;
-std::unordered_map<std::string, FileInfo> outputFileInfos;
 std::unordered_map<std::string, ExternalClassInfos> externalClassInfos;
 std::unordered_map<std::string, BaseClassInfo> baseClassLookup;
 

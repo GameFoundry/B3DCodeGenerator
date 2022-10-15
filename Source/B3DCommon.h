@@ -692,6 +692,9 @@ struct ClassInfo : GeneratedTypeInformation
 	std::vector<MethodInfo> Methods;
 	std::vector<MethodInfo> Events;
 	std::vector<FieldInfo> Fields;
+
+	/** Scans the class information for a constructor that is not already used, and return the signature of the first such constructor. */
+	MethodInfo FindUnusedConstructorSignature() const;
 };
 
 struct ExternalClassInfos
@@ -871,57 +874,8 @@ inline bool IsAPIValid(ApiFlags api, bool editor)
 }
 
 /** Contains a map of native types to script types. The key is the native name as provided in ClassInfo.Name, StructInfo.Name or EnumInfo.Name. */
-extern std::unordered_map<std::string, FileInfo> outputFileInfos;
 extern std::unordered_map<std::string, ExternalClassInfos> externalClassInfos;
 extern std::unordered_map<std::string, BaseClassInfo> baseClassLookup;
-
-inline StructInfo* FindStructInformation(const std::string& name)
-{
-	for (auto& fileInfo : outputFileInfos)
-	{
-		for (auto& structInfo : fileInfo.second.Structs)
-		{
-			if (structInfo.NativeName == name)
-				return &structInfo;
-		}
-	}
-
-	return nullptr;
-};
-
-inline ClassInfo* FindClassInformation(const std::string& name, bool isEditor)
-{
-	for (auto& fileInfo : outputFileInfos)
-	{
-		for (auto& classInfo : fileInfo.second.Classes)
-		{
-			if (classInfo.NativeName != name)
-				continue;
-
-			// Two versions of editor and Framework class migth exist, make sure to pick the right one
-			if((isEditor && classInfo.API == ApiFlags::Framework) || (!isEditor &&  IsAPIEditor(classInfo.API)))
-				continue;
-
-			return &classInfo;
-		}
-	}
-
-	return nullptr;
-}
-
-inline EnumInfo* FindEnumInformation(const std::string& name)
-{
-	for (auto& fileInfo : outputFileInfos)
-	{
-		for (auto& enumInfo : fileInfo.second.Enums)
-		{
-			if (enumInfo.NativeName == name)
-				return &enumInfo;
-		}
-	}
-
-	return nullptr;
-}
 
 inline std::string getCSLiteralSuffix(const std::string& cppType)
 {
@@ -1055,85 +1009,6 @@ inline void getDerivedClasses(const std::string& typeName, std::vector<std::stri
 		if(!onlyDirect)
 			getDerivedClasses(entry, output);
 	}
-}
-
-/**
- * Scans the class information for a constructor that is not already used, and return the signature of the first such constructor.
- *
- * @param classInfo			Information about the class in which to look for constructors.
- * @return					Information about the constructors signature.
- */
-inline MethodInfo FindUnusedConstructorSignature(const ClassInfo& classInfo) // TODO - Move to ClassInfo
-{
-	auto checkSignature = [](int numParams, const MethodInfo& info)
-	{
-		if ((int)info.Parameters.size() != numParams)
-			return true;
-
-		for (auto& paramInfo : info.Parameters)
-		{
-			if (paramInfo.TypeInformation.TypeName != "bool")
-				return true;
-		}
-
-		return false;
-	};
-
-	int numBools = 1;
-	while (true)
-	{
-		bool isSignatureValid = true;
-
-		// Check normal constructors
-		for (auto& entry : classInfo.Constructors)
-		{
-			if(!checkSignature(numBools, entry))
-			{
-				isSignatureValid = false;
-				break;
-			}
-		}
-
-		// Check external constructors
-		if(isSignatureValid)
-		{
-			for (auto& entry : classInfo.Methods)
-			{
-				bool isConstructor = (entry.MethodFlags & (int)MethodFlags::Constructor) != 0;
-				if (!isConstructor)
-					continue;
-
-				if(!checkSignature(numBools, entry))
-				{
-					isSignatureValid = false;
-					break;
-				}
-			}
-		}
-
-		if (isSignatureValid)
-			break;
-
-		numBools++;
-	}
-
-	MethodInfo output;
-	output.NativeName = classInfo.NativeNameWithoutTemplateArguments;
-	output.ScriptName = classInfo.NativeNameWithoutTemplateArguments;
-	output.MethodFlags = (int)MethodFlags::Constructor;
-	output.Visibility = CSVisibility::Private;
-
-	for (int i = 0; i < numBools; i++)
-	{
-		VariableInformation paramInfo;
-		paramInfo.Name = "__dummy" + std::to_string(i);
-		paramInfo.TypeInformation.TypeName = "bool";
-		paramInfo.TypeInformation.TypeCategory = VariableTypeCategory::Primitive;
-
-		output.Parameters.push_back(paramInfo);
-	}
-
-	return output;
 }
 
 inline void cleanAndPrepareFolder(const StringRef& folder) // TODO - Move to Generator common

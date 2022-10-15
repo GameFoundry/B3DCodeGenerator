@@ -1,6 +1,7 @@
 #include "B3DParserUtility.h"
 #include "B3DCommentParser.h"
 #include "B3DCommon.h"
+#include "B3DTypeLookup.h"
 
 /**
  * Returns a default value that can be used for initializing the variable, field or parameter of the provided type.
@@ -450,7 +451,7 @@ std::string GenerateCSharpClass(const ClassInfo& classInformation, TypeMappingIn
 	std::stringstream interops;
 
 	// Private constructor for runtime use
-	MethodInfo privateConstructorInformation = FindUnusedConstructorSignature(classInformation);
+	MethodInfo privateConstructorInformation = classInformation.FindUnusedConstructorSignature();
 	ctors << "\t\tprivate " << typeMappingInformation.ScriptTypeName << "(" << GenerateCSharpMethodParameters(privateConstructorInformation, false) << ") { }" << std::endl;
 
 	// Parameterless constructor in case anything derives from this class
@@ -863,7 +864,7 @@ std::string GenerateCSharpClass(const ClassInfo& classInformation, TypeMappingIn
 	return output.str();
 }
 
-std::string generateCSStruct(StructInfo& input)
+std::string generateCSStruct(const StructInfo& input)
 {
 	std::stringstream output;
 	output << GenerateAPICheckBegin(input.API);
@@ -993,7 +994,7 @@ std::string generateCSStruct(StructInfo& input)
 	if(!input.BaseClassName.empty())
 	{
 		TypeMappingInformation baseTypeInfo = GetNativeToScriptTypeMapping(input.BaseClassName);
-		StructInfo* baseStructInfo = FindStructInformation(input.BaseClassName);
+		StructInfo* baseStructInfo = TypeLookup::FindStructInformation(input.BaseClassName);
 		if (baseStructInfo != nullptr)
 		{
 			// GetBase()
@@ -1074,7 +1075,7 @@ std::string generateCSStruct(StructInfo& input)
 	return output.str();
 }
 
-std::string generateCSEnum(EnumInfo& input)
+std::string generateCSEnum(const EnumInfo& input)
 {
 	std::stringstream output;
 	output << GenerateAPICheckBegin(input.API);
@@ -1261,7 +1262,7 @@ std::string generateXMLEventInfo(const MethodInfo& eventInfo, const std::string&
 	return output.str();
 }
 
-std::string generateXMLEnum(EnumInfo& input, const std::string& indent)
+std::string generateXMLEnum(const EnumInfo& input, const std::string& indent)
 {
 	std::stringstream output;
 
@@ -1283,7 +1284,7 @@ std::string generateXMLEnum(EnumInfo& input, const std::string& indent)
 	return output.str();
 }
 
-std::string generateXMLStruct(StructInfo& input, const std::string& indent)
+std::string generateXMLStruct(const StructInfo& input, const std::string& indent)
 {
 	std::stringstream output;
 
@@ -1303,7 +1304,7 @@ std::string generateXMLStruct(StructInfo& input, const std::string& indent)
 	return output.str();
 }
 
-std::string generateXMLClass(ClassInfo& input, bool editor, const std::string& indent)
+std::string generateXMLClass(const ClassInfo& input, bool editor, const std::string& indent)
 {
 	std::stringstream output;
 
@@ -1352,17 +1353,17 @@ std::string generateXMLClass(ClassInfo& input, bool editor, const std::string& i
 void generateMappingXMLFile(bool editor, const std::string& outputFolder)
 {
 	std::stringstream body;
-	for (auto& fileInfo : outputFileInfos)
+	for (const auto& fileInfo : TypeLookup::GetFilesToGenerate())
 	{
 		auto& enumInfos = fileInfo.second.Enums;
-		for (auto& entry : enumInfos)
+		for (const auto& entry : enumInfos)
 		{
 			if (IsAPIValid(entry.API, editor))
 				body << generateXMLEnum(entry, "\t");
 		}
 
 		auto& structInfos = fileInfo.second.Structs;
-		for (auto& entry : structInfos)
+		for (const auto& entry : structInfos)
 		{
 			if (IsAPIValid(entry.API, editor))
 				body << generateXMLStruct(entry, "\t");
@@ -1370,7 +1371,7 @@ void generateMappingXMLFile(bool editor, const std::string& outputFolder)
 
 
 		auto& classInfos = fileInfo.second.Classes;
-		for (auto& entry : classInfos)
+		for (const auto& entry : classInfos)
 		{
 			if (IsAPIValid(entry.API, editor))
 				body << generateXMLClass(entry, editor, "\t");
@@ -1396,7 +1397,7 @@ void GenerateCSharp(StringRef engineOutputFolder, StringRef editorOutputFolder, 
 	}
 
 	// Generate CS
-	for (auto& fileInfo : outputFileInfos)
+	for (auto& fileInfo : TypeLookup::GetFilesToGenerate())
 	{
 		if (fileInfo.second.InEditor && !generateEditorCode)
 			continue;
@@ -1412,7 +1413,7 @@ void GenerateCSharp(StringRef engineOutputFolder, StringRef editorOutputFolder, 
 
 		for (auto I = classInfos.begin(); I != classInfos.end(); ++I)
 		{
-			ClassInfo& classInfo = *I;
+			const ClassInfo& classInfo = *I;
 			TypeMappingInformation& typeInfo = NativeToScriptTypeMap[classInfo.NativeName];
 
 			body << GenerateCSharpClass(classInfo, typeInfo);

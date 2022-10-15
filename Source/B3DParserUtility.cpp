@@ -1,5 +1,6 @@
 #include "B3DParserUtility.h"
 #include "B3DCommentParser.h"
+#include "B3DTypeLookup.h"
 
 std::string ParserUtility::GetNamespace(const NamedDecl* decl)
 {
@@ -89,7 +90,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 	// Inject external methods into their appropriate class infos
 	for (auto& entry : externalClassInfos)
 	{
-		for (auto& fileInfo : outputFileInfos)
+		for (auto& fileInfo : TypeLookup::GetFilesToGenerateMutable())
 		{
 			for (auto& classInfo : fileInfo.second.Classes)
 			{
@@ -137,7 +138,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 	}
 
 	// Resolve copydoc comment commands
-	for (auto& fileInfo : outputFileInfos)
+	for (auto& fileInfo : TypeLookup::GetFilesToGenerateMutable())
 	{
 		for (auto& classInfo : fileInfo.second.Classes)
 		{
@@ -167,7 +168,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 
 	// Generate unique interop method names
 	std::unordered_set<std::string> usedNames;
-	for (auto& fileInfo : outputFileInfos)
+	for (auto& fileInfo : TypeLookup::GetFilesToGenerateMutable())
 	{
 		for (auto& classInfo : fileInfo.second.Classes)
 		{
@@ -203,7 +204,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 	}
 
 	// Generate property infos
-	for (auto& fileInfo : outputFileInfos)
+	for (auto& fileInfo : TypeLookup::GetFilesToGenerateMutable())
 	{
 		for (auto& classInfo : fileInfo.second.Classes)
 		{
@@ -273,7 +274,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 	}
 
 	// Generate meta-data about base classes
-	for (auto& fileInfo : outputFileInfos)
+	for (const auto& fileInfo : TypeLookup::GetFilesToGenerate())
 	{
 		for (auto& classInfo : fileInfo.second.Classes)
 		{
@@ -281,7 +282,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 				continue;
 
 			bool isEditor = IsAPIEditor(classInfo.API);
-			ClassInfo* baseClassInfo = FindClassInformation(classInfo.BaseClassName, isEditor);
+			ClassInfo* baseClassInfo = TypeLookup::FindClassInformation(classInfo.BaseClassName, isEditor);
 			if (baseClassInfo == nullptr)
 			{
 				assert(false);
@@ -306,7 +307,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 
 		int enumIdx = atoi(paramInfo.DefaultValue.c_str());
 		const std::string typeName = paramInfo.TypeInformation.GetLastWrappedOrSelfTypeName();
-		EnumInfo *const enumInformation = FindEnumInformation(typeName);
+		EnumInfo *const enumInformation = TypeLookup::FindEnumInformation(typeName);
 		if(enumInformation == nullptr)
 		{
 			errs() << "Error: Cannot map default value of \"" + paramInfo.Name + "\" to enum entry for enum type \"" + typeName + "\". Ignoring.";
@@ -325,7 +326,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 		paramInfo.DefaultValue = enumInformation->ScriptName + "." + iterFind->second.ScriptName;
 	};
 
-	for (auto& fileInfo : outputFileInfos)
+	for (auto& fileInfo : TypeLookup::GetFilesToGenerateMutable())
 	{
 		for (auto& classInfo : fileInfo.second.Classes)
 		{
@@ -356,7 +357,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 	}
 
 	// Find structs requiring special conversion
-	for (auto& fileInfo : outputFileInfos)
+	for (auto& fileInfo : TypeLookup::GetFilesToGenerateMutable())
 	{
 		for (auto& structInfo : fileInfo.second.Structs)
 		{
@@ -379,7 +380,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 	}
 
 	// Mark parameters referencing complex structs and base types
-	for (auto& fileInfo : outputFileInfos)
+	for (auto& fileInfo : TypeLookup::GetFilesToGenerateMutable())
 	{
 		auto fnMarkComplexType = [](VariableTypeInformation& typeInformation)
 		{
@@ -388,7 +389,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 				return;
 
 			const std::string& typeName = typeInformation.GetLastWrappedOrSelfTypeName();
-			StructInfo *const structInfo = FindStructInformation(typeName);
+			StructInfo *const structInfo = TypeLookup::FindStructInformation(typeName);
 			if (structInfo != nullptr && structInfo->RequiresInteropType)
 			{
 				typeInformation.SetPostProcessFlag(VariablePostProcessFlags::IsStructWrapperUsed, true);
@@ -403,7 +404,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 				return;
 
 			const std::string& typeName = typeInformation.GetLastWrappedOrSelfTypeName();
-			ClassInfo *const classInfo = FindClassInformation(typeName, false);
+			ClassInfo *const classInfo = TypeLookup::FindClassInformation(typeName, false);
 			if (classInfo != nullptr)
 			{
 				bool isBase = (classInfo->ClassFlags & (int)ClassFlags::IsBase) != 0;
@@ -459,7 +460,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 
 	// Generate referenced includes
 	{
-		for (auto& fileInfo : outputFileInfos)
+		for (auto& fileInfo : TypeLookup::GetFilesToGenerateMutable())
 		{
 			IncludesInfo includesInfo;
 			for (auto& classInfo : fileInfo.second.Classes)
@@ -592,7 +593,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 	}
 
 	// Generate overloads for unsupported default parameters
-	for (auto& fileInfo : outputFileInfos)
+	for (auto& fileInfo : TypeLookup::GetFilesToGenerateMutable())
 	{
 		for (auto& classInfo : fileInfo.second.Classes)
 		{

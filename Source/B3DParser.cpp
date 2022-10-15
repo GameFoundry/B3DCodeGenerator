@@ -1,7 +1,6 @@
 #include "B3DParser.h"
-#include <cctype>
-
 #include "B3DParserUtility.h"
+#include "B3DTypeLookup.h"
 
 /** Parses the declaration and determines what exported type category should be used to represent this type in scripting. */
 static ExportedClassTypeCategory DetermineExportedTypeCategory(const CXXRecordDecl* decl)
@@ -164,7 +163,7 @@ void addEntryToFile(FileInfo& fileInfo, T& entry, const std::string& file, std::
 
 			std::string editorFile = file + ".editor";
 
-			FileInfo& editorFileInfo = outputFileInfos[editorFile];
+			FileInfo& editorFileInfo = TypeLookup::GetOrAddFileToGenerate(editorFile);
 			editorFileInfo.InEditor = true;
 			addEntry(editorFileInfo, entry);
 		}
@@ -957,7 +956,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitEnumDecl(EnumDecl* decl)
 	if (!ScriptExportUtility::ParseExportAttribute(attr, sourceClassName, parsedEnumInfo))
 		return true;
 
-	FileInfo& fileInfo = outputFileInfos[parsedEnumInfo.ExportedFileName];
+	FileInfo& fileInfo = TypeLookup::GetOrAddFileToGenerate(parsedEnumInfo.ExportedFileName);
 	auto iterFind = std::find_if(fileInfo.Enums.begin(), fileInfo.Enums.end(), 
 		[&sourceClassName](const EnumInfo& ei)
 	{
@@ -1123,7 +1122,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 		templatedDecl = specDecl->getSpecializedTemplate()->getTemplatedDecl();
 	}
 
-	FileInfo& fileInfo = outputFileInfos[parsedClassInfo.ExportedFileName];
+	FileInfo& fileInfo = TypeLookup::GetOrAddFileToGenerate(parsedClassInfo.ExportedFileName);
 	if ((parsedClassInfo.ExportFlags & (int)ExportFlags::ExportAsStruct) != 0)
 	{
 		auto iterFind = std::find_if(fileInfo.Structs.begin(), fileInfo.Structs.end(), 

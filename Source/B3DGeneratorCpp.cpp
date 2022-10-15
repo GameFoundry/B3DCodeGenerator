@@ -3,6 +3,7 @@
 
 #include "B3DCommentParser.h"
 #include "B3DParserUtility.h"
+#include "B3DTypeLookup.h"
 
 /** Returns true if the provided type is passed as value type to an internal method parameter. */
 static bool IsInternalMethodParameterValueType(const VariableTypeInformation& typeInformation)
@@ -2999,7 +3000,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 	{
 		std::stringstream ctorSignature;
 		std::stringstream ctorParamsInit;
-		MethodInfo unusedCtor = FindUnusedConstructorSignature(classInfo);
+		MethodInfo unusedCtor = classInfo.FindUnusedConstructorSignature();
 		int numDummyParams = (int)unusedCtor.Parameters.size();
 
 		ctorParamsInit << "\t\tbool dummy = false;" << std::endl;
@@ -3371,7 +3372,7 @@ void generateLookupFile(const std::string& tableName, ExportedClassTypeCategory 
 
 	std::stringstream body;
 	std::stringstream includes;
-	for (auto& fileInfo : outputFileInfos)
+	for (auto& fileInfo : TypeLookup::GetFilesToGenerate())
 	{
 		auto& classInfos = fileInfo.second.Classes;
 		if (classInfos.empty())
@@ -3444,7 +3445,7 @@ void GenerateCpp(StringRef engineOutputFolder, StringRef editorOutputFolder, boo
 	}
 
 	// Generate H
-	for (auto& fileInfo : outputFileInfos)
+	for (auto& fileInfo : TypeLookup::GetFilesToGenerate())
 	{
 		if(fileInfo.second.InEditor && !generateEditor)
 			continue;
@@ -3459,7 +3460,7 @@ void GenerateCpp(StringRef engineOutputFolder, StringRef editorOutputFolder, boo
 
 		for (auto I = classInfos.begin(); I != classInfos.end(); ++I)
 		{
-			ClassInfo& classInfo = *I;
+			const ClassInfo& classInfo = *I;
 			TypeMappingInformation& typeInfo = NativeToScriptTypeMap[classInfo.NativeName];
 
 			body << generateCppHeaderOutput(classInfo, typeInfo);
@@ -3470,7 +3471,7 @@ void GenerateCpp(StringRef engineOutputFolder, StringRef editorOutputFolder, boo
 
 		for (auto I = structInfos.begin(); I != structInfos.end(); ++I)
 		{
-			StructInfo& structInfo = *I;
+			const StructInfo& structInfo = *I;
 			body << generateCppStructHeader(structInfo);
 
 			if ((I + 1) != structInfos.end())
@@ -3533,7 +3534,7 @@ void GenerateCpp(StringRef engineOutputFolder, StringRef editorOutputFolder, boo
 	}
 
 	// Generate CPP
-	for (auto& fileInfo : outputFileInfos)
+	for (auto& fileInfo : TypeLookup::GetFilesToGenerate())
 	{
 		if(fileInfo.second.InEditor && !generateEditor)
 			continue;
@@ -3548,7 +3549,7 @@ void GenerateCpp(StringRef engineOutputFolder, StringRef editorOutputFolder, boo
 
 		for (auto I = classInfos.begin(); I != classInfos.end(); ++I)
 		{
-			ClassInfo& classInfo = *I;
+			const ClassInfo& classInfo = *I;
 			TypeMappingInformation& typeInfo = NativeToScriptTypeMap[classInfo.NativeName];
 
 			body << generateCppSourceOutput(classInfo, typeInfo);
