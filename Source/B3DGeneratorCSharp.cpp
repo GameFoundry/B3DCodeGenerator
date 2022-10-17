@@ -67,7 +67,7 @@ static bool HasParameterlessConstructor(const ClassInfo& classInfo)
 	// Check external constructors
 	for (auto& entry : classInfo.Methods)
 	{
-		bool isConstructor = (entry.MethodFlags & (int)MethodFlags::Constructor) != 0;
+		bool isConstructor = entry.IsFlagSet(MethodFlags::Constructor);
 		if (!isConstructor)
 			continue;
 
@@ -373,9 +373,9 @@ std::string GenerateCSharpEventArguments(const MethodInfo& methodInfo)
  */
 std::string GenerateCSharpInternalMethodSignature(const ClassInfo& classInformation, const MethodInfo& methodInformation, const TypeMappingInformation& typeMappingInformation)
 {
-	const bool isClassModule = (classInformation.ClassFlags & (int)ClassFlags::IsModule) != 0;
-	const bool isStatic = (methodInformation.MethodFlags & (int)MethodFlags::Static) != 0;
-	const bool isCtor = (methodInformation.MethodFlags & (int)MethodFlags::Constructor) != 0;
+	const bool isClassModule = classInformation.IsFlagSet(ClassFlags::IsModule);
+	const bool isStatic = methodInformation.IsFlagSet(MethodFlags::Static);
+	const bool isCtor = methodInformation.IsFlagSet(MethodFlags::Constructor);
 
 	std::stringstream output;
 
@@ -442,7 +442,7 @@ std::string GenerateCSharpInternalMethodSignature(const ClassInfo& classInformat
  */
 std::string GenerateCSharpClass(const ClassInfo& classInformation, const TypeMappingInformation& typeMappingInformation)
 {
-	const bool isModule = (classInformation.ClassFlags & (int)ClassFlags::IsModule) != 0;
+	const bool isModule = classInformation.IsFlagSet(ClassFlags::IsModule);
 
 	std::stringstream ctors;
 	std::stringstream properties;
@@ -463,7 +463,7 @@ std::string GenerateCSharpClass(const ClassInfo& classInformation, const TypeMap
 	// Constructors
 	for (auto& entry : classInformation.Constructors)
 	{
-		if (!isCSOnly(entry.MethodFlags))
+		if (!entry.IsFlagSet(MethodFlags::CSOnly))
 		{
 			// Generate interop
 			interops << GenerateAPICheckBegin(entry.API);
@@ -477,7 +477,7 @@ std::string GenerateCSharpClass(const ClassInfo& classInformation, const TypeMap
 			interops << GenerateApiCheckEnd(entry.API);
 		}
 
-		bool interopOnly = (entry.MethodFlags & (int)MethodFlags::InteropOnly) != 0;
+		bool interopOnly = entry.IsFlagSet(MethodFlags::InteropOnly);
 		if (interopOnly)
 			continue;
 
@@ -532,7 +532,7 @@ std::string GenerateCSharpClass(const ClassInfo& classInformation, const TypeMap
 	for (auto& entry : classInformation.Methods)
 	{
 		// Generate interop
-		if (!isCSOnly(entry.MethodFlags))
+		if (!entry.IsFlagSet(MethodFlags::CSOnly))
 		{
 			interops << GenerateAPICheckBegin(entry.API);
 			interops << "\t\t[MethodImpl(MethodImplOptions.InternalCall)]" << std::endl;
@@ -541,12 +541,12 @@ std::string GenerateCSharpClass(const ClassInfo& classInformation, const TypeMap
 			interops << GenerateApiCheckEnd(entry.API);
 		}
 
-		bool interopOnly = (entry.MethodFlags & (int)MethodFlags::InteropOnly) != 0;
+		bool interopOnly = entry.IsFlagSet(MethodFlags::InteropOnly);
 		if (interopOnly)
 			continue;
 
-		bool isConstructor = (entry.MethodFlags & (int)MethodFlags::Constructor) != 0;
-		bool isStatic = (entry.MethodFlags & (int)MethodFlags::Static) != 0;
+		bool isConstructor = entry.IsFlagSet(MethodFlags::Constructor);
+		bool isStatic = entry.IsFlagSet(MethodFlags::Static);
 
 		if (isConstructor)
 		{
@@ -575,7 +575,7 @@ std::string GenerateCSharpClass(const ClassInfo& classInformation, const TypeMap
 		}
 		else
 		{
-			bool isProperty = entry.MethodFlags & ((int)MethodFlags::PropertyGetter | (int)MethodFlags::PropertySetter);
+			const bool isProperty = entry.IsFlagSet(MethodFlags::PropertyGetter) || entry.IsFlagSet(MethodFlags::PropertySetter);
 			if (!isProperty)
 			{
 				TypeMappingInformation returnTypeMappingInformation;
@@ -739,9 +739,9 @@ std::string GenerateCSharpClass(const ClassInfo& classInformation, const TypeMap
 	// Events & callbacks
 	for(auto& entry : classInformation.Events)
 	{
-		bool isStatic = (entry.MethodFlags & (int)MethodFlags::Static) != 0;
-		bool isCallback = (entry.MethodFlags & (int)MethodFlags::Callback) != 0;
-		bool isInternal = (entry.MethodFlags & (int)MethodFlags::InteropOnly) != 0;
+		bool isStatic = entry.IsFlagSet(MethodFlags::Static);
+		bool isCallback = entry.IsFlagSet(MethodFlags::Callback);
+		bool isInternal = entry.IsFlagSet(MethodFlags::InteropOnly);
 
 		events << GenerateAPICheckBegin(entry.API);
 		events << CommentParser::GenerateXMLComments(entry.Documentation, "\t\t");
@@ -813,7 +813,7 @@ std::string GenerateCSharpClass(const ClassInfo& classInformation, const TypeMap
 	output << CommentParser::GenerateXMLComments(classInformation.Documentation, "\t");
 
 	// Force non-resource and non-component types to show in inspector, except explicitly hidden
-	if (typeMappingInformation.IsClassType() || (classInformation.ClassFlags & (int)ClassFlags::HideInInspector) == 0)
+	if (typeMappingInformation.IsClassType() || (!classInformation.IsFlagSet(ClassFlags::HideInInspector)))
 		output << "\t[ShowInInspector]\n";
 
 	if (classInformation.Visibility == CSVisibility::Internal)
@@ -1164,7 +1164,7 @@ std::string generateXMLMethodInfo(const MethodInfo& methodInfo, const std::strin
 	std::stringstream output;
 
    std::string isStaticStr = "false";
-   bool isStatic = (methodInfo.MethodFlags & (int)MethodFlags::Static) != 0;
+   bool isStatic = methodInfo.IsFlagSet(MethodFlags::Static);
    if(!ctor && isStatic)
 	   isStaticStr = "true";
 
@@ -1234,7 +1234,7 @@ std::string generateXMLPropertyInfo(const PropertyInfo& propertyInfo, const std:
 
 std::string generateXMLEventInfo(const MethodInfo& eventInfo, const std::string& indent)
 {
-   bool isStatic = (eventInfo.MethodFlags & (int)MethodFlags::Static) != 0;
+   bool isStatic = eventInfo.IsFlagSet(MethodFlags::Static);
    std::string staticStr = isStatic ? "true" : "false";
 
 	std::stringstream output;
@@ -1316,16 +1316,16 @@ std::string generateXMLClass(const ClassInfo& input, bool editor, const std::str
 
 	for (auto& entry : input.Constructors)
 	{
-		bool interopOnly = (entry.MethodFlags & (int)MethodFlags::InteropOnly) != 0;
+		bool interopOnly = entry.IsFlagSet(MethodFlags::InteropOnly);
 		if(IsAPIValid(entry.API, editor) && !interopOnly)
 			output << generateXMLMethodInfo(entry, indent + "\t", true);
 	}
 
 	for(auto& entry : input.Methods)
 	{
-		bool interopOnly = (entry.MethodFlags & (int)MethodFlags::InteropOnly) != 0;
-		bool isConstructor = (entry.MethodFlags & (int)MethodFlags::Constructor) != 0;
-		bool isProperty = entry.MethodFlags & ((int)MethodFlags::PropertyGetter | (int)MethodFlags::PropertySetter);
+		const bool interopOnly = entry.IsFlagSet(MethodFlags::InteropOnly);
+		const bool isConstructor = entry.IsFlagSet(MethodFlags::Constructor);
+		const bool isProperty = entry.IsFlagSet(MethodFlags::PropertyGetter) || entry.IsFlagSet(MethodFlags::PropertySetter);
 
 		if(IsAPIValid(entry.API, editor) && !interopOnly && !isProperty)
 			output << generateXMLMethodInfo(entry, indent + "\t", isConstructor);
@@ -1339,8 +1339,8 @@ std::string generateXMLClass(const ClassInfo& input, bool editor, const std::str
 
    for(auto& entry : input.Events)
    {
-	   bool isCallback = (entry.MethodFlags & (int)MethodFlags::Callback) != 0;
-	   bool isInternal = (entry.MethodFlags & (int)MethodFlags::InteropOnly) != 0;
+	   bool isCallback = entry.IsFlagSet(MethodFlags::Callback);
+	   bool isInternal = entry.IsFlagSet(MethodFlags::InteropOnly);
 
 	  if(!isCallback && !isInternal)
 		  output << generateXMLEventInfo(entry, indent + "\t");

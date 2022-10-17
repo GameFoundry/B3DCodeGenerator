@@ -458,6 +458,9 @@ struct MethodInfo
 	std::string ExternalClass;
 	int MethodFlags = 0;
 	ExportStyle Style;
+
+	/** Checks is the provided flag set on the method. */
+	bool IsFlagSet(enum MethodFlags flag) const { return (MethodFlags & (int)flag) != 0; }
 };
 
 struct PropertyInfo
@@ -504,8 +507,8 @@ struct ClassInfo : GeneratedTypeInformation
 	/** Scans the class information for a constructor that is not already used, and return the signature of the first such constructor. */
 	MethodInfo FindUnusedConstructorSignature() const;
 
-	/** Returns true if this is a struct in native code. */
-	bool IsStruct() const { return (ClassFlags & (int)ClassFlags::IsStruct) != 0; }
+	/** Checks is the provided flag set on the class. */
+	bool IsFlagSet(enum ClassFlags flag) const { return (ClassFlags & (int)flag) != 0; }
 };
 
 struct ExternalClassInfos
@@ -688,15 +691,7 @@ inline bool IsAPIValid(ApiFlags api, bool editor)
 extern std::unordered_map<std::string, ExternalClassInfos> externalClassInfos;
 extern std::unordered_map<std::string, BaseClassInfo> baseClassLookup;
 
-inline std::string getCSLiteralSuffix(const std::string& cppType)
-{
-	if (cppType == "float")
-		return "f";
-
-	return "";
-}
-
-inline const std::string& escapeXML(const std::string& data) 
+inline const std::string& escapeXML(const std::string& data) // TODO - Move to generator utility
 {
 	std::string::size_type first = data.find_first_of("\"&<>", 0);
 	if (first == std::string::npos)
@@ -722,11 +717,6 @@ inline const std::string& escapeXML(const std::string& data)
 	return buffer;
 }
 
-inline bool isCSOnly(int flags)
-{
-	return (flags & (int)MethodFlags::CSOnly) != 0;
-}
-
 /**
  * Returns true if the provided type can be used as a return value from a C# method call.
  *
@@ -745,14 +735,6 @@ inline bool CanBeReturned(const VariableTypeInformation& typeInformation, const 
 		return false;
 
 	return true;
-}
-
-inline bool endsWith(const std::string& str, const std::string& end) 
-{
-	if (str.length() >= end.length()) 
-		return (0 == str.compare(str.length() - end.length(), end.length(), end));
-
-	return false;
 }
 
 /** Removes C++ templates parameters from the provided type name. */

@@ -491,8 +491,8 @@ static std::string GenerateApiCheckEnd(ApiFlags api)
  */
 static std::string GenerateInternalMethodSignature(const MethodInfo& methodInfo, const std::string& interopThisPtrType, const std::string& interopTypeName, bool isModule)
 {
-	const bool isStatic = (methodInfo.MethodFlags & (int)MethodFlags::Static) != 0;
-	const bool isCtor = (methodInfo.MethodFlags & (int)MethodFlags::Constructor) != 0;
+	const bool isStatic = methodInfo.IsFlagSet(MethodFlags::Static);
+	const bool isCtor = methodInfo.IsFlagSet(MethodFlags::Constructor);
 
 	std::stringstream output;
 
@@ -564,7 +564,7 @@ static std::string GenerateInternalMethodSignature(const MethodInfo& methodInfo,
  */
 static std::string GenerateEventCallbackSignature(const MethodInfo& eventInfo, const std::string& interopTypeName, bool isModule)
 {
-	const bool isStatic = (eventInfo.MethodFlags & (int)MethodFlags::Static) != 0;
+	const bool isStatic = eventInfo.IsFlagSet(MethodFlags::Static);
 
 	std::stringstream output;
 
@@ -608,7 +608,7 @@ static std::string GenerateEventCallbackSignature(const MethodInfo& eventInfo, c
  */
 std::string GenerateEventThunkSignature(const MethodInfo& eventInfo, bool isModule)
 {
-	const bool isStatic = (eventInfo.MethodFlags & (int)MethodFlags::Static) != 0;
+	const bool isStatic = eventInfo.IsFlagSet(MethodFlags::Static);
 
 	std::stringstream output;
 	output << "\t\ttypedef void(BS_THUNKCALL *" << eventInfo.NativeName << "ThunkDef) (";
@@ -2084,11 +2084,11 @@ std::string generateCppMethodBody(const ClassInfo& classInfo, const MethodInfo& 
 	std::stringstream methodArgs;
 	std::stringstream postCallActions;
 
-	bool isBase = (classInfo.ClassFlags & (int)ClassFlags::IsBase) != 0;
+	bool isBase = classInfo.IsFlagSet(ClassFlags::IsBase);
 
-	bool isStatic = (methodInfo.MethodFlags & (int)MethodFlags::Static) != 0;
-	bool isCtor = (methodInfo.MethodFlags & (int)MethodFlags::Constructor) != 0;
-	bool isExternal = (methodInfo.MethodFlags & (int)MethodFlags::External) != 0;
+	bool isStatic = methodInfo.IsFlagSet(MethodFlags::Static);
+	bool isCtor = methodInfo.IsFlagSet(MethodFlags::Constructor);
+	bool isExternal = methodInfo.IsFlagSet(MethodFlags::External);
 
 	bool returnAsParameter = false;
 	TypeMappingInformation returnTypeMappingInformation;
@@ -2262,8 +2262,8 @@ std::string GenerateCppFieldGetterBody(const ClassInfo& classInfo, const FieldIn
 	std::stringstream methodArgs;
 	std::stringstream postCallActions;
 
-	bool isBase = (classInfo.ClassFlags & (int)ClassFlags::IsBase) != 0;
-	bool isStatic = (methodInfo.MethodFlags & (int)MethodFlags::Static) != 0;
+	bool isBase = classInfo.IsFlagSet(ClassFlags::IsBase);
+	bool isStatic = methodInfo.IsFlagSet(MethodFlags::Static);
 
 	bool returnAsParameter = false;
 	TypeMappingInformation returnTypeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(methodInfo.ReturnValue.TypeInformation);
@@ -2334,8 +2334,8 @@ std::string generateCppFieldSetterBody(const ClassInfo& classInfo, const FieldIn
 	std::stringstream argumentValue;
 	std::stringstream postCallActions;
 
-	bool isBase = (classInfo.ClassFlags & (int)ClassFlags::IsBase) != 0;
-	bool isStatic = (methodInfo.MethodFlags & (int)MethodFlags::Static) != 0;
+	bool isBase = classInfo.IsFlagSet(ClassFlags::IsBase);
+	bool isStatic = methodInfo.IsFlagSet(MethodFlags::Static);
 
 	const VariableInformation& parameterInformation = methodInfo.Parameters[0];
 	const std::string argumentName = GenerateMethodBodyBlockForArgument(parameterInformation.Name, parameterInformation, false, false, preCallActions, postCallActions);
@@ -2379,7 +2379,7 @@ std::string generateCppEventCallbackBody(const MethodInfo& eventInfo, bool isMod
 	std::stringstream preCallActions;
 	std::stringstream methodArgs;
 
-	bool isStatic = (eventInfo.MethodFlags & (int)MethodFlags::Static) != 0;
+	bool isStatic = eventInfo.IsFlagSet(MethodFlags::Static);
 
 	int idx = 0;
 	for (auto I = eventInfo.Parameters.begin(); I != eventInfo.Parameters.end(); ++I)
@@ -2417,8 +2417,8 @@ std::string generateCppEventCallbackBody(const MethodInfo& eventInfo, bool isMod
 std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappingInformation& typeMappingInformation)
 {
 	bool inEditor = IsAPIEditor (classInfo.API);
-	bool isBase = (classInfo.ClassFlags & (int)ClassFlags::IsBase) != 0;
-	bool isModule = (classInfo.ClassFlags & (int)ClassFlags::IsModule) != 0;
+	bool isBase = classInfo.IsFlagSet(ClassFlags::IsBase);
+	bool isModule = classInfo.IsFlagSet(ClassFlags::IsModule);
 	bool isRootBase = classInfo.BaseClassName.empty();
 
 	bool hasStaticEvents = isModule && !classInfo.Events.empty();
@@ -2426,7 +2426,7 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 	{
 		for (auto& eventInfo : classInfo.Events)
 		{
-			bool isStatic = (eventInfo.MethodFlags & (int)MethodFlags::Static) != 0;
+			bool isStatic = eventInfo.IsFlagSet(MethodFlags::Static);
 			if (isStatic)
 			{
 				hasStaticEvents = true;
@@ -2637,8 +2637,8 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 	// Event handles
 	for (auto& eventInfo : classInfo.Events)
 	{
-		bool isStatic = (eventInfo.MethodFlags & (int)MethodFlags::Static) != 0;
-		bool isCallback = (eventInfo.MethodFlags & (int)MethodFlags::Callback) != 0;
+		bool isStatic = eventInfo.IsFlagSet(MethodFlags::Static);
+		bool isCallback = eventInfo.IsFlagSet(MethodFlags::Callback);
 		if(!isCallback && (isStatic || isModule))
 		{
 			output << GenerateApiCheckBegin(eventInfo.API);
@@ -2668,7 +2668,7 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 
 	for (auto& methodInfo : classInfo.Constructors)
 	{
-		if (isCSOnly(methodInfo.MethodFlags))
+		if (methodInfo.IsFlagSet(MethodFlags::CSOnly))
 			continue;
 
 		output << GenerateApiCheckBegin(methodInfo.API);
@@ -2678,7 +2678,7 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 
 	for (auto& methodInfo : classInfo.Methods)
 	{
-		if (isCSOnly(methodInfo.MethodFlags))
+		if (methodInfo.IsFlagSet(MethodFlags::CSOnly))
 			continue;
 
 		output << GenerateApiCheckBegin(methodInfo.API);
@@ -2694,13 +2694,13 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 
 std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappingInformation& typeMappingInformation)
 {
-	bool isBase = (classInfo.ClassFlags & (int)ClassFlags::IsBase) != 0;
-	bool isModule = (classInfo.ClassFlags & (int)ClassFlags::IsModule) != 0;
+	bool isBase = classInfo.IsFlagSet(ClassFlags::IsBase);
+	bool isModule = classInfo.IsFlagSet(ClassFlags::IsModule);
 
 	bool hasStaticEvents = isModule && !classInfo.Events.empty();
 	for(auto& eventInfo : classInfo.Events)
 	{
-		bool isStatic = (eventInfo.MethodFlags & (int)MethodFlags::Static) != 0;
+		bool isStatic = eventInfo.IsFlagSet(MethodFlags::Static);
 		if(isStatic)
 		{
 			hasStaticEvents = true;
@@ -2777,8 +2777,8 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 	bool hasEventHandles = false;
 	for (auto& eventInfo : classInfo.Events)
 	{
-		bool isStatic = (eventInfo.MethodFlags & (int)MethodFlags::Static) != 0;
-		bool isCallback = (eventInfo.MethodFlags & (int)MethodFlags::Callback) != 0;
+		bool isStatic = eventInfo.IsFlagSet(MethodFlags::Static);
+		bool isCallback = eventInfo.IsFlagSet(MethodFlags::Callback);
 		if(!isCallback && (isStatic || isModule))
 		{
 			output << GenerateApiCheckBegin(eventInfo.API);
@@ -2846,8 +2846,8 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 	{
 		for (auto& eventInfo : classInfo.Events)
 		{
-			bool isStatic = (eventInfo.MethodFlags & (int)MethodFlags::Static) != 0;
-			bool isCallback = (eventInfo.MethodFlags & (int)MethodFlags::Callback) != 0;
+			bool isStatic = eventInfo.IsFlagSet(MethodFlags::Static);
+			bool isCallback = eventInfo.IsFlagSet(MethodFlags::Callback);
 			if (!isStatic)
 			{
 				output << GenerateApiCheckBegin(eventInfo.API);
@@ -2911,7 +2911,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 
 	for (auto& methodInfo : classInfo.Constructors)
 	{
-		if (isCSOnly(methodInfo.MethodFlags))
+		if (methodInfo.IsFlagSet(MethodFlags::CSOnly))
 			continue;
 
 		output << GenerateApiCheckBegin(methodInfo.API);
@@ -2922,7 +2922,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 
 	for (auto& methodInfo : classInfo.Methods)
 	{
-		if (isCSOnly(methodInfo.MethodFlags))
+		if (methodInfo.IsFlagSet(MethodFlags::CSOnly))
 			continue;
 
 		output << GenerateApiCheckBegin(methodInfo.API);
@@ -3020,8 +3020,8 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 
 		for(auto& eventInfo : classInfo.Events)
 		{
-			bool isStatic = (eventInfo.MethodFlags & (int)MethodFlags::Static) != 0;
-			bool isCallback = (eventInfo.MethodFlags & (int)MethodFlags::Callback) != 0;
+			bool isStatic = eventInfo.IsFlagSet(MethodFlags::Static);
+			bool isCallback = eventInfo.IsFlagSet(MethodFlags::Callback);
 			if (!isCallback)
 			{
 				if (isStatic)
@@ -3051,8 +3051,8 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 
 		for(auto& eventInfo : classInfo.Events)
 		{
-			bool isStatic = (eventInfo.MethodFlags & (int)MethodFlags::Static) != 0;
-			bool isCallback = (eventInfo.MethodFlags & (int)MethodFlags::Callback) != 0;
+			bool isStatic = eventInfo.IsFlagSet(MethodFlags::Static);
+			bool isCallback = eventInfo.IsFlagSet(MethodFlags::Callback);
 			if(!isCallback && (isStatic || isModule))
 				output << "\t\t" << eventInfo.NativeName << "Conn.Disconnect();" << std::endl;
 		}
@@ -3101,7 +3101,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 	{
 		const MethodInfo& methodInfo = *I;
 
-		if (isCSOnly(methodInfo.MethodFlags))
+		if (methodInfo.IsFlagSet(MethodFlags::CSOnly))
 			continue;
 
 		output << GenerateApiCheckBegin(methodInfo.API);
@@ -3118,10 +3118,10 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 	{
 		const MethodInfo& methodInfo = *I;
 
-		if (isCSOnly(methodInfo.MethodFlags))
+		if (methodInfo.IsFlagSet(MethodFlags::CSOnly))
 			continue;
 
-		if ((methodInfo.MethodFlags & (int)MethodFlags::FieldWrapper) != 0)
+		if (methodInfo.IsFlagSet(MethodFlags::FieldWrapper))
 			continue;
 
 		output << GenerateApiCheckBegin(methodInfo.API);
@@ -3143,7 +3143,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 		std::string setterName = "Set" + I->Name;
 		for(auto& entry : classInfo.Methods)
 		{
-			if ((entry.MethodFlags & (int)MethodFlags::FieldWrapper) == 0)
+			if (!entry.IsFlagSet(MethodFlags::FieldWrapper))
 				continue;
 
 			if (entry.NativeName == getterName)

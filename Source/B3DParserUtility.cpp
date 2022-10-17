@@ -99,7 +99,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 
 				for (auto& method : entry.second.Methods)
 				{
-					if (((int)method.MethodFlags & (int)MethodFlags::Constructor) != 0)
+					if (method.IsFlagSet(MethodFlags::Constructor))
 					{
 						if (method.ReturnValue.TypeInformation.IsEmpty())
 						{
@@ -210,8 +210,8 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 		{
 			for (auto& methodInfo : classInfo.Methods)
 			{
-				bool isGetter = (methodInfo.MethodFlags & (int)MethodFlags::PropertyGetter) != 0;
-				bool isSetter = (methodInfo.MethodFlags & (int)MethodFlags::PropertySetter) != 0;
+				bool isGetter = methodInfo.IsFlagSet(MethodFlags::PropertyGetter);
+				bool isSetter = methodInfo.IsFlagSet(MethodFlags::PropertySetter);
 
 				if (!isGetter && !isSetter)
 					continue;
@@ -219,7 +219,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 				PropertyInfo propertyInfo;
 				propertyInfo.ScriptName = methodInfo.ScriptName;
 				propertyInfo.Documentation = methodInfo.Documentation;
-				propertyInfo.IsStatic = (methodInfo.MethodFlags & (int)MethodFlags::Static);
+				propertyInfo.IsStatic = methodInfo.IsFlagSet(MethodFlags::Static);
 				propertyInfo.Visibility = methodInfo.Visibility;
 				propertyInfo.API = methodInfo.API;
 				propertyInfo.Style = methodInfo.Style;
@@ -407,7 +407,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 			ClassInfo *const classInfo = TypeLookup::FindClassInformation(typeName, false);
 			if (classInfo != nullptr)
 			{
-				bool isBase = (classInfo->ClassFlags & (int)ClassFlags::IsBase) != 0;
+				const bool isBase = classInfo->IsFlagSet(ClassFlags::IsBase);
 				if (isBase)
 				{
 					typeInformation.SetPostProcessFlag(VariablePostProcessFlags::IsReferencingBaseClass, true);
@@ -485,7 +485,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 			{
 				const TypeMappingInformation& typeInfo = TypeLookup::GetNativeToScriptTypeMapping(classInfo.NativeName);
 
-				fileInfo.second.ForwardDeclarations.insert(ForwardDeclInfo(classInfo.NativeNameWithoutTemplateArguments, classInfo.Namespace, classInfo.TemplateParameters, classInfo.IsStruct()));
+				fileInfo.second.ForwardDeclarations.insert(ForwardDeclInfo(classInfo.NativeNameWithoutTemplateArguments, classInfo.Namespace, classInfo.TemplateParameters, classInfo.IsFlagSet(ClassFlags::IsStruct)));
 
 				if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource)
 					fileInfo.second.ReferencedHeaderIncludes.push_back("Wrappers/BsScriptResource.h");
@@ -771,7 +771,7 @@ void ParserUtility::GatherIncludes(const MethodInfo& methodInfo, bool isEditor, 
 	for (auto I = methodInfo.Parameters.begin(); I != methodInfo.Parameters.end(); ++I)
 		GatherIncludes(I->TypeInformation, isEditor, output);
 
-	if ((methodInfo.MethodFlags & (int)MethodFlags::External) != 0)
+	if (methodInfo.IsFlagSet(MethodFlags::External))
 	{
 		auto iterFind = output.includes.find(methodInfo.ExternalClass);
 		if (iterFind == output.includes.end())

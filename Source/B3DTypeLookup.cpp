@@ -36,7 +36,7 @@ MethodInfo ClassInfo::FindUnusedConstructorSignature() const
 		{
 			for (auto& entry : Methods)
 			{
-				bool isConstructor = (entry.MethodFlags & (int)MethodFlags::Constructor) != 0;
+				bool isConstructor = entry.IsFlagSet(MethodFlags::Constructor);
 				if (!isConstructor)
 					continue;
 
