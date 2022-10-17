@@ -1,6 +1,7 @@
 #include "B3DCommon.h"
 #include "B3DParser.h"
 #include "B3DParserUtility.h"
+#include "B3DTypeLookup.h"
 
 #define B3DCODEGEN_WAIT_FOR_DEBUGGER 0
 #if B3DCODEGEN_WAIT_FOR_DEBUGGER
@@ -27,13 +28,8 @@ std::string sEditorCopyrightNotice =
 	"//********************************** Banshee Engine (www.banshee3d.com) **************************************************//\n" \
 	"//************** Copyright (c) 2016-2019 Marko Pintera (marko.pintera@gmail.com). All rights reserved. *******************//\n";
 
-std::unordered_map<std::string, TypeMappingInformation> NativeToScriptTypeMap;
 std::unordered_map<std::string, ExternalClassInfos> externalClassInfos;
 std::unordered_map<std::string, BaseClassInfo> baseClassLookup;
-
-std::vector<CommentInformation> commentInfos;
-std::unordered_map<std::string, int> commentFullLookup;
-std::unordered_map<std::string, SmallVector<int, 2>> commentSimpleLookup;
 
 static cl::OptionCategory OptCategory("Script binding options");
 static cl::extrahelp CommonHelp(CommonOptionsParser::HelpMessage);
@@ -207,30 +203,30 @@ int main(int argc, const char** argv)
 		sEditorCopyrightNotice = std::string(CppEditorCopyrightNoticeOption.getValue().c_str());
 	
 	// Note: I could auto-generate C++ wrappers for these types
-	SmallVector<std::string, 4> frameworkNs = { sFrameworkCppNs };
+	SmallVector<std::string, 4> frameworkNamespace = { sFrameworkCppNs };
 	
-	NativeToScriptTypeMap["Vector2"] = TypeMappingInformation(frameworkNs,"Vector2", ::ExportedClassTypeCategory::Struct, "Math/BsVector2.h", "Wrappers/BsScriptVector.h");
-	NativeToScriptTypeMap["Vector3"] = TypeMappingInformation(frameworkNs, "Vector3", ::ExportedClassTypeCategory::Struct, "Math/BsVector3.h", "Wrappers/BsScriptVector.h");
-	NativeToScriptTypeMap["Vector4"] = TypeMappingInformation(frameworkNs, "Vector4", ::ExportedClassTypeCategory::Struct, "Math/BsVector4.h", "Wrappers/BsScriptVector.h");
-	NativeToScriptTypeMap["Matrix3"] = TypeMappingInformation(frameworkNs, "Matrix3", ::ExportedClassTypeCategory::Struct, "Math/BsMatrix3.h", "");
-	NativeToScriptTypeMap["Matrix4"] = TypeMappingInformation(frameworkNs, "Matrix4", ::ExportedClassTypeCategory::Struct, "Math/BsMatrix4.h", "");
-	NativeToScriptTypeMap["Quaternion"] = TypeMappingInformation(frameworkNs, "Quaternion", ::ExportedClassTypeCategory::Struct, "Math/BsQuaternion.h", "Wrappers/BsScriptQuaternion.h");
-	NativeToScriptTypeMap["Radian"] = TypeMappingInformation(frameworkNs, "Radian", ::ExportedClassTypeCategory::Struct, "Math/BsRadian.h", "");
-	NativeToScriptTypeMap["Degree"] = TypeMappingInformation(frameworkNs, "Degree", ::ExportedClassTypeCategory::Struct, "Math/BsDegree.h", "");
-	NativeToScriptTypeMap["Color"] = TypeMappingInformation(frameworkNs, "Color", ::ExportedClassTypeCategory::Struct, "Image/BsColor.h", "Wrappers/BsScriptColor.h");
-	NativeToScriptTypeMap["AABox"] = TypeMappingInformation(frameworkNs, "AABox", ::ExportedClassTypeCategory::Struct, "Math/BsAABox.h", "");
-	NativeToScriptTypeMap["Sphere"] = TypeMappingInformation(frameworkNs, "Sphere", ::ExportedClassTypeCategory::Struct, "Math/BsSphere.h", "");
-	NativeToScriptTypeMap["Capsule"] = TypeMappingInformation(frameworkNs, "Capsule", ::ExportedClassTypeCategory::Struct, "Math/BsCapsule.h", "");
-	NativeToScriptTypeMap["Ray"] = TypeMappingInformation(frameworkNs, "Ray", ::ExportedClassTypeCategory::Struct, "Math/BsRay.h", "");
-	NativeToScriptTypeMap["Vector2I"] = TypeMappingInformation(frameworkNs, "Vector2I", ::ExportedClassTypeCategory::Struct, "Math/BsVector2I.h", "Wrappers/BsScriptVector2I.h");
-	NativeToScriptTypeMap["Rect2"] = TypeMappingInformation(frameworkNs, "Rect2", ::ExportedClassTypeCategory::Struct, "Math/BsRect2.h", "");
-	NativeToScriptTypeMap["Rect2I"] = TypeMappingInformation(frameworkNs, "Rect2I", ::ExportedClassTypeCategory::Struct, "Math/BsRect2I.h", "");
-	NativeToScriptTypeMap["Bounds"] = TypeMappingInformation(frameworkNs, "Bounds", ::ExportedClassTypeCategory::Struct, "Math/BsBounds.h", "");
-	NativeToScriptTypeMap["Plane"] = TypeMappingInformation(frameworkNs, "Plane", ::ExportedClassTypeCategory::Struct, "Math/BsPlane.h", "Wrappers/BsScriptPlane.h");
-	NativeToScriptTypeMap["UUID"] = TypeMappingInformation(frameworkNs, "UUID", ::ExportedClassTypeCategory::Struct, "Utility/BsUUID.h", "");
-	NativeToScriptTypeMap["SceneObject"] = TypeMappingInformation(frameworkNs, "SceneObject", ::ExportedClassTypeCategory::SceneObject, "Scene/BsSceneObject.h", "Wrappers/BsScriptSceneObject.h");
-	NativeToScriptTypeMap["Resource"] = TypeMappingInformation(frameworkNs, "Resource", ::ExportedClassTypeCategory::Resource, "Resources/BsResource.h", "Wrappers/BsScriptResource.h");
-	NativeToScriptTypeMap["Any"] = TypeMappingInformation(frameworkNs, "Any", ::ExportedClassTypeCategory::Class, "Utility/BsAny.h", "");
+	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Vector2", "Math/BsVector2.h", "Vector2", "Wrappers/BsScriptVector.h", ExportedClassTypeCategory::Struct);
+	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Vector3", "Math/BsVector3.h", "Vector3", "Wrappers/BsScriptVector.h", ExportedClassTypeCategory::Struct);
+	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Vector4", "Math/BsVector4.h", "Vector4", "Wrappers/BsScriptVector.h", ExportedClassTypeCategory::Struct);
+	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Matrix3", "Math/BsMatrix3.h", "Matrix3", "", ExportedClassTypeCategory::Struct);
+	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Matrix4", "Math/BsMatrix4.h", "Matrix4", "", ExportedClassTypeCategory::Struct);
+	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Quaternion", "Math/BsQuaternion.h", "Quaternion", "Wrappers/BsScriptQuaternion.h", ExportedClassTypeCategory::Struct);
+	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Radian", "Math/BsRadian.h", "Radian", "", ExportedClassTypeCategory::Struct);
+	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Degree", "Math/BsDegree.h", "Degree", "", ExportedClassTypeCategory::Struct);
+	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Color", "Image/BsColor.h", "Color", "Wrappers/BsScriptColor.h", ExportedClassTypeCategory::Struct);
+	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "AABox", "Math/BsAABox.h", "AABox", "", ExportedClassTypeCategory::Struct);
+	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Sphere", "Math/BsSphere.h", "Sphere", "", ExportedClassTypeCategory::Struct);
+	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Capsule", "Math/BsCapsule.h", "Capsule", "", ExportedClassTypeCategory::Struct);
+	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Ray", "Math/BsRay.h", "Ray", "", ExportedClassTypeCategory::Struct);
+	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Vector2I", "Math/BsVector2I.h", "Vector2I", "Wrappers/BsScriptVector2I.h", ExportedClassTypeCategory::Struct);
+	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Rect2", "Math/BsRect2.h", "Rect2", "", ExportedClassTypeCategory::Struct);
+	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Rect2I", "Math/BsRect2I.h", "Rect2I", "", ExportedClassTypeCategory::Struct);
+	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Bounds", "Math/BsBounds.h", "Bounds", "", ExportedClassTypeCategory::Struct);
+	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Plane", "Math/BsPlane.h", "Plane", "Wrappers/BsScriptPlane.h", ExportedClassTypeCategory::Struct);
+	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "UUID", "Utility/BsUUID.h", "UUID", "", ExportedClassTypeCategory::Struct);
+	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "SceneObject", "Scene/BsSceneObject.h", "SceneObject", "Wrappers/BsScriptSceneObject.h", ExportedClassTypeCategory::SceneObject);
+	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Resource", "Resources/BsResource.h", "Resource", "Wrappers/BsScriptResource.h", ExportedClassTypeCategory::Resource);
+	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Any", "Utility/BsAny.h", "Any", "", ExportedClassTypeCategory::Class);
 
 	// Parse C++ into an easy to read format
 	const std::unique_ptr<BansheeCodeGeneratorFrontendActionFactory> factory = std::unique_ptr<BansheeCodeGeneratorFrontendActionFactory>(new BansheeCodeGeneratorFrontendActionFactory);

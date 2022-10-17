@@ -130,48 +130,6 @@ static std::string ParseNamespace(const RecordDecl* decl)
 	return nsName;
 }
 
-void registerUserTypeInfo(const SmallVector<std::string, 4>& classNs, const std::string& className, ApiFlags api, 
-	const std::string declFile, const std::string& exportName, const std::string& exportFile, ::ExportedClassTypeCategory type) // TODO - Move to TypeMapping
-{
-	std::string destFile = "BsScript" + exportFile + ".generated.h";
-	std::string destFileEditor = destFile;
-
-	// Going to need separate file for editor?
-	if (IsAPIEditor(api) && IsAPIFramework(api))
-		destFileEditor = "BsScript" + exportFile + ".editor.generated.h";
-
-	NativeToScriptTypeMap[className] = TypeMappingInformation(classNs, exportName, type, declFile, destFile, destFileEditor);
-}
-
-template<class T>
-void addEntryToFile(FileInfo& fileInfo, T& entry, const std::string& file, std::function<void(FileInfo&, const T&)> addEntry) // TODO - Add to TypeLookup
-{
-	if (IsAPIEditor(entry.API))
-	{
-		// Editor only file
-		if(!IsAPIFramework(entry.API))
-		{
-			fileInfo.InEditor = true;
-			addEntry(fileInfo, entry);
-		}
-		else // Editor and bsf, add new file for editor
-		{
-			entry.API = ApiFlags::Framework;
-			addEntry(fileInfo, entry);
-
-			entry.API = ApiFlags::Editor;
-
-			std::string editorFile = file + ".editor";
-
-			FileInfo& editorFileInfo = TypeLookup::GetOrAddFileToGenerate(editorFile);
-			editorFileInfo.InEditor = true;
-			addEntry(editorFileInfo, entry);
-		}
-	}
-	else // Non-editor, bsf and/or b3d
-		addEntry(fileInfo, entry);
-}
-
 /** Parses script export attributes set of a field or a parameter. Appends the parsed information (if any) to the provided type information structure. */
 bool ParseParameterOrFieldAttribute(Decl* decl, bool isField, VariableTypeInformation& typeInformation)
 {
@@ -918,7 +876,7 @@ bool BansheeCodeGeneratorASTVisitor::parseEvent(ValueDecl* decl, const std::stri
 	eventInfo.MethodFlags = eventFlags;
 	eventInfo.ExternalClass = className;
 	eventInfo.Visibility = parsedEventInfo.Visibility;
-	eventInfo.API = apiFromExportFlags(parsedEventInfo.ExportFlags);
+	eventInfo.API = ParserUtility::ParseAPIFromExportFlags(parsedEventInfo.ExportFlags);
 	mCommentParser.ParseComments(decl, eventInfo.Documentation);
 	CommentParser::ClearParameterReferenceComments(eventInfo.Documentation);
 
@@ -956,14 +914,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitEnumDecl(EnumDecl* decl)
 	if (!ScriptExportUtility::ParseExportAttribute(attr, sourceClassName, parsedEnumInfo))
 		return true;
 
-	FileInfo& fileInfo = TypeLookup::GetOrAddFileToGenerate(parsedEnumInfo.ExportedFileName);
-	auto iterFind = std::find_if(fileInfo.Enums.begin(), fileInfo.Enums.end(), 
-		[&sourceClassName](const EnumInfo& ei)
-	{
-		return ei.NativeName == sourceClassName;
-	});
-
-	if (iterFind != fileInfo.Enums.end())
+	if (TypeLookup::FindEnumInformationInFile(parsedEnumInfo.ExportedFileName, sourceClassName.str()) != nullptr)
 		return true; // Already parsed
 
 	QualType underlyingType = decl->getIntegerType();
@@ -977,7 +928,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitEnumDecl(EnumDecl* decl)
 	enumEntry.NativeName = sourceClassName.str();
 	enumEntry.ScriptName = parsedEnumInfo.ExportedTypeName;
 	enumEntry.Visibility = parsedEnumInfo.Visibility;
-	enumEntry.API = apiFromExportFlags(parsedEnumInfo.ExportFlags);
+	enumEntry.API = ParserUtility::ParseAPIFromExportFlags(parsedEnumInfo.ExportFlags);
 	enumEntry.DocumentationGroup = parsedEnumInfo.DocumentationGroup;
 	mCommentParser.ParseComments(decl, enumEntry.Documentation);
 	CommentParser::ClearParameterReferenceComments(enumEntry.Documentation);
@@ -994,9 +945,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitEnumDecl(EnumDecl* decl)
 	std::string destFile = "BsScript" + parsedEnumInfo.ExportedFileName + ".generated.h";
 	std::string destFileEditor = "BsScript" + parsedEnumInfo.ExportedFileName + ".editor.generated.h";
 
-	registerUserTypeInfo(enumEntry.Namespace, sourceClassName.str(), enumEntry.API, declFile, parsedEnumInfo.ExportedTypeName,
-		parsedEnumInfo.ExportedFileName, ::ExportedClassTypeCategory::Enum);
-	NativeToScriptTypeMap[sourceClassName.str()].EnumUnderlyingType = builtinType->getKind();
+	TypeLookup::RegisterNativeToScriptTypeMapping(enumEntry.Namespace, sourceClassName.str(), declFile, parsedEnumInfo.ExportedTypeName, parsedEnumInfo.ExportedFileName, enumEntry.API, ExportedClassTypeCategory::Enum, builtinType->getKind());
 
 	auto iter = decl->enumerator_begin();
 	while (iter != decl->enumerator_end())
@@ -1035,12 +984,9 @@ bool BansheeCodeGeneratorASTVisitor::VisitEnumDecl(EnumDecl* decl)
 		++iter;
 	}
 
-	addEntryToFile<EnumInfo>(fileInfo, enumEntry, parsedEnumInfo.ExportedFileName, 
-		[](FileInfo& fileInfo, const EnumInfo& enumInfo) { fileInfo.Enums.push_back(enumInfo); });
-
+	TypeLookup::RegisterEntryToGenerate(parsedEnumInfo.ExportedFileName, enumEntry);
 	return true;
 }
-
 
 std::string BansheeCodeGeneratorASTVisitor::parseTemplArguments(const std::string& className, const TemplateArgument* tmplArgs, unsigned numArgs, SmallVector<TemplateParamInfo, 0>* templParams)
 {
@@ -1122,16 +1068,9 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 		templatedDecl = specDecl->getSpecializedTemplate()->getTemplatedDecl();
 	}
 
-	FileInfo& fileInfo = TypeLookup::GetOrAddFileToGenerate(parsedClassInfo.ExportedFileName);
 	if ((parsedClassInfo.ExportFlags & (int)ExportFlags::ExportAsStruct) != 0)
 	{
-		auto iterFind = std::find_if(fileInfo.Structs.begin(), fileInfo.Structs.end(), 
-			[&srcClassName](const StructInfo& si)
-		{
-			return si.NativeName == srcClassName;
-		});
-
-		if (iterFind != fileInfo.Structs.end())
+		if (TypeLookup::FindStructInformationInFile(parsedClassInfo.ExportedFileName, srcClassName) != nullptr)
 			return true; // Already parsed
 
 		StructInfo structInfo;
@@ -1143,7 +1082,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 		structInfo.DocumentationGroup = parsedClassInfo.DocumentationGroup;
 		structInfo.IsTemplateInstatiation = specDecl != nullptr;
 		structInfo.TemplateParameters = templParams;
-		structInfo.API = apiFromExportFlags(parsedClassInfo.ExportFlags);
+		structInfo.API = ParserUtility::ParseAPIFromExportFlags(parsedClassInfo.ExportFlags);
 
 		mCommentParser.ParseComments(templatedDecl, structInfo.Documentation);
 		parseNamespace(decl, structInfo.Namespace);
@@ -1472,28 +1411,19 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 			structInfo.Constructors.push_back(SimpleConstructorInfo());
 
 		std::string declFile = astContext->getSourceManager().getFilename(decl->getSourceRange().getBegin()).str();
-		registerUserTypeInfo(structInfo.Namespace, srcClassName, structInfo.API, declFile, parsedClassInfo.ExportedTypeName,
-			parsedClassInfo.ExportedFileName, ::ExportedClassTypeCategory::Struct);
-
-		addEntryToFile<StructInfo>(fileInfo, structInfo, parsedClassInfo.ExportedFileName,
-			[](FileInfo& fileInfo, const StructInfo& structInfo) { fileInfo.Structs.push_back(structInfo); });
+		TypeLookup::RegisterNativeToScriptTypeMapping(structInfo.Namespace, srcClassName, declFile, parsedClassInfo.ExportedTypeName, parsedClassInfo.ExportedFileName, structInfo.API, ExportedClassTypeCategory::Struct);
+		TypeLookup::RegisterEntryToGenerate(parsedClassInfo.ExportedFileName, structInfo);
 	}
 	else
 	{
-		auto iterFind = std::find_if(fileInfo.Classes.begin(), fileInfo.Classes.end(), 
-			[&srcClassName](const ClassInfo& ci)
-		{
-			return ci.NativeName == srcClassName;
-		});
-
-		if (iterFind != fileInfo.Classes.end())
+		if (TypeLookup::FindClassInformationInFile(parsedClassInfo.ExportedFileName, srcClassName) != nullptr)
 			return true; // Already parsed
 
 		ClassInfo classInfo;
 		classInfo.NativeName = srcClassName;
 		classInfo.NativeNameWithoutTemplateArguments = declName.str();
 		classInfo.Visibility = parsedClassInfo.Visibility;
-		classInfo.API = apiFromExportFlags(parsedClassInfo.ExportFlags);
+		classInfo.API = ParserUtility::ParseAPIFromExportFlags(parsedClassInfo.ExportFlags);
 		classInfo.ClassFlags = 0;
 		classInfo.BaseClassName = ScriptExportUtility::FindExportableBaseClassName(decl);
 		classInfo.DocumentationGroup = parsedClassInfo.DocumentationGroup;
@@ -1519,8 +1449,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 		::ExportedClassTypeCategory classType = DetermineExportedTypeCategory(decl);
 
 		std::string declFile = astContext->getSourceManager().getFilename(decl->getSourceRange().getBegin()).str();
-		registerUserTypeInfo(classInfo.Namespace, srcClassName, classInfo.API, declFile, parsedClassInfo.ExportedTypeName,
-			parsedClassInfo.ExportedFileName, classType);
+		TypeLookup::RegisterNativeToScriptTypeMapping(classInfo.Namespace, srcClassName, declFile, parsedClassInfo.ExportedTypeName, parsedClassInfo.ExportedFileName, classInfo.API, classType);
 
 		std::stack<const CXXRecordDecl*> todo;
 		todo.push(decl);
@@ -1551,7 +1480,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 					methodInfo.ScriptName = parsedClassInfo.ExportedTypeName;
 					methodInfo.MethodFlags = (int)MethodFlags::Constructor;
 					methodInfo.Visibility = parsedMethodInfo.Visibility;
-					methodInfo.API = apiFromExportFlags(parsedMethodInfo.ExportFlags);
+					methodInfo.API = ParserUtility::ParseAPIFromExportFlags(parsedMethodInfo.ExportFlags);
 					mCommentParser.ParseComments(ctorDecl, methodInfo.Documentation);
 
 					if ((parsedMethodInfo.ExportFlags & (int)ExportFlags::InteropOnly))
@@ -1658,7 +1587,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 				methodInfo.MethodFlags = methodFlags;
 				methodInfo.ExternalClass = srcClassName;
 				methodInfo.Visibility = parsedMethodInfo.Visibility;
-				methodInfo.API = apiFromExportFlags(parsedMethodInfo.ExportFlags);
+				methodInfo.API = ParserUtility::ParseAPIFromExportFlags(parsedMethodInfo.ExportFlags);
 				methodInfo.Style = parsedMethodInfo.style;
 				mCommentParser.ParseComments(methodDecl, methodInfo.Documentation);
 
@@ -1844,7 +1773,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 					getterInfo.NativeName = "Get" + fieldInfo.Name;
 					getterInfo.ScriptName = parsedFieldInfo.ExportedTypeName;
 					getterInfo.Visibility = parsedFieldInfo.Visibility;
-					getterInfo.API = apiFromExportFlags(parsedFieldInfo.ExportFlags);
+					getterInfo.API = ParserUtility::ParseAPIFromExportFlags(parsedFieldInfo.ExportFlags);
 					getterInfo.MethodFlags = (int)MethodFlags::PropertyGetter | (int)MethodFlags::FieldWrapper;
 					getterInfo.Style = fieldInfo.Style;
 
@@ -1866,7 +1795,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 					setterInfo.Documentation = fieldInfo.Documentation;
 					setterInfo.Parameters.push_back(paramInfo);
 					setterInfo.Visibility = parsedFieldInfo.Visibility;
-					setterInfo.API = apiFromExportFlags(parsedFieldInfo.ExportFlags);
+					setterInfo.API = ParserUtility::ParseAPIFromExportFlags(parsedFieldInfo.ExportFlags);
 					setterInfo.MethodFlags = (int)MethodFlags::PropertySetter | (int)MethodFlags::FieldWrapper;
 					setterInfo.Style = fieldInfo.Style;
 
@@ -1917,8 +1846,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 		// External classes are just containers for external methods, we don't need to process them directly
 		if ((parsedClassInfo.ExportFlags & (int)ExportFlags::ExternalMethod) == 0)
 		{
-			addEntryToFile<ClassInfo>(fileInfo, classInfo, parsedClassInfo.ExportedFileName,
-				[](FileInfo& fileInfo, const ClassInfo& classInfo) { fileInfo.Classes.push_back(classInfo); });
+			TypeLookup::RegisterEntryToGenerate(parsedClassInfo.ExportedFileName, classInfo);
 		}
 	}
 

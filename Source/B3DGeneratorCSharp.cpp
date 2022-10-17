@@ -205,7 +205,7 @@ std::string GenerateCSharpDefaultValueAssignment(const VariableInformation& vari
 	else
 	{
 		// Constructor or cast, assuming constructor as cast implies a constructor accepting the type exists (and we don't export cast operators anyway)
-		TypeMappingInformation defaultValueTypeMappingInformation = GetNativeToScriptTypeMapping(variableInformation.DefaultValueType);
+		TypeMappingInformation defaultValueTypeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(variableInformation.DefaultValueType);
 
 		if(defaultValueTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Struct && variableInformation.DefaultValue.empty())
 			return defaultValueTypeMappingInformation.ScriptTypeName + ".Default()";
@@ -239,7 +239,7 @@ std::string GenerateCSharpMethodParameters(const MethodInfo& methodInfo, bool fo
 		if (I != methodInfo.Parameters.begin())
 			output << ", ";
 
-		const TypeMappingInformation parameterTypeMappingInformation = GetNativeToScriptTypeMapping(paramInfo.TypeInformation);
+		const TypeMappingInformation parameterTypeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(paramInfo.TypeInformation);
 		const std::string qualifiedType = GetScriptQualifiedType(paramInfo.TypeInformation, parameterTypeMappingInformation, true, forInternalMethod);
 
 		bool isLastParameter = (I + 1) == methodInfo.Parameters.end();
@@ -268,7 +268,7 @@ std::string GenerateCSharpMethodArguments(const MethodInfo& methodInfo, bool for
 	for (auto I = methodInfo.Parameters.begin(); I != methodInfo.Parameters.end(); ++I)
 	{
 		const VariableInformation& parameterInformation = *I;
-		const TypeMappingInformation parameterTypeMappingInformation = GetNativeToScriptTypeMapping(parameterInformation.TypeInformation);
+		const TypeMappingInformation parameterTypeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(parameterInformation.TypeInformation);
 
 		if (parameterInformation.TypeInformation.IsOutputParameter())
 			output << "out ";
@@ -303,12 +303,12 @@ std::string GenerateCSharpMethodDefaultArgumentAssignments(const MethodInfo& met
 
 		if (parameterInformation.DefaultValueType == "null" || parameterInformation.DefaultValue == "null")
 		{
-			TypeMappingInformation paramTypeInfo = GetNativeToScriptTypeMapping(parameterInformation.TypeInformation);
+			TypeMappingInformation paramTypeInfo = TypeLookup::GetNativeToScriptTypeMapping(parameterInformation.TypeInformation);
 			output << indent << paramTypeInfo.ScriptTypeName << " " << parameterInformation.Name << " = " << parameterInformation.DefaultValue << ";\n";
 		}
 		else
 		{
-			TypeMappingInformation defaultValTypeInfo = GetNativeToScriptTypeMapping(parameterInformation.DefaultValueType);
+			TypeMappingInformation defaultValTypeInfo = TypeLookup::GetNativeToScriptTypeMapping(parameterInformation.DefaultValueType);
 			output << indent << defaultValTypeInfo.ScriptTypeName << " " << parameterInformation.Name << " = ";
 			output << "new " << defaultValTypeInfo.ScriptTypeName << "(" << parameterInformation.DefaultValue << ");\n";
 		}
@@ -330,7 +330,7 @@ std::string GenerateCSharpEventSignature(const MethodInfo& methodInfo)
 	for (auto I = methodInfo.Parameters.begin(); I != methodInfo.Parameters.end(); ++I)
 	{
 		const VariableInformation& paramInfo = *I;
-		TypeMappingInformation parameterTypeMappingInformation = GetNativeToScriptTypeMapping(paramInfo.TypeInformation);
+		TypeMappingInformation parameterTypeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(paramInfo.TypeInformation);
 		std::string type = GetScriptQualifiedType(paramInfo.TypeInformation, parameterTypeMappingInformation);
 
 		output << type;
@@ -371,7 +371,7 @@ std::string GenerateCSharpEventArguments(const MethodInfo& methodInfo)
  * @param typeMappingInformation	Information about the mapping of the native type to script type.
  * @return							Signature of the method, with return value, method name and parameter list.
  */
-std::string GenerateCSharpInternalMethodSignature(const ClassInfo& classInformation, const MethodInfo& methodInformation, TypeMappingInformation& typeMappingInformation)
+std::string GenerateCSharpInternalMethodSignature(const ClassInfo& classInformation, const MethodInfo& methodInformation, const TypeMappingInformation& typeMappingInformation)
 {
 	const bool isClassModule = (classInformation.ClassFlags & (int)ClassFlags::IsModule) != 0;
 	const bool isStatic = (methodInformation.MethodFlags & (int)MethodFlags::Static) != 0;
@@ -384,7 +384,7 @@ std::string GenerateCSharpInternalMethodSignature(const ClassInfo& classInformat
 		output << "void";
 	else
 	{
-		const TypeMappingInformation returnTypeMappingInformation = GetNativeToScriptTypeMapping(methodInformation.ReturnValue.TypeInformation);
+		const TypeMappingInformation returnTypeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(methodInformation.ReturnValue.TypeInformation);
 		if (!CanBeReturned(methodInformation.ReturnValue.TypeInformation, returnTypeMappingInformation))
 		{
 			output << "void";
@@ -420,7 +420,7 @@ std::string GenerateCSharpInternalMethodSignature(const ClassInfo& classInformat
 
 	if (returnAsParameter)
 	{
-		const TypeMappingInformation returnTypeMappingInformation = GetNativeToScriptTypeMapping(methodInformation.ReturnValue.TypeInformation);
+		const TypeMappingInformation returnTypeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(methodInformation.ReturnValue.TypeInformation);
 		const std::string qualifiedType = GetScriptQualifiedType(methodInformation.ReturnValue.TypeInformation, returnTypeMappingInformation);
 
 		if (methodInformation.Parameters.size() > 0)
@@ -440,7 +440,7 @@ std::string GenerateCSharpInternalMethodSignature(const ClassInfo& classInformat
  * @param typeMappingInformation	Information about the mapping of the native type to script type.
  * @return							Code with the class declaration.
  */
-std::string GenerateCSharpClass(const ClassInfo& classInformation, TypeMappingInformation& typeMappingInformation)
+std::string GenerateCSharpClass(const ClassInfo& classInformation, const TypeMappingInformation& typeMappingInformation)
 {
 	const bool isModule = (classInformation.ClassFlags & (int)ClassFlags::IsModule) != 0;
 
@@ -584,7 +584,7 @@ std::string GenerateCSharpClass(const ClassInfo& classInformation, TypeMappingIn
 					returnType = "void";
 				else
 				{
-					returnTypeMappingInformation = GetNativeToScriptTypeMapping(entry.ReturnValue.TypeInformation);
+					returnTypeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(entry.ReturnValue.TypeInformation);
 					returnType = GetScriptQualifiedType(entry.ReturnValue.TypeInformation, returnTypeMappingInformation);
 				}
 
@@ -653,7 +653,7 @@ std::string GenerateCSharpClass(const ClassInfo& classInformation, TypeMappingIn
 	// Properties
 	for (auto& entry : classInformation.Properties)
 	{
-		const TypeMappingInformation propertyTypeMappingInformation = GetNativeToScriptTypeMapping(entry.TypeInformation);
+		const TypeMappingInformation propertyTypeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(entry.TypeInformation);
 		const std::string propertyQualifiedTypeName = GetScriptQualifiedType(entry.TypeInformation, propertyTypeMappingInformation);
 
 		properties << GenerateAPICheckBegin(entry.API);
@@ -828,7 +828,7 @@ std::string GenerateCSharpClass(const ClassInfo& classInformation, TypeMappingIn
 	std::string baseType;
 	if (!classInformation.BaseClassName.empty())
 	{
-		TypeMappingInformation baseTypeInfo = GetNativeToScriptTypeMapping(classInformation.BaseClassName);
+		TypeMappingInformation baseTypeInfo = TypeLookup::GetNativeToScriptTypeMapping(classInformation.BaseClassName);
 		baseType = baseTypeInfo.ScriptTypeName;
 	}
 	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Resource)
@@ -890,7 +890,7 @@ std::string generateCSStruct(const StructInfo& input)
 	else
 		output << "\t";
 
-	std::string scriptName = NativeToScriptTypeMap[input.NativeName].ScriptTypeName;
+	std::string scriptName = TypeLookup::GetNativeToScriptTypeMapping(input.NativeName).ScriptTypeName;
 	output << "partial struct " << scriptName;
 
 	output << std::endl;
@@ -913,7 +913,7 @@ std::string generateCSStruct(const StructInfo& input)
 		for (auto I = entry.Parameters.begin(); I != entry.Parameters.end(); ++I)
 		{
 			const VariableInformation& parameterInformation = *I;
-			const TypeMappingInformation parameterTypeMappingInformation = GetNativeToScriptTypeMapping(parameterInformation.TypeInformation);
+			const TypeMappingInformation parameterTypeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(parameterInformation.TypeInformation);
 
 			if (parameterInformation.TypeInformation.IsOutputParameter())
 			{
@@ -954,7 +954,7 @@ std::string generateCSStruct(const StructInfo& input)
 		for (auto I = input.Fields.begin(); I != input.Fields.end(); ++I)
 		{
 			const VariableInformation& fieldInformation = *I;
-			const TypeMappingInformation fieldTypeMappingInformation = GetNativeToScriptTypeMapping(fieldInformation.TypeInformation);
+			const TypeMappingInformation fieldTypeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(fieldInformation.TypeInformation);
 			if (fieldInformation.TypeInformation.IsOutputParameter())
 			{
 				// We report the error during field generation, as it checks for the same condition
@@ -993,7 +993,7 @@ std::string generateCSStruct(const StructInfo& input)
 
 	if(!input.BaseClassName.empty())
 	{
-		TypeMappingInformation baseTypeInfo = GetNativeToScriptTypeMapping(input.BaseClassName);
+		TypeMappingInformation baseTypeInfo = TypeLookup::GetNativeToScriptTypeMapping(input.BaseClassName);
 		StructInfo* baseStructInfo = TypeLookup::FindStructInformation(input.BaseClassName);
 		if (baseStructInfo != nullptr)
 		{
@@ -1037,7 +1037,7 @@ std::string generateCSStruct(const StructInfo& input)
 	for (auto I = input.Fields.begin(); I != input.Fields.end(); ++I)
 	{
 		const FieldInfo& fieldInformation = *I;
-		const TypeMappingInformation fieldTypeMappingInformation = GetNativeToScriptTypeMapping(fieldInformation.TypeInformation);
+		const TypeMappingInformation fieldTypeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(fieldInformation.TypeInformation);
 
 		if (fieldInformation.TypeInformation.IsOutputParameter())
 		{
@@ -1134,7 +1134,7 @@ std::string generateXMLParamInfo(const VariableInformation& varInfo, const Comme
 {
 	std::stringstream output;
 	output << indent << "<param name=\"" << escapeXML(varInfo.Name) << "\" type=\"" <<
-		escapeXML(GetNativeToScriptTypeMapping(varInfo.TypeInformation).ScriptTypeName) << "\">\n";
+		escapeXML(TypeLookup::GetNativeToScriptTypeMapping(varInfo.TypeInformation).ScriptTypeName) << "\">\n";
 
 	auto iterFind = std::find_if(methodDoc.ParameterComments.begin(), methodDoc.ParameterComments.end(),
 		[&varName = varInfo.Name](const CommentParameterEntry& entry) { return varName == entry.Name; });
@@ -1149,7 +1149,7 @@ std::string generateXMLFieldInfo(const FieldInfo& fieldInfo, const std::string& 
 {
 	std::stringstream output;
 	output << indent << "<field name=\"" << escapeXML(fieldInfo.Name) << "\" type=\"" <<
-		escapeXML(GetNativeToScriptTypeMapping(fieldInfo.TypeInformation).ScriptTypeName) << "\">\n";
+		escapeXML(TypeLookup::GetNativeToScriptTypeMapping(fieldInfo.TypeInformation).ScriptTypeName) << "\">\n";
 
 	// TODO - Generate inspector visibility
 	if(!fieldInfo.Documentation.Brief.empty())
@@ -1184,7 +1184,7 @@ std::string generateXMLMethodInfo(const MethodInfo& methodInfo, const std::strin
 
 	if(!ctor && !methodInfo.ReturnValue.TypeInformation.IsEmpty())
 	{
-		output << indent << "\t<returns type=\"" << escapeXML(GetNativeToScriptTypeMapping(methodInfo.ReturnValue.TypeInformation).ScriptTypeName) << "\">\n";
+		output << indent << "\t<returns type=\"" << escapeXML(TypeLookup::GetNativeToScriptTypeMapping(methodInfo.ReturnValue.TypeInformation).ScriptTypeName) << "\">\n";
 
 		if (!methodInfo.Documentation.ReturnValueComments.empty())
 			output << indent << "\t\t<doc>" << CommentParser::GenerateXMLCommentText(methodInfo.Documentation.ReturnValueComments) << "</doc>\n";
@@ -1220,7 +1220,7 @@ std::string generateXMLPropertyInfo(const PropertyInfo& propertyInfo, const std:
 
 	std::stringstream output;
 	output << indent << "<property name=\"" << escapeXML(propertyInfo.ScriptName) << "\" type=\"" <<
-		escapeXML(GetNativeToScriptTypeMapping(propertyInfo.TypeInformation).ScriptTypeName) <<
+		escapeXML(TypeLookup::GetNativeToScriptTypeMapping(propertyInfo.TypeInformation).ScriptTypeName) <<
 		"\" getter=\"" << escapeXML(propertyInfo.GetterName) << "\" setter=\"" << escapeXML(propertyInfo.SetterName) <<
 		"\" static=\"" << staticStr << "\">\n";
 
@@ -1250,7 +1250,7 @@ std::string generateXMLEventInfo(const MethodInfo& eventInfo, const std::string&
 
 	if(!eventInfo.ReturnValue.TypeInformation.IsEmpty())
 	{
-		output << indent << "\t<returns type=\"" << escapeXML(GetNativeToScriptTypeMapping(eventInfo.ReturnValue.TypeInformation).ScriptTypeName) << "\">\n";
+		output << indent << "\t<returns type=\"" << escapeXML(TypeLookup::GetNativeToScriptTypeMapping(eventInfo.ReturnValue.TypeInformation).ScriptTypeName) << "\">\n";
 
 		if (!eventInfo.Documentation.ReturnValueComments.empty())
 			output << indent << "\t\t<doc>" << CommentParser::GenerateXMLCommentText(eventInfo.Documentation.ReturnValueComments) << "</doc>\n";
@@ -1288,7 +1288,7 @@ std::string generateXMLStruct(const StructInfo& input, const std::string& indent
 {
 	std::stringstream output;
 
-	TypeMappingInformation& typeInfo = NativeToScriptTypeMap[input.NativeName];
+	const TypeMappingInformation& typeInfo = TypeLookup::GetNativeToScriptTypeMapping(input.NativeName);
 
 	output << indent << "<struct native=\"" << escapeXML(input.NativeName) << "\" script=\"" << escapeXML(typeInfo.ScriptTypeName) << "\">\n";
 	if (!input.Documentation.Brief.empty())
@@ -1308,7 +1308,7 @@ std::string generateXMLClass(const ClassInfo& input, bool editor, const std::str
 {
 	std::stringstream output;
 
-	TypeMappingInformation& typeInfo = NativeToScriptTypeMap[input.NativeName];
+	const TypeMappingInformation& typeInfo = TypeLookup::GetNativeToScriptTypeMapping(input.NativeName);
 
 	output << indent << "<class native=\"" << escapeXML(input.NativeName) << "\" script=\"" << escapeXML(typeInfo.ScriptTypeName) << "\">\n";
 	if (!input.Documentation.Brief.empty())
@@ -1414,7 +1414,7 @@ void GenerateCSharp(StringRef engineOutputFolder, StringRef editorOutputFolder, 
 		for (auto I = classInfos.begin(); I != classInfos.end(); ++I)
 		{
 			const ClassInfo& classInfo = *I;
-			TypeMappingInformation& typeInfo = NativeToScriptTypeMap[classInfo.NativeName];
+			const TypeMappingInformation& typeInfo = TypeLookup::GetNativeToScriptTypeMapping(classInfo.NativeName);
 
 			body << GenerateCSharpClass(classInfo, typeInfo);
 

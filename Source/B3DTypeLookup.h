@@ -5,25 +5,80 @@
 class TypeLookup
 {
 public:
+
+	/** Registers a new class to be generated in the specified file. */
+	static void RegisterEntryToGenerate(const std::string& fileName, ClassInfo classInfo);
+
+	/** Registers a new struct to be generated in the specified file. */
+	static void RegisterEntryToGenerate(const std::string& fileName, StructInfo structInfo);
+
+	/** Registers a new enum to be generated in the specified file. */
+	static void RegisterEntryToGenerate(const std::string& fileName, EnumInfo enumInfo);
+
+	/** Finds information about a struct with the provided name, if null if not found. */
+	static StructInfo* FindStructInformation(const std::string& typeName);
+
+	/** Finds information about a struct with the provided name, if null if not found. If @p isEditor is true, it will return the editor variant of the class, if two versions exist. */
+	static ClassInfo* FindClassInformation(const std::string& typeName, bool isEditor);
+
+	/** Finds information about an enum with the provided name, if null if not found. */
+	static EnumInfo* FindEnumInformation(const std::string& typeName);
+
+	/** Finds information about a struct with the provided name, if null if not found. Only searches the specified file. */
+	static StructInfo* FindStructInformationInFile(const std::string& fileName, const std::string& typeName);
+
+	/** Finds information about a struct with the provided name, if null if not found. Only searches the specified file. */
+	static ClassInfo* FindClassInformationInFile(const std::string& fileName, const std::string& typeName);
+
+	/** Finds information about an enum with the provided name, if null if not found. Only searches the specified file. */
+	static EnumInfo* FindEnumInformationInFile(const std::string& fileName, const std::string& typeName);
+
 	/** Returns a list of all files that need to be generated. */
 	static const std::unordered_map<std::string, FileInfo>& GetFilesToGenerate() { return mFilesToGenerate; }
 
 	/** Returns a list of all files that need to be generated. */
 	static std::unordered_map<std::string, FileInfo>& GetFilesToGenerateMutable() { return mFilesToGenerate; }
 
-	/** Retrieves an existing file information, or creates a new one if one doesn't exist with the provided file name. */
-	static FileInfo& GetOrAddFileToGenerate(const std::string& name) { return mFilesToGenerate[name]; }
+	/**
+	 * Registers a mapping between a native and script type. This mapping will be used whenever the native type is encountered during code generation.
+	 *
+	 * @param nameSpace				Namespace of the native type.
+	 * @param nativeName			Type name of the native type.
+	 * @param nativeFilePath		Path to the file in which the native type is declared in.
+	 * @param scriptName			Type name of the script type the native type maps to.
+	 * @param scriptFileName		Name of the file (without extension) in which the script type will be generated in.
+	 * @param api					API to export the script type into.
+	 * @param typeCategory			Type category that describes the type being mapped.
+	 * @param enumUnderlyingType	Underlying storage type, if the type category is an enum.
+	 */
+	static void RegisterNativeToScriptTypeMapping(const SmallVector<std::string, 4>& nameSpace, const std::string& nativeName, const std::string& nativeFilePath, const std::string& scriptName, const std::string& scriptFileName, ApiFlags api, ExportedClassTypeCategory typeCategory, BuiltinType::Kind enumUnderlyingType = BuiltinType::NullPtr);
 
-	/** Finds information about a struct with the provided name, if null if not found. */
-	static StructInfo* FindStructInformation(const std::string& name);
+	/** Same as RegisterNativeToScriptTypeMapping, except the script file is provided as an explicit path rather than a file name. Useful for types that have custom interop wrappers. */
+	static void RegisterNativeToScriptTypeMappingWithExplicitPath(const SmallVector<std::string, 4>& nameSpace, const std::string& nativeName, const std::string& nativeFilePath, const std::string& scriptName, const std::string& scriptFilePath, ExportedClassTypeCategory typeCategory, BuiltinType::Kind enumUnderlyingType = BuiltinType::NullPtr);
 
-	/** Finds information about a struct with the provided name, if null if not found. If @p isEditor is true, it will return the editor variant of the class, if two versions exist. */
-	static ClassInfo* FindClassInformation(const std::string& name, bool isEditor);
+	/** Returns the information about a native type maps to a script type. */
+	static TypeMappingInformation GetNativeToScriptTypeMapping(const std::string& typeName);
 
-	/** Finds information about an enum with the provided name, if null if not found. */
-	static EnumInfo* FindEnumInformation(const std::string& name);
+	/**
+	 * Returns the information about how a native type maps to a script type. The provided type information supports extra information about how the type
+	 * is being used (e.g. passed as a pointer, reference, resource handle, array etc.), and will utilize this information to return the underlying type.
+	 */
+	static TypeMappingInformation GetNativeToScriptTypeMapping(const VariableTypeInformation& typeInformation);
 
+	/**
+	 * Returns the name of the script interop type used for the provided type name
+	 *
+	 * @param typeName					Type name of the type to look up.
+	 * @param isResourceReference	If the type is a resource, this will return a resource reference script interop class, rather than the resource's own interop class.
+	 * @return						Name of the type used for script interop for the provided type name.
+	 */
+	static std::string GetScriptInteropTypeName(const std::string& typeName, bool isResourceReference = false);
 private:
+	/** Maps a C++ primitive type such as int uint32_t or int8_t, to C# type. */
+	static std::string MapCppPrimitiveTypeToCSharpType(const std::string& cppType);
+
 	static std::unordered_map<std::string, FileInfo> mFilesToGenerate;
+	static std::unordered_map<std::string, TypeMappingInformation> mNativeToScriptTypeMap;
+
 	
 };

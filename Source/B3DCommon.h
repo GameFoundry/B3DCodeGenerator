@@ -326,8 +326,6 @@ enum class ExportedClassTypeCategory
 	MonoObject /**< Builtin MonoObject type. */
 };
 
-#pragma region Type Mapping
-
 /**
  * Contains information about how a native type maps to a script type.
  *
@@ -386,196 +384,6 @@ inline bool TypeMappingInformation::IsClassType() const
 {
 	return TypeCategory == ExportedClassTypeCategory::Class || TypeCategory == ExportedClassTypeCategory::ReflectableClass;
 }
-
-extern std::unordered_map<std::string, TypeMappingInformation> NativeToScriptTypeMap;
-
-inline std::string mapCppTypeToCSType(const std::string& cppType)
-{
-	if (cppType == "int8_t")
-		return "sbyte";
-
-	if (cppType == "uint8_t")
-		return "byte";
-
-	if (cppType == "int16_t")
-		return "short";
-
-	if (cppType == "uint16_t")
-		return "ushort";
-
-	if (cppType == "int32_t")
-		return "int";
-
-	if (cppType == "uint32_t")
-		return "int";
-
-	if (cppType == "int64_t")
-		return "long";
-
-	if (cppType == "uint64_t")
-		return "ulong";
-
-	if (cppType == "wchar_t")
-		return "char";
-
-	if (cppType == "char16_t")
-		return "ushort";
-
-	if (cppType == "char32_t")
-		return "uint";
-
-	return cppType;
-}
-/** Returns the information about a native type maps to a script type. */
-inline TypeMappingInformation GetNativeToScriptTypeMapping(const std::string& typeName)
-{
-	auto iterFind = NativeToScriptTypeMap.find(typeName);
-	if (iterFind == NativeToScriptTypeMap.end())
-	{
-		TypeMappingInformation outType;
-		outType.ScriptTypeName = mapCppTypeToCSType(typeName);
-		outType.TypeCategory = ::ExportedClassTypeCategory::Primitive;
-
-		errs() << "Unable to map type \"" << typeName << "\". Assuming same name as source.\n";
-		return outType;
-	}
-	
-	return iterFind->second;
-}
-
-/**
- * Returns the information about how a native type maps to a script type. The provided type information supports extra information about how the type
- * is being used (e.g. passed as a pointer, reference, resource handle, array etc.), and will utilize this information to return the underlying type.
- */
-inline TypeMappingInformation GetNativeToScriptTypeMapping(const VariableTypeInformation& typeInformation)
-{
-	switch (typeInformation.TypeCategory)
-	{
-	case VariableTypeCategory::Primitive:
-	{
-		TypeMappingInformation outType;
-		outType.ScriptTypeName = mapCppTypeToCSType(typeInformation.TypeName);
-		outType.TypeCategory = ::ExportedClassTypeCategory::Primitive;
-
-		return outType;
-	}
-	case VariableTypeCategory::String:
-	{
-		TypeMappingInformation outType;
-		outType.ScriptTypeName = "string";
-		outType.TypeCategory = ::ExportedClassTypeCategory::String;
-
-		return outType;
-	}
-	case VariableTypeCategory::WString:
-	{
-		TypeMappingInformation outType;
-		outType.ScriptTypeName = "string";
-		outType.TypeCategory = ::ExportedClassTypeCategory::WString;
-
-		return outType;
-	}
-	case VariableTypeCategory::Path:
-	{
-		TypeMappingInformation outType;
-		outType.ScriptTypeName = "string";
-		outType.TypeCategory = ::ExportedClassTypeCategory::Path;
-
-		return outType;
-	}
-	case VariableTypeCategory::MonoObject:
-	{
-		TypeMappingInformation outType;
-		outType.ScriptTypeName = "object";
-		outType.TypeCategory = ::ExportedClassTypeCategory::MonoObject;
-
-		return outType;
-	}
-	case VariableTypeCategory::AsyncOp:
-	{
-		TypeMappingInformation underlyingTypeMapping;
-		if (!typeInformation.UnderlyingType)
-		{
-			errs() << "Unable to map underlying type for \"" << typeInformation.TypeName << "\". No underlying type found. \n";
-
-			underlyingTypeMapping.ScriptTypeName = "Unknown";
-			underlyingTypeMapping.TypeCategory = ::ExportedClassTypeCategory::Class;
-		}
-		else
-		{
-			underlyingTypeMapping = GetNativeToScriptTypeMapping(*typeInformation.UnderlyingType);
-		}
-
-		TypeMappingInformation outType = underlyingTypeMapping;
-		outType.ScriptTypeName = "AsyncOp<" + underlyingTypeMapping.ScriptTypeName + ">";
-
-		return outType;
-	}
-	case VariableTypeCategory::ResourceHandle:
-	{
-		TypeMappingInformation underlyingTypeMapping;
-		VariableTypeInformation underlyingType;
-		if (!typeInformation.UnderlyingType)
-		{
-			errs() << "Unable to map underlying type for \"" << typeInformation.TypeName << "\". No underlying type found. \n";
-
-			underlyingTypeMapping.ScriptTypeName = "Unknown";
-			underlyingTypeMapping.TypeCategory = ::ExportedClassTypeCategory::Class;
-
-			underlyingType.TypeName = "Unknown";
-			underlyingType.TypeCategory = VariableTypeCategory::General;
-		}
-		else
-		{
-			underlyingType = *typeInformation.UnderlyingType;
-			underlyingTypeMapping = GetNativeToScriptTypeMapping(*typeInformation.UnderlyingType);
-		}
-
-		if(typeInformation.IsParameterFlagSet(ParameterFlags::AsResourceRef))
-		{
-			TypeMappingInformation outType = underlyingTypeMapping;
-
-			if (underlyingType.TypeName == "Resource")
-				outType.ScriptTypeName = "RRefBase";
-			else
-				outType.ScriptTypeName = "RRef<" + underlyingTypeMapping.ScriptTypeName + ">";
-
-			return outType;
-		}
-		else
-			return underlyingTypeMapping;
-	}
-	// Just forward the type resolve to the underlying type. Note we don't support nested vectors, arrays or shared pointers
-	case VariableTypeCategory::Vector:
-	case VariableTypeCategory::SmallVector:
-	case VariableTypeCategory::Array:
-	case VariableTypeCategory::GameObjectHandle:
-	case VariableTypeCategory::ComponentOrActor:
-	case VariableTypeCategory::Flags:
-	case VariableTypeCategory::SharedPointer:
-	{
-		TypeMappingInformation underlyingTypeMapping;
-		if (!typeInformation.UnderlyingType)
-		{
-			errs() << "Unable to map underlying type for \"" << typeInformation.TypeName << "\". No underlying type found. \n";
-
-			underlyingTypeMapping.ScriptTypeName = "Unknown";
-			underlyingTypeMapping.TypeCategory = ::ExportedClassTypeCategory::Class;
-		}
-		else
-		{
-			underlyingTypeMapping = GetNativeToScriptTypeMapping(*typeInformation.UnderlyingType);
-		}
-
-		return underlyingTypeMapping;
-	}
-	default:
-	case VariableTypeCategory::General:
-		return GetNativeToScriptTypeMapping(typeInformation.TypeName);
-	}
-}
-
-#pragma endregion Type Mapping
 
 struct VariableBase
 {
@@ -695,6 +503,9 @@ struct ClassInfo : GeneratedTypeInformation
 
 	/** Scans the class information for a constructor that is not already used, and return the signature of the first such constructor. */
 	MethodInfo FindUnusedConstructorSignature() const;
+
+	/** Returns true if this is a struct in native code. */
+	bool IsStruct() const { return (ClassFlags & (int)ClassFlags::IsStruct) != 0; }
 };
 
 struct ExternalClassInfos
@@ -909,31 +720,6 @@ inline const std::string& escapeXML(const std::string& data)
 	}
 
 	return buffer;
-}
-
-inline bool isStruct(int flags)
-{
-	return (flags & (int)ClassFlags::IsStruct) != 0;
-}
-
-
-inline ApiFlags apiFromExportFlags(int flags)
-{
-	int output = 0;
-
-	if((flags & (int)ExportFlags::EngineAPI) != 0)
-		output |= (int)ApiFlags::Engine;
-
-	if((flags & (int)ExportFlags::FrameworkAPI) != 0)
-		output |= (int)ApiFlags::Framework;
-
-	if((flags & (int)ExportFlags::EditorAPI) != 0)
-		output |= (int)ApiFlags::Editor;
-
-	if((int)output == 0)
-		output = (int)ApiFlags::Any;
-
-	return (ApiFlags)output;
 }
 
 inline bool isCSOnly(int flags)

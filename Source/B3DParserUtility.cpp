@@ -300,7 +300,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 		if (paramInfo.DefaultValue.empty())
 			return;
 
-		TypeMappingInformation typeInfo = GetNativeToScriptTypeMapping(paramInfo.TypeInformation);
+		TypeMappingInformation typeInfo = TypeLookup::GetNativeToScriptTypeMapping(paramInfo.TypeInformation);
 
 		if (typeInfo.TypeCategory != ::ExportedClassTypeCategory::Enum)
 			return;
@@ -363,7 +363,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 		{
 			for(auto& fieldInformation : structInfo.Fields)
 			{
-				const TypeMappingInformation fieldTypeMappingInformation = GetNativeToScriptTypeMapping(fieldInformation.TypeInformation);
+				const TypeMappingInformation fieldTypeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(fieldInformation.TypeInformation);
 
 				if(fieldInformation.TypeInformation.IsArrayOrVector() || !(fieldTypeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Primitive || fieldTypeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Enum))
 				{
@@ -384,7 +384,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 	{
 		auto fnMarkComplexType = [](VariableTypeInformation& typeInformation)
 		{
-			const TypeMappingInformation typeMappingInformation = GetNativeToScriptTypeMapping(typeInformation);
+			const TypeMappingInformation typeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(typeInformation);
 			if (typeMappingInformation.TypeCategory != ExportedClassTypeCategory::Struct)
 				return;
 
@@ -398,7 +398,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 
 		auto fnMarkBaseType = [](VariableTypeInformation& typeInformation)
 		{
-			const TypeMappingInformation typeMappingInformation = GetNativeToScriptTypeMapping(typeInformation);
+			const TypeMappingInformation typeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(typeInformation);
 			if (typeMappingInformation.TypeCategory != ExportedClassTypeCategory::Class && typeMappingInformation.TypeCategory != ExportedClassTypeCategory::ReflectableClass &&
 				typeMappingInformation.TypeCategory != ExportedClassTypeCategory::GUIElement && !typeMappingInformation.IsHandleType())
 				return;
@@ -483,9 +483,9 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 
 			for (auto& classInfo : fileInfo.second.Classes)
 			{
-				TypeMappingInformation& typeInfo = NativeToScriptTypeMap[classInfo.NativeName];
+				const TypeMappingInformation& typeInfo = TypeLookup::GetNativeToScriptTypeMapping(classInfo.NativeName);
 
-				fileInfo.second.ForwardDeclarations.insert(ForwardDeclInfo(classInfo.NativeNameWithoutTemplateArguments, classInfo.Namespace, classInfo.TemplateParameters, isStruct(classInfo.ClassFlags)));
+				fileInfo.second.ForwardDeclarations.insert(ForwardDeclInfo(classInfo.NativeNameWithoutTemplateArguments, classInfo.Namespace, classInfo.TemplateParameters, classInfo.IsStruct()));
 
 				if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource)
 					fileInfo.second.ReferencedHeaderIncludes.push_back("Wrappers/BsScriptResource.h");
@@ -502,7 +502,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 
 				if (!classInfo.BaseClassName.empty())
 				{
-					TypeMappingInformation& baseTypeInfo = NativeToScriptTypeMap[classInfo.BaseClassName];
+					const TypeMappingInformation& baseTypeInfo = TypeLookup::GetNativeToScriptTypeMapping(classInfo.BaseClassName);
 
 					if(IsAPIEditor(classInfo.API))
 						fileInfo.second.ReferencedHeaderIncludes.push_back(baseTypeInfo.EditorInteropFile);
@@ -524,7 +524,7 @@ void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
 
 			for(auto& structInfo : fileInfo.second.Structs)
 			{
-				TypeMappingInformation& typeInfo = NativeToScriptTypeMap[structInfo.NativeName];
+				const TypeMappingInformation& typeInfo = TypeLookup::GetNativeToScriptTypeMapping(structInfo.NativeName);
 
 				fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptObject.h");
 				fileInfo.second.ReferencedHeaderIncludes.push_back(typeInfo.NativeFile);
@@ -694,7 +694,7 @@ void ParserUtility::PostProcessDefaultParameters(MethodInfo& methodInfo, std::ve
 
 void ParserUtility::GatherIncludes(const VariableTypeInformation& typeInformation, bool isEditor, IncludesInfo& output)
 {
-	const TypeMappingInformation typeMappingInformation = GetNativeToScriptTypeMapping(typeInformation);
+	const TypeMappingInformation typeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(typeInformation);
 	const VariableTypeInformation& underlyingTypeInformation = typeInformation.IsArrayOrVector() ? typeInformation.AssertGetUnderlyingType() : typeInformation;
 
 	const std::string& typeName = underlyingTypeInformation.GetLastWrappedOrSelfTypeName();
@@ -739,7 +739,7 @@ void ParserUtility::GatherIncludes(const VariableTypeInformation& typeInformatio
 				getDerivedClasses(typeName, derivedClasses);
 
 				for (auto& entry : derivedClasses)
-					output.includes[entry] = IncludeInfo(entry, GetNativeToScriptTypeMapping(entry), IncludeType::IncludeInImplementation, IncludeType::IncludeInImplementation, false, isEditor);
+					output.includes[entry] = IncludeInfo(entry, TypeLookup::GetNativeToScriptTypeMapping(entry), IncludeType::IncludeInImplementation, IncludeType::IncludeInImplementation, false, isEditor);
 
 				output.requiresRTTI = true;
 			}
@@ -776,7 +776,7 @@ void ParserUtility::GatherIncludes(const MethodInfo& methodInfo, bool isEditor, 
 		auto iterFind = output.includes.find(methodInfo.ExternalClass);
 		if (iterFind == output.includes.end())
 		{
-			TypeMappingInformation typeInfo = GetNativeToScriptTypeMapping(methodInfo.ExternalClass);
+			TypeMappingInformation typeInfo = TypeLookup::GetNativeToScriptTypeMapping(methodInfo.ExternalClass);
 			output.includes[methodInfo.ExternalClass] = IncludeInfo(methodInfo.ExternalClass, typeInfo, IncludeType::ForwardDeclareAndIncludeInImplementation, IncludeType::None, false, isEditor);
 		}
 	}
@@ -784,7 +784,7 @@ void ParserUtility::GatherIncludes(const MethodInfo& methodInfo, bool isEditor, 
 
 void ParserUtility::GatherIncludes(const FieldInfo& fieldInfo, bool isEditor, IncludesInfo& output)
 {
-	const TypeMappingInformation fieldTypeMappingInformation = GetNativeToScriptTypeMapping(fieldInfo.TypeInformation);
+	const TypeMappingInformation fieldTypeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(fieldInfo.TypeInformation);
 	const VariableTypeInformation& underlyingTypeInformation = fieldInfo.TypeInformation.IsArrayOrVector() ? fieldInfo.TypeInformation.AssertGetUnderlyingType() : fieldInfo.TypeInformation;
 
 	const std::string& fieldTypeName = underlyingTypeInformation.GetLastWrappedOrSelfTypeName();
@@ -830,7 +830,7 @@ void ParserUtility::GatherIncludes(const FieldInfo& fieldInfo, bool isEditor, In
 				getDerivedClasses(fieldTypeName, derivedClasses);
 
 				for (auto& entry : derivedClasses)
-					output.includes[entry] = IncludeInfo(entry, GetNativeToScriptTypeMapping(entry), IncludeType::IncludeInImplementation, IncludeType::IncludeInImplementation, false, isEditor);
+					output.includes[entry] = IncludeInfo(entry, TypeLookup::GetNativeToScriptTypeMapping(entry), IncludeType::IncludeInImplementation, IncludeType::IncludeInImplementation, false, isEditor);
 
 				output.requiresRTTI = true;
 			}
@@ -915,6 +915,25 @@ bool ParserUtility::IsBuiltinBaseType(const CXXRecordDecl* decl)
 		return true;
 
 	return false;
+}
+
+ApiFlags ParserUtility::ParseAPIFromExportFlags(int exportFlags)
+{
+	int output = 0;
+
+	if((exportFlags & (int)ExportFlags::EngineAPI) != 0)
+		output |= (int)ApiFlags::Engine;
+
+	if((exportFlags & (int)ExportFlags::FrameworkAPI) != 0)
+		output |= (int)ApiFlags::Framework;
+
+	if((exportFlags & (int)ExportFlags::EditorAPI) != 0)
+		output |= (int)ApiFlags::Editor;
+
+	if((int)output == 0)
+		output = (int)ApiFlags::Any;
+
+	return (ApiFlags)output;
 }
 
 bool ParserUtility::MapBuiltinPrimitiveTypeToCppType(BuiltinType::Kind kind, std::string& output)
