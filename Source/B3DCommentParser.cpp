@@ -1,6 +1,6 @@
 #include "B3DCommentParser.h"
-
 #include "B3DParserUtility.h"
+#include "B3DGeneratorUtility.h"
 
 bool CommentParser::ParseComments(const Decl* decl, CommentEntry& output)
 {
@@ -787,7 +787,7 @@ std::string CommentParser::GenerateXMLCommentText(const CommentText& commentText
 		{
 			if (refEntry.PositionInText == idx)
 			{
-				output << "<paramref name=\"" << escapeXML(refEntry.Name) << "\"/>";
+				output << "<paramref name=\"" << GeneratorUtility::EscapeXML(refEntry.Name) << "\"/>";
 				idx += refEntry.Name.size();
 			}
 		}
@@ -796,7 +796,7 @@ std::string CommentParser::GenerateXMLCommentText(const CommentText& commentText
 		{
 			if (refEntry.PositionInText == idx)
 			{
-				output << "<see cref=\"" << escapeXML(refEntry.Name) << "\"/>";
+				output << "<see cref=\"" << GeneratorUtility::EscapeXML(refEntry.Name) << "\"/>";
 				idx += refEntry.Name.size();
 			}
 		}

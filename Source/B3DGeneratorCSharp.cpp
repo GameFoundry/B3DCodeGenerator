@@ -1,4 +1,5 @@
 #include "B3DParserUtility.h"
+#include "B3DGeneratorUtility.h"
 #include "B3DCommentParser.h"
 #include "B3DCommon.h"
 #include "B3DTypeLookup.h"
@@ -315,7 +316,6 @@ std::string GenerateCSharpMethodDefaultArgumentAssignments(const MethodInfo& met
 	}
 
 	return output.str();
-
 }
 
 /**
@@ -385,7 +385,7 @@ std::string GenerateCSharpInternalMethodSignature(const ClassInfo& classInformat
 	else
 	{
 		const TypeMappingInformation returnTypeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(methodInformation.ReturnValue.TypeInformation);
-		if (!CanBeReturned(methodInformation.ReturnValue.TypeInformation, returnTypeMappingInformation))
+		if (!GeneratorUtility::CanBeReturned(methodInformation.ReturnValue.TypeInformation, returnTypeMappingInformation))
 		{
 			output << "void";
 			returnAsParameter = true;
@@ -608,7 +608,7 @@ std::string GenerateCSharpClass(const ClassInfo& classInformation, const TypeMap
 				bool returnByParam = false;
 				if (!entry.ReturnValue.TypeInformation.IsEmpty())
 				{
-					if (!CanBeReturned(entry.ReturnValue.TypeInformation, returnTypeMappingInformation))
+					if (!GeneratorUtility::CanBeReturned(entry.ReturnValue.TypeInformation, returnTypeMappingInformation))
 					{
 						methods << "\t\t\t" << returnType << " temp;" << std::endl;
 						methods << "\t\t\tInternal_" << entry.InteropName << "(";
@@ -691,7 +691,7 @@ std::string GenerateCSharpClass(const ClassInfo& classInformation, const TypeMap
 
 		if (!entry.GetterName.empty())
 		{
-			if (CanBeReturned(entry.TypeInformation, propertyTypeMappingInformation))
+			if (GeneratorUtility::CanBeReturned(entry.TypeInformation, propertyTypeMappingInformation))
 			{
 				properties << "\t\t\tget { return Internal_" << entry.GetterName << "(";
 
@@ -1133,8 +1133,8 @@ std::string generateCSEnum(const EnumInfo& input)
 std::string generateXMLParamInfo(const VariableInformation& varInfo, const CommentEntry& methodDoc, const std::string& indent)
 {
 	std::stringstream output;
-	output << indent << "<param name=\"" << escapeXML(varInfo.Name) << "\" type=\"" <<
-		escapeXML(TypeLookup::GetNativeToScriptTypeMapping(varInfo.TypeInformation).ScriptTypeName) << "\">\n";
+	output << indent << "<param name=\"" << GeneratorUtility::EscapeXML(varInfo.Name) << "\" type=\"" <<
+		GeneratorUtility::EscapeXML(TypeLookup::GetNativeToScriptTypeMapping(varInfo.TypeInformation).ScriptTypeName) << "\">\n";
 
 	auto iterFind = std::find_if(methodDoc.ParameterComments.begin(), methodDoc.ParameterComments.end(),
 		[&varName = varInfo.Name](const CommentParameterEntry& entry) { return varName == entry.Name; });
@@ -1148,8 +1148,8 @@ std::string generateXMLParamInfo(const VariableInformation& varInfo, const Comme
 std::string generateXMLFieldInfo(const FieldInfo& fieldInfo, const std::string& indent)
 {
 	std::stringstream output;
-	output << indent << "<field name=\"" << escapeXML(fieldInfo.Name) << "\" type=\"" <<
-		escapeXML(TypeLookup::GetNativeToScriptTypeMapping(fieldInfo.TypeInformation).ScriptTypeName) << "\">\n";
+	output << indent << "<field name=\"" << GeneratorUtility::EscapeXML(fieldInfo.Name) << "\" type=\"" <<
+		GeneratorUtility::EscapeXML(TypeLookup::GetNativeToScriptTypeMapping(fieldInfo.TypeInformation).ScriptTypeName) << "\">\n";
 
 	// TODO - Generate inspector visibility
 	if(!fieldInfo.Documentation.Brief.empty())
@@ -1170,8 +1170,8 @@ std::string generateXMLMethodInfo(const MethodInfo& methodInfo, const std::strin
 
 	if(!ctor)
 	{
-		output << indent << "<method native=\"" << escapeXML(methodInfo.NativeName) << "\" script=\"" <<
-			escapeXML(methodInfo.ScriptName) << "\" static=\"" << isStaticStr << "\">\n";
+		output << indent << "<method native=\"" << GeneratorUtility::EscapeXML(methodInfo.NativeName) << "\" script=\"" <<
+			GeneratorUtility::EscapeXML(methodInfo.ScriptName) << "\" static=\"" << isStaticStr << "\">\n";
 	}
 	else
 		output << indent << "<ctor>\n";
@@ -1184,7 +1184,7 @@ std::string generateXMLMethodInfo(const MethodInfo& methodInfo, const std::strin
 
 	if(!ctor && !methodInfo.ReturnValue.TypeInformation.IsEmpty())
 	{
-		output << indent << "\t<returns type=\"" << escapeXML(TypeLookup::GetNativeToScriptTypeMapping(methodInfo.ReturnValue.TypeInformation).ScriptTypeName) << "\">\n";
+		output << indent << "\t<returns type=\"" << GeneratorUtility::EscapeXML(TypeLookup::GetNativeToScriptTypeMapping(methodInfo.ReturnValue.TypeInformation).ScriptTypeName) << "\">\n";
 
 		if (!methodInfo.Documentation.ReturnValueComments.empty())
 			output << indent << "\t\t<doc>" << CommentParser::GenerateXMLCommentText(methodInfo.Documentation.ReturnValueComments) << "</doc>\n";
@@ -1219,9 +1219,9 @@ std::string generateXMLPropertyInfo(const PropertyInfo& propertyInfo, const std:
 	std::string staticStr = propertyInfo.IsStatic ? "true" : "false";
 
 	std::stringstream output;
-	output << indent << "<property name=\"" << escapeXML(propertyInfo.ScriptName) << "\" type=\"" <<
-		escapeXML(TypeLookup::GetNativeToScriptTypeMapping(propertyInfo.TypeInformation).ScriptTypeName) <<
-		"\" getter=\"" << escapeXML(propertyInfo.GetterName) << "\" setter=\"" << escapeXML(propertyInfo.SetterName) <<
+	output << indent << "<property name=\"" << GeneratorUtility::EscapeXML(propertyInfo.ScriptName) << "\" type=\"" <<
+		GeneratorUtility::EscapeXML(TypeLookup::GetNativeToScriptTypeMapping(propertyInfo.TypeInformation).ScriptTypeName) <<
+		"\" getter=\"" << GeneratorUtility::EscapeXML(propertyInfo.GetterName) << "\" setter=\"" << GeneratorUtility::EscapeXML(propertyInfo.SetterName) <<
 		"\" static=\"" << staticStr << "\">\n";
 
 	// TODO - Generate inspector visibility
@@ -1238,7 +1238,7 @@ std::string generateXMLEventInfo(const MethodInfo& eventInfo, const std::string&
    std::string staticStr = isStatic ? "true" : "false";
 
 	std::stringstream output;
-	output << indent << "<event native=\"" << escapeXML(eventInfo.NativeName) << "\" script=\"" << escapeXML(eventInfo.ScriptName) <<
+	output << indent << "<event native=\"" << GeneratorUtility::EscapeXML(eventInfo.NativeName) << "\" script=\"" << GeneratorUtility::EscapeXML(eventInfo.ScriptName) <<
 		"\" static=\"" << staticStr << "\">\n";
 
 	// TODO - Generate inspector visibility
@@ -1250,7 +1250,7 @@ std::string generateXMLEventInfo(const MethodInfo& eventInfo, const std::string&
 
 	if(!eventInfo.ReturnValue.TypeInformation.IsEmpty())
 	{
-		output << indent << "\t<returns type=\"" << escapeXML(TypeLookup::GetNativeToScriptTypeMapping(eventInfo.ReturnValue.TypeInformation).ScriptTypeName) << "\">\n";
+		output << indent << "\t<returns type=\"" << GeneratorUtility::EscapeXML(TypeLookup::GetNativeToScriptTypeMapping(eventInfo.ReturnValue.TypeInformation).ScriptTypeName) << "\">\n";
 
 		if (!eventInfo.Documentation.ReturnValueComments.empty())
 			output << indent << "\t\t<doc>" << CommentParser::GenerateXMLCommentText(eventInfo.Documentation.ReturnValueComments) << "</doc>\n";
@@ -1266,7 +1266,7 @@ std::string generateXMLEnum(const EnumInfo& input, const std::string& indent)
 {
 	std::stringstream output;
 
-	output << indent << "<enum native=\"" << escapeXML(input.NativeName) << "\" script=\"" << escapeXML(input.ScriptName) << "\">\n";
+	output << indent << "<enum native=\"" << GeneratorUtility::EscapeXML(input.NativeName) << "\" script=\"" << GeneratorUtility::EscapeXML(input.ScriptName) << "\">\n";
 	if (!input.Documentation.Brief.empty())
 		output << indent << "\t<doc>" << CommentParser::GenerateXMLCommentText(input.Documentation.Brief) << "</doc>\n";
 
@@ -1274,7 +1274,7 @@ std::string generateXMLEnum(const EnumInfo& input, const std::string& indent)
 	{
 		const EnumEntryInfo& entryInfo = I->second;
 
-	   output << indent << "\t<enumentry native=\"" << escapeXML(entryInfo.NativeName) << "\" script=\"" << escapeXML(entryInfo.ScriptName) << "\">\n";
+	   output << indent << "\t<enumentry native=\"" << GeneratorUtility::EscapeXML(entryInfo.NativeName) << "\" script=\"" << GeneratorUtility::EscapeXML(entryInfo.ScriptName) << "\">\n";
 	   if (!entryInfo.Documentation.Brief.empty())
 		   output << indent << "\t\t<doc>" << CommentParser::GenerateXMLCommentText(entryInfo.Documentation.Brief) << "</doc>\n";
 	   output << indent << "\t</enumentry>\n";
@@ -1290,7 +1290,7 @@ std::string generateXMLStruct(const StructInfo& input, const std::string& indent
 
 	const TypeMappingInformation& typeInfo = TypeLookup::GetNativeToScriptTypeMapping(input.NativeName);
 
-	output << indent << "<struct native=\"" << escapeXML(input.NativeName) << "\" script=\"" << escapeXML(typeInfo.ScriptTypeName) << "\">\n";
+	output << indent << "<struct native=\"" << GeneratorUtility::EscapeXML(input.NativeName) << "\" script=\"" << GeneratorUtility::EscapeXML(typeInfo.ScriptTypeName) << "\">\n";
 	if (!input.Documentation.Brief.empty())
 		output << indent << "\t<doc>" << CommentParser::GenerateXMLCommentText(input.Documentation.Brief) << "</doc>\n";
 
@@ -1310,7 +1310,7 @@ std::string generateXMLClass(const ClassInfo& input, bool editor, const std::str
 
 	const TypeMappingInformation& typeInfo = TypeLookup::GetNativeToScriptTypeMapping(input.NativeName);
 
-	output << indent << "<class native=\"" << escapeXML(input.NativeName) << "\" script=\"" << escapeXML(typeInfo.ScriptTypeName) << "\">\n";
+	output << indent << "<class native=\"" << GeneratorUtility::EscapeXML(input.NativeName) << "\" script=\"" << GeneratorUtility::EscapeXML(typeInfo.ScriptTypeName) << "\">\n";
 	if (!input.Documentation.Brief.empty())
 		output << indent << "\t<doc>" << CommentParser::GenerateXMLCommentText(input.Documentation.Brief) << "</doc>\n";
 
@@ -1378,7 +1378,7 @@ void generateMappingXMLFile(bool editor, const std::string& outputFolder)
 		}
 	}
 
-	std::ofstream output = createFile("info.xml", outputFolder);
+	std::ofstream output = GeneratorUtility::CreateFile("info.xml", outputFolder);
 
 	output << "<?xml version='1.0' encoding='UTF-8' standalone='no'?>\n";
 	output << "<entries>\n";
@@ -1389,11 +1389,11 @@ void generateMappingXMLFile(bool editor, const std::string& outputFolder)
 
 void GenerateCSharp(StringRef engineOutputFolder, StringRef editorOutputFolder, bool generateEditorCode)
 {
-	cleanAndPrepareFolder(engineOutputFolder);
+	GeneratorUtility::CleanAndPrepareFolder(engineOutputFolder);
 
 	if (generateEditorCode)
 	{
-		cleanAndPrepareFolder(editorOutputFolder);
+		GeneratorUtility::CleanAndPrepareFolder(editorOutputFolder);
 	}
 
 	// Generate CS
@@ -1439,10 +1439,10 @@ void GenerateCSharp(StringRef engineOutputFolder, StringRef editorOutputFolder, 
 		}
 
 		StringRef csOutputFolder = fileInfo.second.InEditor ? editorOutputFolder : engineOutputFolder;
-		std::ofstream output = createFile(fileInfo.first + ".generated.cs", csOutputFolder);
+		std::ofstream output = GeneratorUtility::CreateFile(fileInfo.first + ".generated.cs", csOutputFolder);
 
 		// License/copyright header
-		output << generateFileHeader(fileInfo.second.InEditor);
+		output << GeneratorUtility::GenerateCopyrightHeader(fileInfo.second.InEditor);
 
 		output << "using System;" << std::endl;
 		output << "using System.Runtime.CompilerServices;" << std::endl;

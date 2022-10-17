@@ -1,7 +1,7 @@
 #include "B3DCommon.h"
 #include <chrono>
 
-#include "B3DCommentParser.h"
+#include "B3DGeneratorUtility.h"
 #include "B3DParserUtility.h"
 #include "B3DTypeLookup.h"
 
@@ -505,7 +505,7 @@ static std::string GenerateInternalMethodSignature(const ClassInfo& classInfo, c
 	else
 	{
 		const TypeMappingInformation& returnTypeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(methodInfo.ReturnValue.TypeInformation);
-		if (!CanBeReturned(methodInfo.ReturnValue.TypeInformation, returnTypeMappingInformation))
+		if (!GeneratorUtility::CanBeReturned(methodInfo.ReturnValue.TypeInformation, returnTypeMappingInformation))
 		{
 			output << "void";
 			returnAsParameter = true;
@@ -2110,7 +2110,7 @@ static std::string GenerateInternalMethodBody(const ClassInfo& classInfo, const 
 	if (!methodInfo.ReturnValue.TypeInformation.IsEmpty() && !isCtor)
 	{
 		returnTypeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(methodInfo.ReturnValue.TypeInformation);
-		if (!CanBeReturned(methodInfo.ReturnValue.TypeInformation, returnTypeMappingInformation))
+		if (!GeneratorUtility::CanBeReturned(methodInfo.ReturnValue.TypeInformation, returnTypeMappingInformation))
 			returnAsParameter = true;
 		else
 		{
@@ -2282,7 +2282,7 @@ static std::string GenerateInternalFieldGetterBody(const ClassInfo& classInfo, c
 
 	bool returnAsParameter = false;
 	TypeMappingInformation returnTypeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(methodInfo.ReturnValue.TypeInformation);
-	if (!CanBeReturned(methodInfo.ReturnValue.TypeInformation, returnTypeMappingInformation))
+	if (!GeneratorUtility::CanBeReturned(methodInfo.ReturnValue.TypeInformation, returnTypeMappingInformation))
 		returnAsParameter = true;
 	else
 	{
@@ -3423,7 +3423,7 @@ void GenerateLookupFileHead(const std::string& tableName, ExportedClassTypeCateg
 				continue;
 
 			includes << GenerateApiCheckBegin(classInfo.API);
-			includes << "#include \"" << getRelativeTo(typeInfo.NativeFile, cppOutputFolder) << "\"" << std::endl;
+			includes << "#include \"" << GeneratorUtility::GetRelativePath(typeInfo.NativeFile, cppOutputFolder) << "\"" << std::endl;
 			includes << GenerateApiCheckEnd(classInfo.API);
 
 			std::string interopClassName = TypeLookup::GetScriptInteropTypeName(classInfo.NativeName);
@@ -3439,10 +3439,10 @@ void GenerateLookupFileHead(const std::string& tableName, ExportedClassTypeCateg
 	}
 
 	std::string prefix = editor ? "Editor" : "";
-	std::ofstream output = createFile("Bs" + prefix + tableName + "Lookup.generated.h", cppOutputFolder);
+	std::ofstream output = GeneratorUtility::CreateFile("Bs" + prefix + tableName + "Lookup.generated.h", cppOutputFolder);
 
 	// License/copyright header
-	output << generateFileHeader(editor);
+	output << GeneratorUtility::GenerateCopyrightHeader(editor);
 
 	output << "#pragma once" << std::endl;
 	output << std::endl;
@@ -3478,11 +3478,11 @@ void GenerateLookupFileHead(const std::string& tableName, ExportedClassTypeCateg
  */
 void GenerateCpp(StringRef engineOutputFolder, StringRef editorOutputFolder, bool generateEditor)
 {
-	cleanAndPrepareFolder(engineOutputFolder);
+	GeneratorUtility::CleanAndPrepareFolder(engineOutputFolder);
 
 	if(generateEditor)
 	{
-		cleanAndPrepareFolder(editorOutputFolder);
+		GeneratorUtility::CleanAndPrepareFolder(editorOutputFolder);
 	}
 
 	// Generate .h
@@ -3518,17 +3518,17 @@ void GenerateCpp(StringRef engineOutputFolder, StringRef editorOutputFolder, boo
 		}
 
 		StringRef cppOutputFolder = fileInfo.second.InEditor ? editorOutputFolder : engineOutputFolder;
-		std::ofstream output = createFile("BsScript" + fileInfo.first + ".generated.h", cppOutputFolder);
+		std::ofstream output = GeneratorUtility::CreateFile("BsScript" + fileInfo.first + ".generated.h", cppOutputFolder);
 
 		// License/copyright header
-		output << generateFileHeader(fileInfo.second.InEditor);
+		output << GeneratorUtility::GenerateCopyrightHeader(fileInfo.second.InEditor);
 
 		output << "#pragma once" << std::endl;
 		output << std::endl;
 
 		// Output includes
 		for (auto& include : fileInfo.second.ReferencedHeaderIncludes)
-			output << "#include \"" << getRelativeTo(include, cppOutputFolder) << "\"" << std::endl;
+			output << "#include \"" << GeneratorUtility::GetRelativePath(include, cppOutputFolder) << "\"" << std::endl;
 
 		output << std::endl;
 
@@ -3604,14 +3604,14 @@ void GenerateCpp(StringRef engineOutputFolder, StringRef editorOutputFolder, boo
 		}
 
 		StringRef cppOutputFolder = fileInfo.second.InEditor ? editorOutputFolder : engineOutputFolder;
-		std::ofstream output = createFile("BsScript" + fileInfo.first + ".generated.cpp", cppOutputFolder);
+		std::ofstream output = GeneratorUtility::CreateFile("BsScript" + fileInfo.first + ".generated.cpp", cppOutputFolder);
 
 		// License/copyright header
-		output << generateFileHeader(fileInfo.second.InEditor);
+		output << GeneratorUtility::GenerateCopyrightHeader(fileInfo.second.InEditor);
 
 		// Output includes
 		for (auto& include : fileInfo.second.ReferencedSourceIncludes)
-			output << "#include \"" << getRelativeTo(include, cppOutputFolder) << "\"" << std::endl;
+			output << "#include \"" << GeneratorUtility::GetRelativePath(include, cppOutputFolder) << "\"" << std::endl;
 
 		output << std::endl;
 

@@ -691,52 +691,6 @@ inline bool IsAPIValid(ApiFlags api, bool editor)
 extern std::unordered_map<std::string, ExternalClassInfos> externalClassInfos;
 extern std::unordered_map<std::string, BaseClassInfo> baseClassLookup;
 
-inline const std::string& escapeXML(const std::string& data) // TODO - Move to generator utility
-{
-	std::string::size_type first = data.find_first_of("\"&<>", 0);
-	if (first == std::string::npos)
-		return data;
-
-	static std::string buffer;
-	buffer.reserve((size_t)(data.size() * 1.1f));
-	buffer.clear();
-
-	for (size_t pos = 0; pos != data.size(); ++pos)
-	{
-		switch (data[pos])
-		{
-		case '&':  buffer.append("&amp;");       break;
-		case '\"': buffer.append("&quot;");      break;
-		case '\'': buffer.append("&apos;");      break;
-		case '<':  buffer.append("&lt;");        break;
-		case '>':  buffer.append("&gt;");        break;
-		default:   buffer.append(&data[pos], 1); break;
-		}
-	}
-
-	return buffer;
-}
-
-/**
- * Returns true if the provided type can be used as a return value from a C# method call.
- *
- * @param	typeInformation				Information about the native type to generate the interop type for.
- * @param	typeMappingInformation		Mapping of the provided type in script.
- */
-inline bool CanBeReturned(const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation) //  TODO - Move to generator class
-{
-	if (typeInformation.IsOutputParameter())
-		return false;
-
-	if (typeInformation.IsArrayOrVector())
-		return true;
-
-	if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Struct)
-		return false;
-
-	return true;
-}
-
 /** Removes C++ templates parameters from the provided type name. */
 inline std::string CleanTemplateParameters(const std::string& name)
 {
@@ -777,77 +731,6 @@ inline void getDerivedClasses(const std::string& typeName, std::vector<std::stri
 		if(!onlyDirect)
 			getDerivedClasses(entry, output);
 	}
-}
-
-inline void cleanAndPrepareFolder(const StringRef& folder) // TODO - Move to Generator common
-{
-	if (sys::fs::exists(folder))
-	{
-		std::error_code ec;
-		for (sys::fs::directory_iterator file(folder, ec), fileEnd; file != fileEnd && !ec; file.increment(ec))
-			sys::fs::remove(file->path());
-	}
-
-	sys::fs::create_directories(folder);
-}
-
-inline std::string getRelativeTo(const StringRef& path, const StringRef& relativeTo) // TODO - Move to Generator common
-{
-	SmallVector<char, 100> relativeToVector(relativeTo.begin(), relativeTo.end());
-
-	vfs::getRealFileSystem()->makeAbsolute(relativeToVector);
-	StringRef absRelativeTo(relativeToVector.data(), relativeToVector.size());
-
-	SmallVector<char, 100> output;
-
-	auto iterPath = sys::path::begin(path);
-	auto iterRelativePath = sys::path::begin(absRelativeTo);
-
-	bool foundRelative = false;
-	for(; iterPath != sys::path::end(path) && iterRelativePath != sys::path::end(absRelativeTo); ++iterPath, ++iterRelativePath)
-	{
-		if (*iterPath != *iterRelativePath)
-			break;
-
-		foundRelative = true;
-	}
-
-	if (!foundRelative)
-		return path.str();
-
-	for(; iterRelativePath != sys::path::end(absRelativeTo); ++iterRelativePath)
-		sys::path::append(output, "..");
-
-	for (; iterPath != sys::path::end(path); ++iterPath)
-		sys::path::append(output, *iterPath);
-
-	sys::path::native(output, sys::path::Style::posix);
-	return std::string(output.data(), output.size());
-}
-
-inline std::ofstream createFile(const std::string& filename, StringRef outputFolder) // TODO - Move to generator common
-{
-	std::string relativePath = "/" + filename;
-	StringRef filenameRef(relativePath.data(), relativePath.size());
-
-	SmallString<128> filepath = outputFolder;
-	sys::path::append(filepath, filenameRef);
-
-	std::ofstream output;
-	output.open(filepath.str().str(), std::ios::out);
-
-	return output;
-}
-
-inline std::string generateFileHeader(bool isBanshee) // TODO - Move to generator common
-{
-	std::stringstream output;
-	if (isBanshee)
-		output << sEditorCopyrightNotice;
-	else
-		output << sFrameworkCopyrightNotice;
-
-	return output.str();
 }
 
 void GenerateCpp(StringRef engineOutputFolder, StringRef editorOutputFolder, bool generateEditorCode);
