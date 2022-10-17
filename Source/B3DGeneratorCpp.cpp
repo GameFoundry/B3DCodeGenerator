@@ -5,6 +5,8 @@
 #include "B3DParserUtility.h"
 #include "B3DTypeLookup.h"
 
+#pragma region C++ Generation Helpers
+
 /** Returns true if the provided type is passed as value type to an internal method parameter. */
 static bool IsInternalMethodParameterValueType(const VariableTypeInformation& typeInformation)
 {
@@ -483,14 +485,15 @@ static std::string GenerateApiCheckEnd(ApiFlags api)
 /**
  * Generates the name and parameters for an internal method.
  *
+ * @param classInfo				Information about the class the method belongs to.
  * @param methodInfo			Information about the method being generated.
  * @param interopThisPtrType	Interop type used for storing the interop object we're generating the method for. This may be the same as @p interopTypeName, but may be some base type.
  * @param interopTypeName		Interop type we're generating the method on. This will be used as a prefix to the method name, followed by '::'. Set to empty if generating signature for the header declaration.
- * @param isModule				True if the type is Module singleton.
  * @return						Method signature, including method name and parameters.
  */
-static std::string GenerateInternalMethodSignature(const MethodInfo& methodInfo, const std::string& interopThisPtrType, const std::string& interopTypeName, bool isModule)
+static std::string GenerateInternalMethodSignature(const ClassInfo& classInfo, const MethodInfo& methodInfo, const std::string& interopThisPtrType, const std::string& interopTypeName)
 {
+	const bool isModule = classInfo.IsFlagSet(ClassFlags::IsModule);
 	const bool isStatic = methodInfo.IsFlagSet(MethodFlags::Static);
 	const bool isCtor = methodInfo.IsFlagSet(MethodFlags::Constructor);
 
@@ -557,13 +560,14 @@ static std::string GenerateInternalMethodSignature(const MethodInfo& methodInfo,
 /**
  * Generates the name and parameters for a method that serves as an event callback.
  *
+ * @param classInfo			Information about the class the event belongs to.
  * @param eventInfo			Information about the event we're generating the callback for.
  * @param interopTypeName	Interop type we're generating the method on. This will be used as a prefix to the method name, followed by '::'. Set to empty if generating signature for the header declaration.
- * @param isModule			True if the type is a Module singleton.
  * @return					Method signature, including method name and parameters.
  */
-static std::string GenerateEventCallbackSignature(const MethodInfo& eventInfo, const std::string& interopTypeName, bool isModule)
+static std::string GenerateEventCallbackSignature(const ClassInfo& classInfo, const MethodInfo& eventInfo, const std::string& interopTypeName)
 {
+	const bool isModule = classInfo.IsFlagSet(ClassFlags::IsModule);
 	const bool isStatic = eventInfo.IsFlagSet(MethodFlags::Static);
 
 	std::stringstream output;
@@ -713,7 +717,7 @@ static std::string GenerateMonoToScriptObject(const std::string& indent, const s
  * @param indent					Optional indent to apply to the generated code.
  * @return							Code that converts a native object to a MonoObject.
  */
-std::string GenerateNativeClassToMonoObject(const VariableTypeInformation& typeInformation, const std::string& outputVariableName, 
+static std::string GenerateNativeClassToMonoObject(const VariableTypeInformation& typeInformation, const std::string& outputVariableName, 
 	const std::string& scriptType, const std::string& inputVariableName, bool performReferenceCopy = false, const std::string& indent = "\t\t")
 {
 	std::stringstream output;
@@ -776,7 +780,7 @@ std::string GenerateNativeClassToMonoObject(const VariableTypeInformation& typeI
  * @param indent					Optional indent to apply to the generated code.
  * @return							Code that converts a native object to a MonoObject.
  */
-std::string GenerateNativeHandleToMonoObject(const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation, const std::string& inputVariableName, const std::string& arrayIndexVariable, const std::string& scriptVariableName, 
+static std::string GenerateNativeHandleToMonoObject(const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation, const std::string& inputVariableName, const std::string& arrayIndexVariable, const std::string& scriptVariableName, 
 	const std::string& outputVariableName, bool isOutputParameter, const std::string& indent = "\t\t")
 {
 	// NOTE: scriptVariableName can be automatically deduced from output variable name, but I'm avoding doing that right now to prevent changes to generated code
@@ -851,7 +855,7 @@ std::string GenerateNativeHandleToMonoObject(const VariableTypeInformation& type
  * @param postCallActions			Actions to execute after the method/function call.
  * @return							Name of the argument.
  */
-std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName, const VariableBase& parameterInformation, bool isLast, bool returnValue, std::stringstream& preCallActions, std::stringstream& postCallActions)
+static std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName, const VariableBase& parameterInformation, bool isLast, bool returnValue, std::stringstream& preCallActions, std::stringstream& postCallActions)
 {
 	TypeMappingInformation parameterTypeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(parameterInformation.TypeInformation);
 
@@ -1438,7 +1442,7 @@ std::string GenerateMethodBodyBlockForArgument(const std::string& parameterName,
  * @param preActions			Stream that can be used for appending code that will execute before the field assignment happens.
  * @return						Name of the variable containing either the native or interop representation of the field.
  */
-std::string GenerateFieldConvertBlock(const std::string& name, const VariableBase& fieldInformation, bool toInterop, std::stringstream& preActions)
+static std::string GenerateFieldConvertBlock(const std::string& name, const VariableBase& fieldInformation, bool toInterop, std::stringstream& preActions)
 {
 	TypeMappingInformation parameterTypeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(fieldInformation.TypeInformation);
 
@@ -1884,7 +1888,7 @@ std::string GenerateFieldConvertBlock(const std::string& name, const VariableBas
  * @param preCallActions			Actions to execute before the thunk call.
  * @return							Name of the argument to pass to the thunk.
  */
-std::string GenerateEventCallbackBodyBlockForArgument(const std::string& name, const VariableBase& parameterInformation, std::stringstream& preCallActions)
+static std::string GenerateEventCallbackBodyBlockForArgument(const std::string& name, const VariableBase& parameterInformation, std::stringstream& preCallActions)
 {
 	const TypeMappingInformation parameterTypeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(parameterInformation.TypeInformation);
 	const std::string& parameterTypeName = parameterInformation.TypeInformation.GetLastWrappedOrSelfTypeName();
@@ -2075,9 +2079,20 @@ std::string GenerateEventCallbackBodyBlockForArgument(const std::string& name, c
 	}
 }
 
-std::string generateCppMethodBody(const ClassInfo& classInfo, const MethodInfo& methodInfo, const std::string& sourceClassName,
-	const std::string& interopClassName, const TypeMappingInformation& typeMappingInformation, bool isModule)
+/**
+ * Generates a body (no signature) for an internal method. Internal methods will be called from scripting and will forward their arguments to the native method they are wrapping.
+ * Use GenerateInternalMethodSignature() to generate the corresponding signature.
+ *
+ * @param classInfo					Information about the class the method is part of.
+ * @param methodInfo				Information about the method to generate.
+ * @param interopClassName			Name of the interop class we're generating the method on.
+ * @param typeMappingInformation	Information about how the native type maps to the script type.
+ * @return							Generated method body, with starting/ending { }.
+ */
+static std::string GenerateInternalMethodBody(const ClassInfo& classInfo, const MethodInfo& methodInfo, const std::string& interopClassName, const TypeMappingInformation& typeMappingInformation)
 {
+	const bool isModule = classInfo.IsFlagSet(ClassFlags::IsModule);
+
 	std::string returnAssignment;
 	std::string returnStmt;
 	std::stringstream preCallActions;
@@ -2139,7 +2154,7 @@ std::string generateCppMethodBody(const ClassInfo& classInfo, const MethodInfo& 
 		{
 			if (typeMappingInformation.IsClassType())
 			{
-				output << "\t\tSPtr<" << sourceClassName << "> instance = bs_shared_ptr_new<" << sourceClassName << ">(" << methodArgs.str() << ");" << std::endl;
+				output << "\t\tSPtr<" << classInfo.NativeName << "> instance = bs_shared_ptr_new<" << classInfo.NativeName << ">(" << methodArgs.str() << ");" << std::endl;
 				output << "\t\tnew (bs_alloc<" << interopClassName << ">())" << interopClassName << "(managedInstance, instance);" << std::endl;
 				isValid = true;
 			}
@@ -2150,26 +2165,26 @@ std::string generateCppMethodBody(const ClassInfo& classInfo, const MethodInfo& 
 
 			if (typeMappingInformation.IsClassType())
 			{
-				output << "\t\tSPtr<" << sourceClassName << "> instance = " << fullMethodName << "(" << methodArgs.str() << ");" << std::endl;
+				output << "\t\tSPtr<" << classInfo.NativeName << "> instance = " << fullMethodName << "(" << methodArgs.str() << ");" << std::endl;
 				output << "\t\tnew (bs_alloc<" << interopClassName << ">())" << interopClassName << "(managedInstance, instance);" << std::endl;
 				isValid = true;
 			}
 			else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Resource)
 			{
-				output << "\t\tResourceHandle<" << sourceClassName << "> instance = " << fullMethodName << "(" << methodArgs.str() << ");" << std::endl;
+				output << "\t\tResourceHandle<" << classInfo.NativeName << "> instance = " << fullMethodName << "(" << methodArgs.str() << ");" << std::endl;
 				output << "\t\tScriptResourceManager::Instance().CreateBuiltinScriptResource(instance, managedInstance);" << std::endl;
 				isValid = true;
 			}
 			else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
 			{
-				output << "\t\t" << sourceClassName << "* instance = " << fullMethodName << "(" << methodArgs.str() << ");" << std::endl;
+				output << "\t\t" << classInfo.NativeName << "* instance = " << fullMethodName << "(" << methodArgs.str() << ");" << std::endl;
 				output << "\t\tnew (bs_alloc<" << interopClassName << ">())" << interopClassName << "(managedInstance, instance);" << std::endl;
 				isValid = true;
 			}
 		}
 
 		if (!isValid)
-			outs() << "Error: Cannot generate a constructor for \"" << sourceClassName << "\". Unsupported class type. \n";
+			outs() << "Error: Cannot generate a constructor for \"" << classInfo.NativeName << "\". Unsupported class type. \n";
 	}
 	else
 	{
@@ -2177,13 +2192,13 @@ std::string generateCppMethodBody(const ClassInfo& classInfo, const MethodInfo& 
 		if (!isExternal)
 		{
 			if (isStatic)
-				methodCall << sourceClassName << "::" << methodInfo.NativeName << "(" << methodArgs.str() << ")"; 
+				methodCall << classInfo.NativeName << "::" << methodInfo.NativeName << "(" << methodArgs.str() << ")"; 
 			else if(isModule)
-				methodCall << sourceClassName << "::Instance()." << methodInfo.NativeName << "(" << methodArgs.str() << ")";
+				methodCall << classInfo.NativeName << "::Instance()." << methodInfo.NativeName << "(" << methodArgs.str() << ")";
 			else
 			{
 				VariableTypeInformation typeInformation;
-				typeInformation.TypeName = sourceClassName;
+				typeInformation.TypeName = classInfo.NativeName;
 				typeInformation.PostProcessFlags |= isBase ? (uint32_t)VariablePostProcessFlags::IsReferencingBaseClass : 0;
 
 				methodCall << GenerateGetInternalCallLine(typeInformation, typeMappingInformation, "thisPtr");
@@ -2198,7 +2213,7 @@ std::string generateCppMethodBody(const ClassInfo& classInfo, const MethodInfo& 
 			else
 			{
 				VariableTypeInformation typeInformation;
-				typeInformation.TypeName = sourceClassName;
+				typeInformation.TypeName = classInfo.NativeName;
 				typeInformation.PostProcessFlags |= isBase ? (uint32_t)VariablePostProcessFlags::IsReferencingBaseClass : 0;
 
 				methodCall << fullMethodName << "(" << GenerateGetInternalCallLine(typeInformation, typeMappingInformation, "thisPtr");
@@ -2245,16 +2260,15 @@ std::string generateCppMethodBody(const ClassInfo& classInfo, const MethodInfo& 
 }
 
 /**
- * Generates an interop method body that returns a value of a particular field.
+ * Generates an internal method body (no signature) that returns a value of a particular field. Use GenerateInternalMethodSignature() to generate the corresponding signature.
  *
  * @param	classInfo				Class the field belongs to.
  * @param	fieldInfo				Information about the field.
- * @param	methodInfo				Method representing the propety getter for this field.
- * @param	typeMappingInformation	Information about the type mapped to script.
- * @param	isModule				True if generating a method for a Module signleton class.
- * @return							Contents of the getter interop method.
+ * @param	methodInfo				Method representing the property getter for this field.
+ * @param	typeMappingInformation	Information about the field type mapped to script.
+ * @return							Contents of the getter interop method, with starting/ending { }.
  */
-std::string GenerateCppFieldGetterBody(const ClassInfo& classInfo, const FieldInfo& fieldInfo, const MethodInfo& methodInfo, const TypeMappingInformation& typeMappingInformation, bool isModule)
+static std::string GenerateInternalFieldGetterBody(const ClassInfo& classInfo, const FieldInfo& fieldInfo, const MethodInfo& methodInfo, const TypeMappingInformation& typeMappingInformation)
 {
 	std::string returnAssignment;
 	std::string returnStmt;
@@ -2262,8 +2276,9 @@ std::string GenerateCppFieldGetterBody(const ClassInfo& classInfo, const FieldIn
 	std::stringstream methodArgs;
 	std::stringstream postCallActions;
 
-	bool isBase = classInfo.IsFlagSet(ClassFlags::IsBase);
-	bool isStatic = methodInfo.IsFlagSet(MethodFlags::Static);
+	const bool isBase = classInfo.IsFlagSet(ClassFlags::IsBase);
+	const bool isModule = classInfo.IsFlagSet(ClassFlags::IsModule);
+	const bool isStatic = methodInfo.IsFlagSet(MethodFlags::Static);
 
 	bool returnAsParameter = false;
 	TypeMappingInformation returnTypeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(methodInfo.ReturnValue.TypeInformation);
@@ -2328,14 +2343,24 @@ std::string GenerateCppFieldGetterBody(const ClassInfo& classInfo, const FieldIn
 	return output.str();
 }
 
-std::string generateCppFieldSetterBody(const ClassInfo& classInfo, const FieldInfo& fieldInfo, const MethodInfo& methodInfo, const TypeMappingInformation& typeMappingInformation, bool isModule)
+/**
+ * Generates an internal method body (no signature) that sets a value of a particular field. Use GenerateInternalMethodSignature() to generate the corresponding signature.
+ *
+ * @param	classInfo				Class the field belongs to.
+ * @param	fieldInfo				Information about the field.
+ * @param	methodInfo				Method representing the property setter for this field.
+ * @param	typeMappingInformation	Information about the field type mapped to script.
+ * @return							Contents of the setter interop method body, with starting/ending { }.
+ */
+static std::string GenerateInternalFieldSetterBody(const ClassInfo& classInfo, const FieldInfo& fieldInfo, const MethodInfo& methodInfo, const TypeMappingInformation& typeMappingInformation)
 {
 	std::stringstream preCallActions;
 	std::stringstream argumentValue;
 	std::stringstream postCallActions;
 
-	bool isBase = classInfo.IsFlagSet(ClassFlags::IsBase);
-	bool isStatic = methodInfo.IsFlagSet(MethodFlags::Static);
+	const bool isBase = classInfo.IsFlagSet(ClassFlags::IsBase);
+	const bool isModule = classInfo.IsFlagSet(ClassFlags::IsModule);
+	const bool isStatic = methodInfo.IsFlagSet(MethodFlags::Static);
 
 	const VariableInformation& parameterInformation = methodInfo.Parameters[0];
 	const std::string argumentName = GenerateMethodBodyBlockForArgument(parameterInformation.Name, parameterInformation, false, false, preCallActions, postCallActions);
@@ -2374,12 +2399,20 @@ std::string generateCppFieldSetterBody(const ClassInfo& classInfo, const FieldIn
 	return output.str();
 }
 
-std::string generateCppEventCallbackBody(const MethodInfo& eventInfo, bool isModule)
+/**
+ * Generates an internal method body (no signature) that calls a C# thunk when a native event is triggered. Use GenerateEventCallbackSignature() to generate the corresponding signature.
+ *
+ * @param	classInfo				Class the event belongs to.
+ * @param	eventInfo				Information about the event.
+ * @return							Contents of the callback interop method body, with starting/ending { }.
+ */
+static std::string GenerateInternalEventCallbackBody(const ClassInfo& classInfo, const MethodInfo& eventInfo)
 {
 	std::stringstream preCallActions;
 	std::stringstream methodArgs;
 
-	bool isStatic = eventInfo.IsFlagSet(MethodFlags::Static);
+	const bool isModule = classInfo.IsFlagSet(ClassFlags::IsModule);
+	const bool isStatic = eventInfo.IsFlagSet(MethodFlags::Static);
 
 	int idx = 0;
 	for (auto I = eventInfo.Parameters.begin(); I != eventInfo.Parameters.end(); ++I)
@@ -2414,7 +2447,15 @@ std::string generateCppEventCallbackBody(const MethodInfo& eventInfo, bool isMod
 	return output.str();
 }
 
-std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappingInformation& typeMappingInformation)
+#pragma endregion C++ Generation Helpers
+
+/**
+ * Generates a class declaration (for use in a C++ header file).
+ *
+ * @param classInfo					Information about the class we're generating.
+ * @return							Class declaration.
+ */
+static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 {
 	bool inEditor = IsAPIEditor (classInfo.API);
 	bool isBase = classInfo.IsFlagSet(ClassFlags::IsBase);
@@ -2441,6 +2482,7 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 	else
 		exportAttr = sEditorExportMacro;
 
+	const TypeMappingInformation& typeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(classInfo.NativeName);
 	std::string wrappedDataType = GetCppNativeQualifiedTypeName(classInfo.NativeName, typeMappingInformation);
 	std::string interopBaseClassName;
 
@@ -2609,7 +2651,7 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 	for (auto& eventInfo : classInfo.Events)
 	{
 		output << GenerateApiCheckBegin(eventInfo.API);
-		output << "\t\t" << GenerateEventCallbackSignature(eventInfo, "", isModule) << ";" << std::endl;
+		output << "\t\t" << GenerateEventCallbackSignature(classInfo, eventInfo, "") << ";" << std::endl;
 		output << GenerateApiCheckEnd(eventInfo.API);
 	}
 
@@ -2672,7 +2714,7 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 			continue;
 
 		output << GenerateApiCheckBegin(methodInfo.API);
-		output << "\t\tstatic " << GenerateInternalMethodSignature(methodInfo, interopClassThisPtrType, "", isModule) << ";" << std::endl;
+		output << "\t\tstatic " << GenerateInternalMethodSignature(classInfo, methodInfo, interopClassThisPtrType, "") << ";" << std::endl;
 		output << GenerateApiCheckEnd(methodInfo.API);
 	}
 
@@ -2682,7 +2724,7 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 			continue;
 
 		output << GenerateApiCheckBegin(methodInfo.API);
-		output << "\t\tstatic " << GenerateInternalMethodSignature(methodInfo, interopClassThisPtrType, "", isModule) << ";" << std::endl;
+		output << "\t\tstatic " << GenerateInternalMethodSignature(classInfo, methodInfo, interopClassThisPtrType, "") << ";" << std::endl;
 		output << GenerateApiCheckEnd(methodInfo.API);
 	}
 
@@ -2692,10 +2734,16 @@ std::string generateCppHeaderOutput(const ClassInfo& classInfo, const TypeMappin
 	return output.str();
 }
 
-std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappingInformation& typeMappingInformation)
+/**
+ * Generates a class definition (for use in a C++ source file).
+ *
+ * @param classInfo					Information about the class we're generating.
+ * @return							Class definition.
+ */
+static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 {
-	bool isBase = classInfo.IsFlagSet(ClassFlags::IsBase);
-	bool isModule = classInfo.IsFlagSet(ClassFlags::IsModule);
+	const bool isBase = classInfo.IsFlagSet(ClassFlags::IsBase);
+	const bool isModule = classInfo.IsFlagSet(ClassFlags::IsModule);
 
 	bool hasStaticEvents = isModule && !classInfo.Events.empty();
 	for(auto& eventInfo : classInfo.Events)
@@ -2708,6 +2756,7 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 		}
 	}
 
+	const TypeMappingInformation& typeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(classInfo.NativeName);
 	std::string interopClassName = TypeLookup::GetScriptInteropTypeName(classInfo.NativeName);
 	std::string wrappedDataType = GetCppNativeQualifiedTypeName(classInfo.NativeName, typeMappingInformation);
 
@@ -2777,8 +2826,8 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 	bool hasEventHandles = false;
 	for (auto& eventInfo : classInfo.Events)
 	{
-		bool isStatic = eventInfo.IsFlagSet(MethodFlags::Static);
-		bool isCallback = eventInfo.IsFlagSet(MethodFlags::Callback);
+		const bool isStatic = eventInfo.IsFlagSet(MethodFlags::Static);
+		const bool isCallback = eventInfo.IsFlagSet(MethodFlags::Callback);
 		if(!isCallback && (isStatic || isModule))
 		{
 			output << GenerateApiCheckBegin(eventInfo.API);
@@ -3067,8 +3116,8 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 		const MethodInfo& eventInfo = *I;
 
 		output << GenerateApiCheckBegin(eventInfo.API);
-		output << "\t" << GenerateEventCallbackSignature(eventInfo, interopClassName, isModule) << std::endl;
-		output << generateCppEventCallbackBody(eventInfo, isModule);
+		output << "\t" << GenerateEventCallbackSignature(classInfo, eventInfo, interopClassName) << std::endl;
+		output << GenerateInternalEventCallbackBody(classInfo, eventInfo);
 		output << GenerateApiCheckEnd(eventInfo.API);
 
 		if ((I + 1) != classInfo.Events.end())
@@ -3105,8 +3154,8 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 			continue;
 
 		output << GenerateApiCheckBegin(methodInfo.API);
-		output << "\t" << GenerateInternalMethodSignature(methodInfo, interopClassThisPtrType, interopClassName, isModule) << std::endl;
-		output << generateCppMethodBody(classInfo, methodInfo, classInfo.NativeName, interopClassName, typeMappingInformation, isModule);
+		output << "\t" << GenerateInternalMethodSignature(classInfo, methodInfo, interopClassThisPtrType, interopClassName) << std::endl;
+		output << GenerateInternalMethodBody(classInfo, methodInfo, interopClassName, typeMappingInformation);
 		output << GenerateApiCheckEnd(methodInfo.API);
 
 		if ((I + 1) != classInfo.Methods.end())
@@ -3125,8 +3174,8 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 			continue;
 
 		output << GenerateApiCheckBegin(methodInfo.API);
-		output << "\t" << GenerateInternalMethodSignature(methodInfo, interopClassThisPtrType, interopClassName, isModule) << std::endl;
-		output << generateCppMethodBody(classInfo, methodInfo, classInfo.NativeName, interopClassName, typeMappingInformation, isModule);
+		output << "\t" << GenerateInternalMethodSignature(classInfo, methodInfo, interopClassThisPtrType, interopClassName) << std::endl;
+		output << GenerateInternalMethodBody(classInfo, methodInfo, interopClassName, typeMappingInformation);
 		output << GenerateApiCheckEnd(methodInfo.API);
 
 		if ((I + 1) != classInfo.Methods.end())
@@ -3158,15 +3207,15 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 		assert(getterInfo && setterInfo);
 
 		output << GenerateApiCheckBegin(getterInfo->API);
-		output << "\t" << GenerateInternalMethodSignature(*getterInfo, interopClassThisPtrType, interopClassName, isModule) << std::endl;
-		output << GenerateCppFieldGetterBody(classInfo, *I, *getterInfo, typeMappingInformation, isModule);
+		output << "\t" << GenerateInternalMethodSignature(classInfo, *getterInfo, interopClassThisPtrType, interopClassName) << std::endl;
+		output << GenerateInternalFieldGetterBody(classInfo, *I, *getterInfo, typeMappingInformation);
 		output << GenerateApiCheckEnd(getterInfo->API);
 		
 		output << std::endl;
 
 		output << GenerateApiCheckBegin(setterInfo->API);
-		output << "\t" << GenerateInternalMethodSignature(*setterInfo, interopClassThisPtrType, interopClassName, isModule) << std::endl;
-		output << generateCppFieldSetterBody(classInfo, *I, *setterInfo, typeMappingInformation, isModule);
+		output << "\t" << GenerateInternalMethodSignature(classInfo, *setterInfo, interopClassThisPtrType, interopClassName) << std::endl;
+		output << GenerateInternalFieldSetterBody(classInfo, *I, *setterInfo, typeMappingInformation);
 		output << GenerateApiCheckEnd(setterInfo->API);
 			
 		if ((I + 1) != classInfo.Fields.end())
@@ -3178,9 +3227,15 @@ std::string generateCppSourceOutput(const ClassInfo& classInfo, const TypeMappin
 	return output.str();
 }
 
-std::string generateCppStructHeader(const StructInfo& structInfo)
+/**
+ * Generates a struct declaration (for use in a C++ header file).
+ *
+ * @param structInfo				Information about the struct we're generating.
+ * @return							Struct declaration.
+ */
+static std::string GenerateStructDeclaration(const StructInfo& structInfo)
 {
-	TypeMappingInformation typeInfo = TypeLookup::GetNativeToScriptTypeMapping(structInfo.NativeName);
+	const TypeMappingInformation typeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(structInfo.NativeName);
 
 	std::stringstream output;
 	output << GenerateApiCheckBegin(structInfo.API);
@@ -3218,9 +3273,9 @@ std::string generateCppStructHeader(const StructInfo& structInfo)
 	output << "\tpublic:" << std::endl;
 
 	if (!inEditor)
-		output << "\t\tSCRIPT_OBJ(ENGINE_ASSEMBLY, ENGINE_NS, \"" << typeInfo.ScriptTypeName << "\")" << std::endl;
+		output << "\t\tSCRIPT_OBJ(ENGINE_ASSEMBLY, ENGINE_NS, \"" << typeMappingInformation.ScriptTypeName << "\")" << std::endl;
 	else
-		output << "\t\tSCRIPT_OBJ(EDITOR_ASSEMBLY, EDITOR_NS, \"" << typeInfo.ScriptTypeName << "\")" << std::endl;
+		output << "\t\tSCRIPT_OBJ(EDITOR_ASSEMBLY, EDITOR_NS, \"" << typeMappingInformation.ScriptTypeName << "\")" << std::endl;
 
 	output << std::endl;
 
@@ -3246,10 +3301,16 @@ std::string generateCppStructHeader(const StructInfo& structInfo)
 	return output.str();
 }
 
-std::string generateCppStructSource(const StructInfo& structInfo)
+/**
+ * Generates a struct definition (for use in a C++ source file).
+ *
+ * @param structInfo				Information about the struct we're generating.
+ * @return							Struct definition.
+ */
+std::string GenerateStructDefinition(const StructInfo& structInfo)
 {
-	TypeMappingInformation typeInfo = TypeLookup::GetNativeToScriptTypeMapping(structInfo.NativeName);
-	std::string interopClassName = TypeLookup::GetScriptInteropTypeName(structInfo.NativeName);
+	const TypeMappingInformation typeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(structInfo.NativeName);
+	const std::string interopClassName = TypeLookup::GetScriptInteropTypeName(structInfo.NativeName);
 
 	std::stringstream output;
 	output << GenerateApiCheckBegin(structInfo.API);
@@ -3330,8 +3391,16 @@ std::string generateCppStructSource(const StructInfo& structInfo)
 	return output.str();
 }
 
-void generateLookupFile(const std::string& tableName, ExportedClassTypeCategory type, bool editor,
-						const std::string& engineOutputFolder, const std::string& editorOutputFolder)
+/**
+ * Generates a header file containing a lookup table with all types fitting the specified category.
+ *
+ * @param tableName				Name of the lookup table class.
+ * @param type					Type category for which to generate the lookup. All classes of the specified type will be included in the lookup.
+ * @param editor				True if generating lookup for editor code, false if generating for engine/framework.
+ * @param engineOutputFolder	Output folder for the generated file, if generating for engine/framework.
+ * @param editorOutputFolder	Output folder for the generated file, if generating for editor.
+ */
+void GenerateLookupFileHead(const std::string& tableName, ExportedClassTypeCategory type, bool editor, const std::string& engineOutputFolder, const std::string& editorOutputFolder)
 {
 	StringRef cppOutputFolder = editor ? editorOutputFolder : engineOutputFolder;
 
@@ -3400,6 +3469,13 @@ void generateLookupFile(const std::string& tableName, ExportedClassTypeCategory 
 	output.close();
 }
 
+/**
+ * Generates all the script interop C++ code.
+ *
+ * @param engineOutputFolder		Folder in which to output engine/framework files.
+ * @param editorOutputFolder		Folder in which to output editor-specific files.
+ * @param generateEditor			True if generating code for the editor. Editor specific files will be ignored if alse.
+ */
 void GenerateCpp(StringRef engineOutputFolder, StringRef editorOutputFolder, bool generateEditor)
 {
 	cleanAndPrepareFolder(engineOutputFolder);
@@ -3409,7 +3485,7 @@ void GenerateCpp(StringRef engineOutputFolder, StringRef editorOutputFolder, boo
 		cleanAndPrepareFolder(editorOutputFolder);
 	}
 
-	// Generate H
+	// Generate .h
 	for (auto& fileInfo : TypeLookup::GetFilesToGenerate())
 	{
 		if(fileInfo.second.InEditor && !generateEditor)
@@ -3426,9 +3502,7 @@ void GenerateCpp(StringRef engineOutputFolder, StringRef editorOutputFolder, boo
 		for (auto I = classInfos.begin(); I != classInfos.end(); ++I)
 		{
 			const ClassInfo& classInfo = *I;
-			const TypeMappingInformation& typeInfo = TypeLookup::GetNativeToScriptTypeMapping(classInfo.NativeName);
-
-			body << generateCppHeaderOutput(classInfo, typeInfo);
+			body << GenerateClassDeclaration(classInfo);
 
 			if ((I + 1) != classInfos.end() || !structInfos.empty())
 				body << std::endl;
@@ -3437,7 +3511,7 @@ void GenerateCpp(StringRef engineOutputFolder, StringRef editorOutputFolder, boo
 		for (auto I = structInfos.begin(); I != structInfos.end(); ++I)
 		{
 			const StructInfo& structInfo = *I;
-			body << generateCppStructHeader(structInfo);
+			body << GenerateStructDeclaration(structInfo);
 
 			if ((I + 1) != structInfos.end())
 				body << std::endl;
@@ -3498,7 +3572,7 @@ void GenerateCpp(StringRef engineOutputFolder, StringRef editorOutputFolder, boo
 		output.close();
 	}
 
-	// Generate CPP
+	// Generate .cpp
 	for (auto& fileInfo : TypeLookup::GetFilesToGenerate())
 	{
 		if(fileInfo.second.InEditor && !generateEditor)
@@ -3515,9 +3589,7 @@ void GenerateCpp(StringRef engineOutputFolder, StringRef editorOutputFolder, boo
 		for (auto I = classInfos.begin(); I != classInfos.end(); ++I)
 		{
 			const ClassInfo& classInfo = *I;
-			const TypeMappingInformation& typeInfo = TypeLookup::GetNativeToScriptTypeMapping(classInfo.NativeName);
-
-			body << generateCppSourceOutput(classInfo, typeInfo);
+			body << GenerateClassDefinition(classInfo);
 
 			if ((I + 1) != classInfos.end() || !structInfos.empty())
 				body << std::endl;
@@ -3525,7 +3597,7 @@ void GenerateCpp(StringRef engineOutputFolder, StringRef editorOutputFolder, boo
 
 		for (auto I = structInfos.begin(); I != structInfos.end(); ++I)
 		{
-			body << generateCppStructSource(*I);
+			body << GenerateStructDefinition(*I);
 
 			if ((I + 1) != structInfos.end())
 				body << std::endl;
@@ -3552,9 +3624,9 @@ void GenerateCpp(StringRef engineOutputFolder, StringRef editorOutputFolder, boo
 	}
 
 	// Generate builtin component lookup file
-	generateLookupFile("BuiltinComponent", ::ExportedClassTypeCategory::Component, false, engineOutputFolder.str(), editorOutputFolder.str());
+	GenerateLookupFileHead("BuiltinComponent", ::ExportedClassTypeCategory::Component, false, engineOutputFolder.str(), editorOutputFolder.str());
 
 	// Generate C++ reflectable type lookup files
-	generateLookupFile("BuiltinReflectableTypes", ::ExportedClassTypeCategory::ReflectableClass, false, engineOutputFolder.str(), editorOutputFolder.str());
-	generateLookupFile("BuiltinReflectableTypes", ::ExportedClassTypeCategory::ReflectableClass, true, engineOutputFolder.str(), editorOutputFolder.str());
+	GenerateLookupFileHead("BuiltinReflectableTypes", ::ExportedClassTypeCategory::ReflectableClass, false, engineOutputFolder.str(), editorOutputFolder.str());
+	GenerateLookupFileHead("BuiltinReflectableTypes", ::ExportedClassTypeCategory::ReflectableClass, true, engineOutputFolder.str(), editorOutputFolder.str());
 }
