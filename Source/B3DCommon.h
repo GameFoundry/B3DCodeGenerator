@@ -394,8 +394,8 @@ struct VariableInformation : VariableBase
 {
 	std::string Name;
 
-	std::string DefaultValue;
-	std::string DefaultValueType;
+	std::string DefaultValue; /**< Default value to assign to the variable. This will be a literal such as 5.0f, 5, true or "" if @p DefaultValueType is empty, or comma separated parameters to pass to the type constructor if not. */
+	std::string DefaultValueType; /**< Type of value to construct in case the default value is a constructible type. Empty if default value is a literal.*/
 };
 
 struct ReturnInfo : VariableBase
@@ -440,7 +440,7 @@ struct FieldInfo : VariableInformation
 
 struct TemplateParamInfo
 {
-	std::string Name;
+	std::string TypeName;
 };
 
 struct MethodInfo
@@ -688,8 +688,8 @@ inline bool IsAPIValid(ApiFlags api, bool editor)
 }
 
 /** Contains a map of native types to script types. The key is the native name as provided in ClassInfo.Name, StructInfo.Name or EnumInfo.Name. */
-extern std::unordered_map<std::string, ExternalClassInfos> externalClassInfos;
-extern std::unordered_map<std::string, BaseClassInfo> baseClassLookup;
+extern std::unordered_map<std::string, ExternalClassInfos> externalClassInfos; // TODO - Move to TypeLookup
+extern std::unordered_map<std::string, BaseClassInfo> baseClassLookup; // TODO - Move to TypeLookup
 
 /** Removes C++ templates parameters from the provided type name. */
 inline std::string CleanTemplateParameters(const std::string& name)

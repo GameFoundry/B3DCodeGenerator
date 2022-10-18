@@ -131,7 +131,7 @@ static std::string ParseNamespace(const RecordDecl* decl)
 }
 
 /** Parses script export attributes set of a field or a parameter. Appends the parsed information (if any) to the provided type information structure. */
-bool ParseParameterOrFieldAttribute(Decl* decl, bool isField, VariableTypeInformation& typeInformation)
+static bool ParseParameterOrFieldAttribute(Decl* decl, bool isField, VariableTypeInformation& typeInformation)
 {
 	for(const auto& entry : decl->specific_attrs<AnnotateAttr>())
 	{
@@ -151,7 +151,8 @@ bool ParseParameterOrFieldAttribute(Decl* decl, bool isField, VariableTypeInform
 	return false;
 }
 
-void parseNamespace(NamedDecl* decl, SmallVector<std::string, 4>& output)
+/** Parses the namespace of the declaration and stores it in @p output. */
+void ParseNamespace(NamedDecl* decl, SmallVector<std::string, 4>& output)
 {
 	const DeclContext* context = decl->getDeclContext();
 	SmallVector<const DeclContext *, 8> contexts;
@@ -173,12 +174,9 @@ void parseNamespace(NamedDecl* decl, SmallVector<std::string, 4>& output)
 	}
 }
 
-struct FunctionTypeInfo
-{
-	// Only relevant for function types
-	std::vector<VariableBase> paramTypes;
-	VariableBase returnType;
-};
+BansheeCodeGeneratorASTVisitor::BansheeCodeGeneratorASTVisitor(CompilerInstance* CI, CommentParser& commentParser)
+	:astContext(&(CI->getASTContext())), preprocessor(CI->getPreprocessor()), mCommentParser(commentParser)
+{ }
 
 bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, VariableTypeInformation& outType)
 {
@@ -244,7 +242,7 @@ bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, Variabl
 				if(numArgs > 1)
 				{
 					std::string tmplArgExprValue, exprType;
-					if (evaluateExpression(specType->getArg(1).getAsExpr(), tmplArgExprValue, exprType))
+					if (TryEvaluateExpression(specType->getArg(1).getAsExpr(), tmplArgExprValue, exprType))
 					{
 						try
 						{
@@ -513,7 +511,7 @@ bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, Variabl
 			if (numArgs > 0)
 			{
 				// Handle generic template specializations
-				sourceTypeName += parseTemplArguments(sourceTypeName, specType->getArgs(), specType->getNumArgs(), nullptr);
+				sourceTypeName += ParseTemplateArguments(sourceTypeName, specType->getArgs(), specType->getNumArgs(), nullptr);
 			}
 		}
 		else
@@ -572,7 +570,7 @@ bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, Variabl
 	}
 }
 
-bool BansheeCodeGeneratorASTVisitor::parseEventSignature(QualType type, FunctionTypeInfo& typeInfo, bool& isCallback)
+bool BansheeCodeGeneratorASTVisitor::TryParseEventSignature(QualType type, MethodInfo& outEventInformation, bool& outIsCallback)
 {
 	if (type->isStructureOrClassType())
 	{
@@ -592,11 +590,14 @@ bool BansheeCodeGeneratorASTVisitor::parseEventSignature(QualType type, Function
 
 			bool isEvent = false;
 			if (sourceTypeName == "Event" && nsName == sFrameworkCppNs)
+			{
 				isEvent = true;
+				outIsCallback = false;
+			}
 			else if(sourceTypeName == "function" && recordDecl->isInStdNamespace())
 			{
 				isEvent = true;
-				isCallback = true;
+				outIsCallback = true;
 			}
 
 			if (isEvent)
@@ -607,17 +608,17 @@ bool BansheeCodeGeneratorASTVisitor::parseEventSignature(QualType type, Function
 					const FunctionProtoType* funcType = type->getAs<FunctionProtoType>();
 
 					unsigned int numParams = funcType->getNumParams();
-					typeInfo.paramTypes.resize(numParams);
+					outEventInformation.Parameters.resize(numParams);
 
 					for(unsigned int i = 0; i < numParams; i++)
 					{
 						QualType paramType = funcType->getParamType(i);
-						ParseTypeInformation(paramType, typeInfo.paramTypes[i].TypeInformation);
+						ParseTypeInformation(paramType, outEventInformation.Parameters[i].TypeInformation);
 					}
 
 					QualType returnType = funcType->getReturnType();
 					if (!returnType->isVoidType())
-						ParseTypeInformation(returnType, typeInfo.returnType.TypeInformation);
+						ParseTypeInformation(returnType, outEventInformation.ReturnValue.TypeInformation);
 				}
 
 				return true;
@@ -628,13 +629,9 @@ bool BansheeCodeGeneratorASTVisitor::parseEventSignature(QualType type, Function
 	return false;
 }
 
-BansheeCodeGeneratorASTVisitor::BansheeCodeGeneratorASTVisitor(CompilerInstance* CI, CommentParser& commentParser)
-	:astContext(&(CI->getASTContext())), preprocessor(CI->getPreprocessor()), mCommentParser(commentParser)
-{ }
-
-bool BansheeCodeGeneratorASTVisitor::evaluateLiteral(Expr* expr, std::string& evalValue)
+bool BansheeCodeGeneratorASTVisitor::TryEvaluateLiteral(Expr* expression, std::string& evaluatedValue)
 {
-	QualType type = expr->getType();
+	QualType type = expression->getType();
 	if (type->isBuiltinType())
 	{
 		const BuiltinType* builtinType = type->getAs<BuiltinType>();
@@ -643,9 +640,9 @@ bool BansheeCodeGeneratorASTVisitor::evaluateLiteral(Expr* expr, std::string& ev
 		case BuiltinType::Bool:
 		{
 			bool result;
-			expr->EvaluateAsBooleanCondition(result, *astContext);
+			expression->EvaluateAsBooleanCondition(result, *astContext);
 
-			evalValue = result ? "true" : "false";
+			evaluatedValue = result ? "true" : "false";
 
 			return true;
 		}
@@ -667,40 +664,40 @@ bool BansheeCodeGeneratorASTVisitor::evaluateLiteral(Expr* expr, std::string& ev
 		case BuiltinType::Char32:
 		{
 			Expr::EvalResult result;
-			expr->EvaluateAsInt(result, *astContext);
+			expression->EvaluateAsInt(result, *astContext);
 
 			SmallString<5> valueStr;
 
 			result.Val.getInt().toString(valueStr);
-			evalValue = valueStr.str().str();
+			evaluatedValue = valueStr.str().str();
 
 			return true;
 		}
 		case BuiltinType::Float:
 		{
 			APFloat result(0.0f);
-			expr->EvaluateAsFloat(result, *astContext);
+			expression->EvaluateAsFloat(result, *astContext);
 
 			SmallString<8> valueStr;
 			result.toString(valueStr);
-			evalValue = valueStr.str().str() + "f";
+			evaluatedValue = valueStr.str().str() + "f";
 
 			return true;
 		}
 		case BuiltinType::Double:
 		{
 			APFloat result(0.0f);
-			expr->EvaluateAsFloat(result, *astContext);
+			expression->EvaluateAsFloat(result, *astContext);
 
 			SmallString<8> valueStr;
 			result.toString(valueStr);
-			evalValue = valueStr.str().str();
+			evaluatedValue = valueStr.str().str();
 
 			return true;
 		}
 		case BuiltinType::NullPtr:
 		{
-			evalValue = "null";
+			evaluatedValue = "null";
 			return true;
 		}
 		default:
@@ -713,11 +710,11 @@ bool BansheeCodeGeneratorASTVisitor::evaluateLiteral(Expr* expr, std::string& ev
 		const EnumDecl* enumDecl = enumType->getDecl();
 
 		Expr::EvalResult result;
-		expr->EvaluateAsInt(result, *astContext);
+		expression->EvaluateAsInt(result, *astContext);
 
 		SmallString<5> valueStr;
 		result.Val.getInt().toString(valueStr);
-		evalValue = valueStr.str().str();
+		evaluatedValue = valueStr.str().str();
 
 		return true;
 	}
@@ -725,30 +722,30 @@ bool BansheeCodeGeneratorASTVisitor::evaluateLiteral(Expr* expr, std::string& ev
 	return false;
 }
 
-bool BansheeCodeGeneratorASTVisitor::evaluateExpression(Expr* expr, std::string& evalValue, std::string& valType)
+bool BansheeCodeGeneratorASTVisitor::TryEvaluateExpression(Expr* expression, std::string& outEvaluatedValue, std::string& outEvaluatedValueType)
 {
-	if (expr->isEvaluatable(*astContext))
+	if (expression->isEvaluatable(*astContext))
 	{
-		if (evaluateLiteral(expr, evalValue))
+		if (TryEvaluateLiteral(expression, outEvaluatedValue))
 			return true;
 	}
 
 	// Check for nullptr, literals in constructors and cast literals
-	if (ExprWithCleanups* cleanups = dyn_cast<ExprWithCleanups>(expr))
-		expr = cleanups->getSubExpr();
+	if (ExprWithCleanups* cleanups = dyn_cast<ExprWithCleanups>(expression))
+		expression = cleanups->getSubExpr();
 
 	// Skip through reference binding to temporary.
-	if (MaterializeTemporaryExpr* materialize = dyn_cast<MaterializeTemporaryExpr>(expr))
-		expr = materialize->getSubExpr();
+	if (MaterializeTemporaryExpr* materialize = dyn_cast<MaterializeTemporaryExpr>(expression))
+		expression = materialize->getSubExpr();
 
 	// Skip any temporary bindings; they're implicit.
-	if (CXXBindTemporaryExpr* binder = dyn_cast<CXXBindTemporaryExpr>(expr))
-		expr = binder->getSubExpr();
+	if (CXXBindTemporaryExpr* binder = dyn_cast<CXXBindTemporaryExpr>(expression))
+		expression = binder->getSubExpr();
 
-	expr = expr->IgnoreParenCasts();
+	expression = expression->IgnoreParenCasts();
 
 	// Reference to some other declaration (e.g. a static)
-	DeclRefExpr* declRefExpr = dyn_cast<DeclRefExpr>(expr);
+	DeclRefExpr* declRefExpr = dyn_cast<DeclRefExpr>(expression);
 	if(declRefExpr)
 	{
 		ValueDecl* decl = declRefExpr->getDecl();
@@ -756,34 +753,34 @@ bool BansheeCodeGeneratorASTVisitor::evaluateExpression(Expr* expr, std::string&
 
 		if(name == (sFrameworkCppNs + "::StringUtil::BLANK") || name == (sFrameworkCppNs + "::StringUtil::WBLANK"))
 		{
-			evalValue = "\"\"";
-			valType = "";
+			outEvaluatedValue = "\"\"";
+			outEvaluatedValueType = "";
 			return true;
 		}
 		else if(name == (sFrameworkCppNs + "::UUID::EMPTY"))
 		{
-			evalValue = "";
-			valType = "UUID";
+			outEvaluatedValue = "";
+			outEvaluatedValueType = "UUID";
 			return true;
 		}
 	}
 
-	CXXConstructExpr* ctorExp = dyn_cast<CXXConstructExpr>(expr);
+	CXXConstructExpr* ctorExp = dyn_cast<CXXConstructExpr>(expression);
 	if (!ctorExp)
 		return false;
 
 	// Check for special case of a single null parameter
 	{
-		expr = ctorExp->getArg(0);
+		expression = ctorExp->getArg(0);
 
 		bool isNull = false;
-		QualType type = expr->getType();
+		QualType type = expression->getType();
 		if (type->isBuiltinType())
 		{
 			const BuiltinType* builtinType = type->getAs<BuiltinType>();
 			if (builtinType->getKind() == BuiltinType::NullPtr)
 			{
-				evalValue = "null";
+				outEvaluatedValue = "null";
 				return true;
 			}
 		}
@@ -794,18 +791,18 @@ bool BansheeCodeGeneratorASTVisitor::evaluateExpression(Expr* expr, std::string&
 
 	VariableBase variableInformation;
 	ParseTypeInformation(parentType, variableInformation.TypeInformation);
-	valType = variableInformation.TypeInformation.GetLastWrappedOrSelfTypeName();
+	outEvaluatedValueType = variableInformation.TypeInformation.GetLastWrappedOrSelfTypeName();
 
 	for(int i = 0; i < ctorExp->getNumArgs(); i++)
 	{
 		if (i != 0)
-			evalValue += ", ";
+			outEvaluatedValue += ", ";
 
 		std::string argValue;
-		expr = ctorExp->getArg(i);
+		expression = ctorExp->getArg(i);
 
 		bool isNull = false;
-		QualType type = expr->getType();
+		QualType type = expression->getType();
 		if(type->isBuiltinType())
 		{
 			const BuiltinType* builtinType = type->getAs<BuiltinType>();
@@ -818,26 +815,26 @@ bool BansheeCodeGeneratorASTVisitor::evaluateExpression(Expr* expr, std::string&
 
 		if(!isNull)
 		{
-			if (expr->isEvaluatable(*astContext))
+			if (expression->isEvaluatable(*astContext))
 			{
-				if (!evaluateLiteral(expr, argValue))
+				if (!TryEvaluateLiteral(expression, argValue))
 					return false;
 			}
 			else
 			{
 				std::string dummy3;
-				if (!evaluateExpression(expr, argValue, dummy3))
+				if (!TryEvaluateExpression(expression, argValue, dummy3))
 					return false;
 			}
 		}
 			
-		evalValue += argValue;
+		outEvaluatedValue += argValue;
 	}
 
 	return true;
 }
 
-bool BansheeCodeGeneratorASTVisitor::parseEvent(ValueDecl* decl, const std::string& className, MethodInfo& eventInfo)
+bool BansheeCodeGeneratorASTVisitor::TryParseEvent(ValueDecl* decl, const std::string& className, MethodInfo& outEventInformation)
 {
 	AnnotateAttr* fieldAttr = decl->getAttr<AnnotateAttr>();
 	if (fieldAttr == nullptr)
@@ -849,9 +846,9 @@ bool BansheeCodeGeneratorASTVisitor::parseEvent(ValueDecl* decl, const std::stri
 	if (!ScriptExportUtility::ParseExportAttribute(fieldAttr, sourceFieldName, parsedEventInfo))
 		return false;
 
-	FunctionTypeInfo eventSignature;
+	MethodInfo eventSignature;
 	bool isCallback = false;
-	if (!parseEventSignature(decl->getType(), eventSignature, isCallback))
+	if (!TryParseEventSignature(decl->getType(), eventSignature, isCallback))
 		return false;
 
 	if (decl->getAccess() != AS_public)
@@ -871,32 +868,83 @@ bool BansheeCodeGeneratorASTVisitor::parseEvent(ValueDecl* decl, const std::stri
 	if (isCallback)
 		eventFlags |= (int)MethodFlags::Callback;
 
-	eventInfo.NativeName = sourceFieldName.str();
-	eventInfo.ScriptName = parsedEventInfo.ExportedTypeName;
-	eventInfo.MethodFlags = eventFlags;
-	eventInfo.ExternalClass = className;
-	eventInfo.Visibility = parsedEventInfo.Visibility;
-	eventInfo.API = ParserUtility::ParseAPIFromExportFlags(parsedEventInfo.ExportFlags);
-	mCommentParser.ParseComments(decl, eventInfo.Documentation);
-	CommentParser::ClearParameterReferenceComments(eventInfo.Documentation);
+	outEventInformation.NativeName = sourceFieldName.str();
+	outEventInformation.ScriptName = parsedEventInfo.ExportedTypeName;
+	outEventInformation.MethodFlags = eventFlags;
+	outEventInformation.ExternalClass = className;
+	outEventInformation.Visibility = parsedEventInfo.Visibility;
+	outEventInformation.API = ParserUtility::ParseAPIFromExportFlags(parsedEventInfo.ExportFlags);
+	mCommentParser.ParseComments(decl, outEventInformation.Documentation);
+	CommentParser::ClearParameterReferenceComments(outEventInformation.Documentation);
 
-	if (!eventSignature.returnType.TypeInformation.IsEmpty())
+	if (!eventSignature.ReturnValue.TypeInformation.IsEmpty())
 	{
-		eventInfo.ReturnValue.TypeInformation = eventSignature.returnType.TypeInformation;
+		outEventInformation.ReturnValue.TypeInformation = eventSignature.ReturnValue.TypeInformation;
 	}
 
 	int idx = 0;
-	for(auto& entry : eventSignature.paramTypes)
+	for(auto& entry : eventSignature.Parameters)
 	{
 		VariableInformation paramInfo;
 		paramInfo.Name = "p" + std::to_string(idx);
 		paramInfo.TypeInformation = entry.TypeInformation;
 
-		eventInfo.Parameters.push_back(paramInfo);
+		outEventInformation.Parameters.push_back(paramInfo);
 		idx++;
 	}
 
 	return true;
+}
+
+std::string BansheeCodeGeneratorASTVisitor::ParseTemplateArguments(const std::string& className, const TemplateArgument* arguments, uint32_t argumentCount, SmallVector<TemplateParamInfo, 0>* outTemplateArgumentInformation)
+{
+	std::stringstream tmplArgsStream;
+	tmplArgsStream << "<";
+	for(unsigned i = 0; i < argumentCount; i++)
+	{
+		if (i != 0)
+			tmplArgsStream << ", ";
+
+		auto& tmplArg = arguments[i];
+		if(tmplArg.getKind() == TemplateArgument::Type)
+		{
+			VariableBase variableInformation;
+			ParseTypeInformation(tmplArg.getAsType(), variableInformation.TypeInformation);
+
+			tmplArgsStream << variableInformation.TypeInformation.GetLastWrappedOrSelfTypeName();
+
+			if(outTemplateArgumentInformation != nullptr)
+				outTemplateArgumentInformation->push_back({ "class" });
+		}
+		else if(tmplArg.getKind() == TemplateArgument::Expression)
+		{
+			std::string tmplArgExprValue, exprType;
+			if (!TryEvaluateExpression(tmplArg.getAsExpr(), tmplArgExprValue, exprType))
+			{
+				outs() << "Error: Template argument for type \"" << className << "\" cannot be constantly evaluated, ignoring it.\n";
+				tmplArgsStream << "unknown";
+			}
+			else
+				tmplArgsStream << tmplArgExprValue;
+
+			VariableBase variableInformation;
+			ParseTypeInformation(tmplArg.getAsExpr()->getType(), variableInformation.TypeInformation);
+
+			if(outTemplateArgumentInformation != nullptr)
+				outTemplateArgumentInformation->push_back({ variableInformation.TypeInformation.GetLastWrappedOrSelfTypeName() });
+		}
+		else
+		{
+			outs() << "Error: Cannot parse template argument for type: \"" << className << "\". \n";
+			tmplArgsStream << "unknown";
+
+			if(outTemplateArgumentInformation != nullptr)
+				outTemplateArgumentInformation->push_back({ "unknown" });
+		}
+	}
+
+	tmplArgsStream << ">";
+	return tmplArgsStream.str();
 }
 
 bool BansheeCodeGeneratorASTVisitor::VisitEnumDecl(EnumDecl* decl)
@@ -933,7 +981,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitEnumDecl(EnumDecl* decl)
 	mCommentParser.ParseComments(decl, enumEntry.Documentation);
 	CommentParser::ClearParameterReferenceComments(enumEntry.Documentation);
 
-	parseNamespace(decl, enumEntry.Namespace);
+	ParseNamespace(decl, enumEntry.Namespace);
 
 	const BuiltinType* builtinType = underlyingType->getAs<BuiltinType>();
 
@@ -988,57 +1036,6 @@ bool BansheeCodeGeneratorASTVisitor::VisitEnumDecl(EnumDecl* decl)
 	return true;
 }
 
-std::string BansheeCodeGeneratorASTVisitor::parseTemplArguments(const std::string& className, const TemplateArgument* tmplArgs, unsigned numArgs, SmallVector<TemplateParamInfo, 0>* templParams)
-{
-	std::stringstream tmplArgsStream;
-	tmplArgsStream << "<";
-	for(unsigned i = 0; i < numArgs; i++)
-	{
-		if (i != 0)
-			tmplArgsStream << ", ";
-
-		auto& tmplArg = tmplArgs[i];
-		if(tmplArg.getKind() == TemplateArgument::Type)
-		{
-			VariableBase variableInformation;
-			ParseTypeInformation(tmplArg.getAsType(), variableInformation.TypeInformation);
-
-			tmplArgsStream << variableInformation.TypeInformation.GetLastWrappedOrSelfTypeName();
-
-			if(templParams != nullptr)
-				templParams->push_back({ "class" });
-		}
-		else if(tmplArg.getKind() == TemplateArgument::Expression)
-		{
-			std::string tmplArgExprValue, exprType;
-			if (!evaluateExpression(tmplArg.getAsExpr(), tmplArgExprValue, exprType))
-			{
-				outs() << "Error: Template argument for type \"" << className << "\" cannot be constantly evaluated, ignoring it.\n";
-				tmplArgsStream << "unknown";
-			}
-			else
-				tmplArgsStream << tmplArgExprValue;
-
-			VariableBase variableInformation;
-			ParseTypeInformation(tmplArg.getAsExpr()->getType(), variableInformation.TypeInformation);
-
-			if(templParams != nullptr)
-				templParams->push_back({ variableInformation.TypeInformation.GetLastWrappedOrSelfTypeName() });
-		}
-		else
-		{
-			outs() << "Error: Cannot parse template argument for type: \"" << className << "\". \n";
-			tmplArgsStream << "unknown";
-
-			if(templParams != nullptr)
-				templParams->push_back({ "unknown" });
-		}
-	}
-
-	tmplArgsStream << ">";
-	return tmplArgsStream.str();
-}
-
 bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 {
 	mCommentParser.ParseAndRegisterAllComments(decl);
@@ -1064,7 +1061,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 	if(specDecl != nullptr)
 	{
 		auto& tmplArgs = specDecl->getTemplateInstantiationArgs();
-		srcClassName += parseTemplArguments(srcClassName, tmplArgs.data(), tmplArgs.size(), &templParams);
+		srcClassName += ParseTemplateArguments(srcClassName, tmplArgs.data(), tmplArgs.size(), &templParams);
 		templatedDecl = specDecl->getSpecializedTemplate()->getTemplatedDecl();
 	}
 
@@ -1085,7 +1082,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 		structInfo.API = ParserUtility::ParseAPIFromExportFlags(parsedClassInfo.ExportFlags);
 
 		mCommentParser.ParseComments(templatedDecl, structInfo.Documentation);
-		parseNamespace(decl, structInfo.Namespace);
+		ParseNamespace(decl, structInfo.Namespace);
 		CommentParser::ClearParameterReferenceComments(structInfo.Documentation);
 
 		std::unordered_map<FieldDecl*, std::pair<std::string, std::string>> defaultFieldValues;
@@ -1139,7 +1136,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 
 					if (paramDecl->hasDefaultArg() && !skippedDefaultArgument)
 					{
-						if (!evaluateExpression(paramDecl->getDefaultArg(), paramInfo.DefaultValue, paramInfo.DefaultValueType))
+						if (!TryEvaluateExpression(paramDecl->getDefaultArg(), paramInfo.DefaultValue, paramInfo.DefaultValueType))
 						{
 							outs() << "Error: Constructor parameter \"" << paramDecl->getName().str() << "\" has a default "
 								<< "argument that cannot be constantly evaluated, ignoring it.\n";
@@ -1192,7 +1189,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 						{
 							// Check for constant value first
 							std::string evalValue, evalTypeValue;
-							if (evaluateExpression(initExpr, evalValue, evalTypeValue))
+							if (TryEvaluateExpression(initExpr, evalValue, evalTypeValue))
 								defaultFieldValues[field] = std::make_pair(evalValue, evalTypeValue);
 							else // Check for initializers referencing parameters
 							{
@@ -1351,7 +1348,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 				{
 					Expr* initExpr = fieldDecl->getInClassInitializer();
 
-					evaluateExpression(initExpr, fieldInfo.DefaultValue, fieldInfo.DefaultValueType);
+					TryEvaluateExpression(initExpr, fieldInfo.DefaultValue, fieldInfo.DefaultValueType);
 				}
 
 				std::string typeName;
@@ -1431,7 +1428,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 		mCommentParser.ParseComments(templatedDecl, classInfo.Documentation);
 		CommentParser::ClearParameterReferenceComments(classInfo.Documentation);
 
-		parseNamespace(decl, classInfo.Namespace);
+		ParseNamespace(decl, classInfo.Namespace);
 
 		if ((parsedClassInfo.style.flags & (int)StyleFlags::ForceHide) != 0)
 			classInfo.ClassFlags |= (int)ClassFlags::HideInInspector;
@@ -1505,7 +1502,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 
 						if (paramDecl->hasDefaultArg() && !skippedDefaultArg)
 						{
-							if (!evaluateExpression(paramDecl->getDefaultArg(), paramInfo.DefaultValue, paramInfo.DefaultValueType))
+							if (!TryEvaluateExpression(paramDecl->getDefaultArg(), paramInfo.DefaultValue, paramInfo.DefaultValueType))
 							{
 								outs() << "Error: Constructor parameter \"" << paramDecl->getName().str() << "\" has a default "
 									<< "argument that cannot be constantly evaluated, ignoring it.\n";
@@ -1692,7 +1689,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 						else
 							defaultArg = paramDecl->getDefaultArg();
 
-						if (!evaluateExpression(defaultArg, parameterInformation.DefaultValue, parameterInformation.DefaultValueType))
+						if (!TryEvaluateExpression(defaultArg, parameterInformation.DefaultValue, parameterInformation.DefaultValueType))
 						{
 							outs() << "Error: Method parameter \"" << paramDecl->getName().str() << "\" has a default "
 								<< "argument that cannot be constantly evaluated, ignoring it.\n";
@@ -1727,7 +1724,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 				FieldDecl* fieldDecl = *I;
 
 				MethodInfo eventInfo;
-				if (parseEvent(fieldDecl, srcClassName, eventInfo))
+				if (TryParseEvent(fieldDecl, srcClassName, eventInfo))
 					classInfo.Events.push_back(eventInfo);
 				else
 				{
@@ -1817,7 +1814,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 						continue;
 
 					MethodInfo eventInfo;
-					if (!parseEvent(varDecl, srcClassName, eventInfo))
+					if (!TryParseEvent(varDecl, srcClassName, eventInfo))
 						continue;
 
 					eventInfo.MethodFlags |= (int)MethodFlags::Static;

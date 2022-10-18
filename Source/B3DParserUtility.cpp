@@ -85,7 +85,7 @@ std::string ParserUtility::GetFullName(const NamedDecl* decl)
 	return ss.str();
 }
 
-void ParserUtility::PostProcessFileInfos(CommentParser& commentParser)
+void ParserUtility::PostProcessFileInfos(CommentParser& commentParser) // TODO - Move to type lookup?
 {
 	// Inject external methods into their appropriate class infos
 	for (auto& entry : externalClassInfos)
