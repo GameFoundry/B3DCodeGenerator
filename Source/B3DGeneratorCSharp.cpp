@@ -139,31 +139,31 @@ static std::string GenerateCSharpStyleAttributes(const ExportStyle& style, const
 {
 	std::stringstream output;
 
-	if(((style.flags & (int)StyleFlags::AsLayerMask) != 0) && typeMappingInformation.IsInt64())
+	if(((style.StyleFlags & (int)StyleFlags::AsLayerMask) != 0) && typeMappingInformation.IsInt64())
 		output << "\t\t[LayerMask]\n";
 
-	if ((style.flags & (int)StyleFlags::Step) != 0)
-		output << "\t\t[Step(" << style.step << "f)]\n";
+	if ((style.StyleFlags & (int)StyleFlags::Step) != 0)
+		output << "\t\t[Step(" << style.IncrementStep << "f)]\n";
 
-	if ((style.flags & (int)StyleFlags::Range) != 0)
+	if ((style.StyleFlags & (int)StyleFlags::Range) != 0)
 	{
-		std::string isSlider = ((style.flags & (int)StyleFlags::AsSlider) != 0) ? "true" : "false";
-		output << "\t\t[Range(" << style.rangeMin << "f, " << style.rangeMax << "f, " << isSlider << ")]\n";
+		std::string isSlider = ((style.StyleFlags & (int)StyleFlags::AsSlider) != 0) ? "true" : "false";
+		output << "\t\t[Range(" << style.RangeMinimum << "f, " << style.RangeMaximum << "f, " << isSlider << ")]\n";
 	}
-	else if ((style.flags & (int)StyleFlags::AsSlider) != 0)
+	else if ((style.StyleFlags & (int)StyleFlags::AsSlider) != 0)
 		output << "\t\t[Range(float.MinValue, float.MaxValue, true)]\n";
 
-	if(((style.flags & (int)StyleFlags::Order) != 0))
-		output << "\t\t[Order(" << style.order << ")]\n";
+	if(((style.StyleFlags & (int)StyleFlags::Order) != 0))
+		output << "\t\t[Order(" << style.UIOrder << ")]\n";
 
-	if(((style.flags & (int)StyleFlags::Category) != 0))
-		output << "\t\t[Category(\"" << style.category << "\")]\n";
+	if(((style.StyleFlags & (int)StyleFlags::Category) != 0))
+		output << "\t\t[Category(\"" << style.UICategory << "\")]\n";
 
-	if(((style.flags & (int)StyleFlags::Inline) != 0))
+	if(((style.StyleFlags & (int)StyleFlags::Inline) != 0))
 		output << "\t\t[Inline]\n";
 
-	bool notNull = (style.flags & (int)StyleFlags::NotNull) != 0;
-	bool passByCopy = (style.flags & (int)StyleFlags::PassByCopy) != 0;
+	bool notNull = (style.StyleFlags & (int)StyleFlags::NotNull) != 0;
+	bool passByCopy = (style.StyleFlags & (int)StyleFlags::PassByCopy) != 0;
 
 	const bool isPassedByValue = IsInternalMethodParameterValueType(typeInformation);
 	if(!isGeneratingStructFields && (typeMappingInformation.IsClassType() && isPassedByValue))
@@ -178,16 +178,16 @@ static std::string GenerateCSharpStyleAttributes(const ExportStyle& style, const
 	if(passByCopy)
 		output << "\t\t[PassByCopy]\n";
 
-	if(((style.flags & (int)StyleFlags::ApplyOnDirty) != 0))
+	if(((style.StyleFlags & (int)StyleFlags::ApplyOnDirty) != 0))
 		output << "\t\t[ApplyOnDirty]\n";
 
-	if(((style.flags & (int)StyleFlags::AsQuaternion) != 0))
+	if(((style.StyleFlags & (int)StyleFlags::AsQuaternion) != 0))
 		output << "\t\t[AsQuaternion]\n";
 
-	if(((style.flags & (int)StyleFlags::LoadOnAssign) != 0))
+	if(((style.StyleFlags & (int)StyleFlags::LoadOnAssign) != 0))
 		output << "\t\t[LoadOnAssign]\n";
 
-	if(((style.flags & (int)StyleFlags::HDR) != 0))
+	if(((style.StyleFlags & (int)StyleFlags::HDR) != 0))
 		output << "\t\t[HDR]\n";
 
 	return output.str();
@@ -663,12 +663,12 @@ std::string GenerateCSharpClass(const ClassInfo& classInformation, const TypeMap
 			!entry.SetterName.empty();
 		if (defaultVisible)
 		{
-			if ((entry.Style.flags & (int)StyleFlags::ForceHide) == 0)
+			if ((entry.Style.StyleFlags & (int)StyleFlags::ForceHide) == 0)
 				properties << "\t\t[ShowInInspector]" << std::endl;
 		}
 		else
 		{
-			if ((entry.Style.flags & (int)StyleFlags::ForceShow) != 0)
+			if ((entry.Style.StyleFlags & (int)StyleFlags::ForceShow) != 0)
 				properties << "\t\t[ShowInInspector]" << std::endl;
 		}
 
@@ -1048,7 +1048,7 @@ std::string generateCSStruct(const StructInfo& input)
 		output << CommentParser::GenerateXMLComments(fieldInformation.Documentation, "\t\t");
 		output << GenerateCSharpStyleAttributes(fieldInformation.Style, fieldInformation.TypeInformation, fieldTypeMappingInformation, true);
 
-		if ((fieldInformation.Style.flags & (int)StyleFlags::ForceHide) != 0)
+		if ((fieldInformation.Style.StyleFlags & (int)StyleFlags::ForceHide) != 0)
 			output << "\t\t[HideInInspector]" << std::endl;
 
 		output << "\t\tpublic ";

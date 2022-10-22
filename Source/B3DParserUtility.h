@@ -44,7 +44,9 @@ struct ScriptExportInformation
 	std::string DocumentationGroup; /**< Name of the documentation group to wrap the generated code in. */
 	CSVisibility Visibility = CSVisibility::Public; /**< Visibility of the declaration in generated code. */
 	int ExportFlags = 0; /**< Various flags controlling export. */
-	ExportStyle style; /**< Additional settings controlling how is the exported declaration API generated. */
+	ExportStyle Style; /**< Additional settings controlling how is the exported declaration API generated. */
+
+	void SetExportFlag(enum ExportFlags flag) { ExportFlags |= (int)flag; }
 };
 
 /** Utility functionality for script export parsing. */
@@ -62,16 +64,6 @@ public:
 
 	/** Returns the name of the first base class of the provided declaration that has the script export attribute with the ExportAsStruct option set. */
 	static std::string FindExportableBasePlainClassName(const CXXRecordDecl* decl);
-
-	/**
-	 * Parses a command from a script export attribute string.
-	 *
-	 * @param		name			Name of the command.
-	 * @param		value			Value assigned to the command.
-	 * @param		sourceName		Name of the type we're parsing the command for. Used for error reporting.
-	 * @param[out]	output			Information structure that will appended with the parsed information.
-	 */
-	static void ParseScriptExportAttributeCommand(const std::string& name, const std::string& value, StringRef sourceName, ScriptExportInformation& output);
 
 	/**
 	 * Parses all commands from the provided script export attribute.
@@ -92,4 +84,15 @@ public:
 	 * @return						True if the script export attribute was found, false otherwise.
 	 */
 	static bool ParseExportAttribute(Decl* decl, StringRef sourceName, ScriptExportInformation& output);
+
+private:
+	/**
+	 * Parses a command from a script export attribute string.
+	 *
+	 * @param		name			Name of the command.
+	 * @param		value			Value assigned to the command.
+	 * @param		typeName		Name of the type we're parsing the command for. Used for error reporting.
+	 * @param[out]	output			Information structure that will appended with the parsed information.
+	 */
+	static void ParseScriptExportAttributeCommand(const std::string& name, const std::string& value, StringRef typeName, ScriptExportInformation& output);
 };

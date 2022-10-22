@@ -1097,205 +1097,250 @@ std::string ScriptExportUtility::FindExportableBasePlainClassName(const CXXRecor
 	return "";
 }
 
-void ScriptExportUtility::ParseScriptExportAttributeCommand(const std::string& name, const std::string& value, StringRef sourceName, ScriptExportInformation& output)
+void ScriptExportUtility::ParseScriptExportAttributeCommand(const std::string& name, const std::string& value, StringRef typeName, ScriptExportInformation& output)
 {
-	if (name == "n" || name == "name")
-		output.ExportedTypeName = value;
-	else if (name == "v" || name == "visibility")
+	auto fnParseBoolean = [&name, &typeName](const std::string& value, bool defaultValue) -> bool{
+		if (value == "true") return true;
+		if (value == "false") return false;
+
+		outs() << "Warning: Invalid boolean value provided for script export option \"" << name << "\" on type " << typeName << ". Provided value: " << value << ".\n";
+		return defaultValue;
+	};
+
+	auto fnParseVisibility = [&typeName](const std::string& value, CSVisibility defaultValue)
 	{
-		if (value == "public")
-			output.Visibility = CSVisibility::Public;
-		else if (value == "internal")
-			output.Visibility = CSVisibility::Internal;
-		else if (value == "private")
-			output.Visibility = CSVisibility::Private;
-		else
-			outs() << "Warning: Unrecognized value for \"v\" option: \"" + value + "\" for type \"" <<
-			sourceName << "\".\n";
+		if (value == "Public") return CSVisibility::Public;
+		if (value == "Private") return CSVisibility::Private;
+		if (value == "Internal") return CSVisibility::Internal;
+
+		outs() << "Warning: Invalid value provided for script export option \"Visbility\" on type " << typeName << ". Provided value: " << value << ".\n";
+		return defaultValue;
+	};
+
+	auto fnParseAPI = [&typeName](const std::string& value, ExportFlags defaultValue)
+	{
+		if (value == "Framework") return ExportFlags::FrameworkAPI;
+		if (value == "Engine") return ExportFlags::EngineAPI;
+		if (value == "Editor") return ExportFlags::EditorAPI;
+
+		outs() << "Warning: Invalid value provided for script export option \"API\" on type " << typeName << ". Provided value: " << value << ".\n";
+		return defaultValue;
+	};
+
+	auto fnParseProperty = [&typeName](const std::string& value, ExportFlags defaultValue)
+	{
+		if (value == "Getter") return ExportFlags::PropertyGetter;
+		if (value == "Setter") return ExportFlags::PropertySetter;
+
+		outs() << "Warning: Invalid value provided for script export option \"Property\" on type " << typeName << ". Provided value: " << value << ".\n";
+		return defaultValue;
+	};
+
+	if (name == "ExportName")
+	{
+		output.ExportedTypeName = value;
 	}
-	else if (name == "f" || name == "file")
+	else if (name == "Visibility")
+	{
+		output.Visibility = fnParseVisibility(value, CSVisibility::Public);
+	}
+	else if (name == "ExportFile")
 	{
 		output.ExportedFileName = value;
 	}
-	else if (name == "pl" || name == "plain")
+	else if (name == "ExportAsStruct")
 	{
-		output.ExportFlags |= (int)ExportFlags::ExportAsStruct;
+		if (fnParseBoolean(value, false)) 
+			output.SetExportFlag(ExportFlags::ExportAsStruct);
 	}
-	else if (name == "pr" || name == "property")
+	else if (name == "Property")
 	{
-		if (value == "getter")
-			output.ExportFlags |= (int)ExportFlags::PropertyGetter;
-		else if (value == "setter")
-			output.ExportFlags |= (int)ExportFlags::PropertySetter;
-		else
-		{
-			outs() << "Warning: Unrecognized value for \"pr\" option: \"" + value + "\" for type \"" <<
-				sourceName << "\".\n";
-		}
+		output.SetExportFlag(fnParseProperty(value, ExportFlags::None));
 	}
-	else if (name == "api")
+	else if (name == "API")
 	{
-		if (value == "bsf")
-			output.ExportFlags |= (int)ExportFlags::FrameworkAPI;
-		else if (value == "b3d")
-			output.ExportFlags |= (int)ExportFlags::EngineAPI;
-		else if (value == "bed")
-			output.ExportFlags |= (int)ExportFlags::EditorAPI;
-		else
-		{
-			outs() << "Warning: Unrecognized value for \"pr\" option: \"" + value + "\" for type \"" <<
-				sourceName << "\".\n";
-		}
+		output.SetExportFlag(fnParseAPI(value, ExportFlags::None));
 	}
-	else if (name == "e")
+	else if (name == "ExtensionMethodForType")
 	{
-		output.ExportFlags |= (int)ExportFlags::ExternalMethod;
-
+		output.SetExportFlag(ExportFlags::ExternalMethod);
 		output.ExtensionOfType = value;
 	}
-	else if (name == "ec")
+	else if (name == "ExtensionConstructorForType")
 	{
-		output.ExportFlags |= (int)ExportFlags::ExternalConstructor;
-
+		output.SetExportFlag(ExportFlags::ExternalConstructor);
 		output.ExtensionOfType = value;
 	}
-	else if (name == "ex")
+	else if (name == "Exclude")
 	{
-		if (value == "true")
-			output.ExportFlags |= (int)ExportFlags::Exclude;
-		else if (value != "false")
-		{
-			outs() << "Warning: Unrecognized value for \"ex\" option: \"" + value + "\" for type \"" <<
-				sourceName << "\".\n";
-		}
+		if (fnParseBoolean(value, false)) 
+			output.SetExportFlag(ExportFlags::Exclude);
 	}
-	else if (name == "in")
+	else if (name == "InteropOnly")
 	{
-		if (value == "true")
-			output.ExportFlags |= (int)ExportFlags::InteropOnly;
-		else if (value != "false")
-		{
-			outs() << "Warning: Unrecognized value for \"in\" option: \"" + value + "\" for type \"" <<
-				sourceName << "\".\n";
-		}
+		if (fnParseBoolean(value, false)) 
+			output.SetExportFlag(ExportFlags::InteropOnly);
 	}
-	else if (name == "m")
+	else if (name == "DocumentationGroup")
+	{
 		output.DocumentationGroup = value;
-	else if (name == "hide")
-	{
-		output.style.flags |= (int)StyleFlags::ForceHide;
 	}
-	else if (name == "show")
+	else if (name == "UI")
 	{
-		output.style.flags |= (int)StyleFlags::ForceShow;
-	}
-	else if (name == "layerMask")
-	{
-		output.style.flags |= (int)StyleFlags::AsLayerMask;
-	}
-	else if (name == "slider")
-	{
-		output.style.flags |= (int)StyleFlags::AsSlider;
-	}
-	else if (name == "notNull")
-	{
-		output.style.flags |= (int)StyleFlags::NotNull;
-	}
-	else if (name == "passByCopy")
-	{
-		output.style.flags |= (int)StyleFlags::PassByCopy;
-	}
-	else if (name == "applyOnDirty")
-	{
-		output.style.flags |= (int)StyleFlags::ApplyOnDirty;
-	}
-	else if (name == "asQuaternion")
-	{
-		output.style.flags |= (int)StyleFlags::AsQuaternion;
-	}
-	else if (name == "loadOnAssign")
-	{
-		output.style.flags |= (int)StyleFlags::LoadOnAssign;
-	}
-	else if (name == "hdr")
-	{
-		output.style.flags |= (int)StyleFlags::HDR;
-	}
-	else if (name == "step")
-	{
-		if(value.empty())
-			outs() << "Warning: Empty value for \"step\" option for type \"" << sourceName << "\".\n";
+		if (value == "Hide")
+		{
+			output.Style.SetFlag(StyleFlags::ForceHide);
+		}
+		else if (value == "Show")
+		{
+			output.Style.SetFlag(StyleFlags::ForceShow);
+		}
+		else if (value == "AsLayerMask")
+		{
+			output.Style.SetFlag(StyleFlags::AsLayerMask);
+		}
+		else if (value == "AsSlider")
+		{
+			output.Style.SetFlag(StyleFlags::AsSlider);
+		}
+		else if (value == "IsHDRColor")
+		{
+			output.Style.SetFlag(StyleFlags::HDR);
+		}
+		else if (value == "AsQuaternion")
+		{
+			output.Style.SetFlag(StyleFlags::AsQuaternion);
+		}
+		else if (value == "Inline")
+		{
+			output.Style.SetFlag(StyleFlags::Inline);
+		}
 		else
 		{
-			output.style.flags |= (int)StyleFlags::Step;
-			output.style.step = atof(value.c_str());
+			outs() << "Warning: Invalid value provided for script export option \"UI\" on type " << typeName << ". Provided value: " << value << ".\n";
 		}
 	}
-	else if (name == "range")
+	else if (name == "PassByCopy")
 	{
-		if(value.empty())
-			outs() << "Warning: Empty value for \"range\" option for type \"" << sourceName << "\".\n";
+		if (fnParseBoolean(value, false)) 
+			output.Style.SetFlag(StyleFlags::PassByCopy);
+	}
+	else if (name == "ApplyOnDirty")
+	{
+		if (fnParseBoolean(value, false)) 
+			output.Style.SetFlag(StyleFlags::ApplyOnDirty);
+	}
+	else if (name == "LoadOnAssign")
+	{
+		if (fnParseBoolean(value, false)) 
+			output.Style.SetFlag(StyleFlags::LoadOnAssign);
+	}
+	else if (name == "NotNullable")
+	{
+		if (fnParseBoolean(value, false)) 
+			output.Style.SetFlag(StyleFlags::NotNull);
+	}
+	else if (name == "UIIncrementStep")
+	{
+		if (value.empty())
+		{
+			outs() << "Warning: Empty value provided for script export option \"" << name << "\" on type \"" << typeName << "\".\n";
+		}
 		else
 		{
-			std::vector<float> args;
+			output.Style.SetFlag(StyleFlags::Step);
+			output.Style.IncrementStep = (float)atof(value.c_str());
+		}
+	}
+	else if (name == "UIValueRange")
+	{
+		if (value.empty())
+		{
+			outs() << "Warning: Empty value provided for script export option \"" << name << "\" on type \"" << typeName << "\".\n";
+		}
+		else
+		{
+			const char* valueCharacters = value.c_str();
+			const char* currentCharacter = valueCharacters;
+			if(valueCharacters[0] != '[')
+			{
+				outs() << "Warning: Invalid value provided for script export option \"" << name << "\" on type \"" << typeName << "\". Value: " << value << "\n";
+				return;
+			}
 
-			std::istringstream toParse(value);
-			std::string arg;
-			while(std::getline(toParse, arg, ','))
-				args.push_back(atof(arg.c_str()));
+			currentCharacter++;
 
-			if(args.size() != 2)
-				outs() << "Warning: Invalid number of arguments for \"range\" option for type \"" << sourceName << "\".\n";
+			char* nextCharacter = nullptr;
+			float firstValue = std::strtof(currentCharacter, &nextCharacter);
+			currentCharacter = nextCharacter;
+
+			float secondValue = 0.0f;
+
+			bool isSecondValueFound = false;
+			while(currentCharacter != '\0')
+			{
+				if (*currentCharacter == ',')
+				{
+					currentCharacter++;
+
+					if (currentCharacter == '\0')
+						break;
+
+					secondValue = std::strtof(currentCharacter, &nextCharacter);
+					currentCharacter = nextCharacter;
+
+					isSecondValueFound = true;
+					break;
+				}
+
+				currentCharacter++;
+			}
+
+			if (!isSecondValueFound)
+			{
+				outs() << "Warning: Invalid number of arguments provided for script export options \"" << name << "\" on type \"" << typeName << "\".\n";
+			}
 			else
 			{
-				output.style.flags |= (int)StyleFlags::Range;
-				output.style.rangeMin = args[0];
-				output.style.rangeMax = args[1];
+				if(*currentCharacter != ']')
+				{
+					outs() << "Warning: Missing closing ] in value provided for script export option \"" << name << "\" on type \"" << typeName << "\". Value: " << value << "\n";
+				}
+
+				output.Style.SetFlag(StyleFlags::Range);
+				output.Style.RangeMinimum = firstValue;
+				output.Style.RangeMaximum = secondValue;
 			}
 		}
 	}
-	else if (name == "order")
+	else if (name == "UIOrder")
 	{
-		if(value.empty())
-			outs() << "Warning: Empty value for \"order\" option for type \"" << sourceName << "\".\n";
+		if (value.empty())
+		{
+			outs() << "Warning: Empty value provided for script export option \"" << name << "\" on type \"" << typeName << "\".\n";
+		}
 		else
 		{
-			output.style.flags |= (int)StyleFlags::Order;
-			output.style.order = atoi(value.c_str());
+			output.Style.StyleFlags |= (int)StyleFlags::Order;
+			output.Style.UIOrder = atoi(value.c_str());
 		}
 	}
-	else if (name == "category")
+	else if (name == "UICategory")
 	{
-		if(value.empty())
-			outs() << "Warning: Empty value for \"category\" option for type \"" << sourceName << "\".\n";
+		if (value.empty())
+		{
+			outs() << "Warning: Empty value provided for script export option \"" << name << "\" on type \"" << typeName << "\".\n";
+		}
 		else
 		{
-			std::vector<std::string> args;
-
-			std::istringstream toParse(value);
-			std::string arg;
-			while(std::getline(toParse, arg, ','))
-				args.push_back(arg);
-
-			if(args.size() != 1)
-				outs() << "Warning: Invalid number of arguments for \"category\" option for type \"" << sourceName << "\".\n";
-			else
-			{
-				StringRef trimmedName = args[0];
-				trimmedName = trimmedName.trim();
-
-				output.style.flags |= (int)StyleFlags::Category;
-				output.style.category = trimmedName.str();
-			}
+			output.Style.StyleFlags |= (int)StyleFlags::Category;
+			output.Style.UICategory = value;
 		}
-	}
-	else if (name == "inline")
-	{
-		output.style.flags |= (int)StyleFlags::Inline;
 	}
 	else
-		outs() << "Warning: Unrecognized annotation attribute option: \"" + name + "\" for type \"" <<
-		sourceName << "\".\n";
+	{
+		outs() << "Warning: Unrecognized script export option \"" << name << "\" on type \"" << typeName << "\".\n";
+	}
 }
 
 bool ScriptExportUtility::ParseExportAttribute(AnnotateAttr* attr, StringRef sourceName, ScriptExportInformation& output)
@@ -1353,73 +1398,65 @@ bool ScriptExportUtility::ParseExportAttribute(AnnotateAttr* attr, StringRef sou
 	output.Visibility = CSVisibility::Public;
 	output.ExportFlags = 0;
 
-	std::stringstream ssParamName;
-	std::stringstream ssParamValue;
+	std::stringstream parameterName;
+	std::stringstream parameterValue;
 
-	bool isInScope = false;
-	bool gotParamName = false;
-
+	bool foundParameterName = false;
 	for (auto iter = annotation.begin() + 3; iter != annotation.end(); ++iter)
 	{
-		if(*iter == ' ' || *iter == '\t')
+		if (*iter == ' ' || *iter == '\t')
 			continue;
 
-		if(*iter == '[')
+		// End parsing value
+		if (*iter == ')')
 		{
-			if(isInScope)
-				outs() << "Error: Attribute parameter parsing error. Nested scopes not allowed.";
-			else if(!gotParamName)
-				outs() << "Error: Attribute parameter parsing error. Scopes not allowed for parameter names.";
-			else
-				isInScope = true;
-
-			continue;
-		}
-
-		if(*iter == ']')
-		{
-			isInScope = false;
-			continue;
-		}
-
-		if(*iter == ',')
-		{
-			if(isInScope)
-				ssParamValue << ",";
-			else
+			if (foundParameterName)
 			{
-				ParseScriptExportAttributeCommand(ssParamName.str(), ssParamValue.str(), sourceName, output);
-				
-				ssParamName.str("");
-				ssParamName.clear();
+				ParseScriptExportAttributeCommand(parameterName.str(), parameterValue.str(), sourceName, output);
 
-				ssParamValue.str("");
-				ssParamValue.clear();
+				parameterName.str("");
+				parameterName.clear();
 
-				gotParamName = false;
+				parameterValue.str("");
+				parameterValue.clear();
+
+				foundParameterName = false;
+			}
+			else
+				errs() << "Error: Script export option parse error. Found ')' while parsing name.";
+
+			continue;
+		}
+
+		if (*iter == ',')
+		{
+			if (foundParameterName)
+			{
+				parameterValue << ",";
 			}
 
 			continue;
 		}
 
-		if(*iter == ':')
+		// Start parsing value
+		if (*iter == '(')
 		{
-			if(gotParamName)
-				outs() << "Error: Attribute parameter parsing error. Found value separator while parsing value.";
+			if (foundParameterName)
+				errs() << "Error: Script export option parse error. Found '(' while parsing value.";
 			else
-				gotParamName = true;
+				foundParameterName = true;
 
 			continue;
 		}
 
-		if(!gotParamName)
-			ssParamName << *iter;
+		if (!foundParameterName)
+			parameterName << *iter;
 		else
-			ssParamValue << *iter;
+			parameterValue << *iter;
 	}
 
-	if(!ssParamName.str().empty())
-		ParseScriptExportAttributeCommand(ssParamName.str(), ssParamValue.str(), sourceName, output);
+	if(!parameterName.str().empty())
+		ParseScriptExportAttributeCommand(parameterName.str(), parameterValue.str(), sourceName, output);
 
 	return true;
 }

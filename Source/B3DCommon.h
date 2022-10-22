@@ -250,6 +250,7 @@ enum class CSVisibility
 
 enum class ExportFlags
 {
+	None = 0,
 	ExportAsStruct = 1 << 0,
 	PropertyGetter = 1 << 1,
 	PropertySetter = 1 << 2,
@@ -300,12 +301,14 @@ enum class ApiFlags
 
 struct ExportStyle
 {
-	float rangeMin;
-	float rangeMax;
-	float step;
-	int order;
-	std::string category;
-	int flags = 0;
+	float RangeMinimum = 0.0f;
+	float RangeMaximum = 0.0f;
+	float IncrementStep = 0.0f;
+	int UIOrder = 0;
+	std::string UICategory;
+	int StyleFlags = 0;
+
+	void SetFlag(enum StyleFlags flag) { StyleFlags |= (int)flag; }
 };
 
 /** Determines the high level type of the exported class/struct declaration. */

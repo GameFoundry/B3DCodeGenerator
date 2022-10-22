@@ -1334,7 +1334,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 						continue;
 					}
 
-					fieldInfo.Style = parsedFieldInfo.style;
+					fieldInfo.Style = parsedFieldInfo.Style;
 				}
 
 				auto iterFind = defaultFieldValues.find(fieldDecl);
@@ -1430,7 +1430,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 
 		ParseNamespace(decl, classInfo.Namespace);
 
-		if ((parsedClassInfo.style.flags & (int)StyleFlags::ForceHide) != 0)
+		if ((parsedClassInfo.Style.StyleFlags & (int)StyleFlags::ForceHide) != 0)
 			classInfo.ClassFlags |= (int)ClassFlags::HideInInspector;
 
 		if (specDecl != nullptr)
@@ -1585,7 +1585,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 				methodInfo.ExternalClass = srcClassName;
 				methodInfo.Visibility = parsedMethodInfo.Visibility;
 				methodInfo.API = ParserUtility::ParseAPIFromExportFlags(parsedMethodInfo.ExportFlags);
-				methodInfo.Style = parsedMethodInfo.style;
+				methodInfo.Style = parsedMethodInfo.Style;
 				mCommentParser.ParseComments(methodDecl, methodInfo.Documentation);
 
 				bool isProperty = (parsedMethodInfo.ExportFlags & ((int)ExportFlags::PropertyGetter | (int)ExportFlags::PropertySetter));
@@ -1758,7 +1758,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 					if (fieldDecl->getAccess() != AS_public)
 						outs() << "Error: Exported field \"" + fieldInfo.Name + "\" isn't public. This will likely result in invalid code generation.";
 
-					fieldInfo.Style = parsedFieldInfo.style;
+					fieldInfo.Style = parsedFieldInfo.Style;
 
 					mCommentParser.ParseComments(fieldDecl, fieldInfo.Documentation);
 					CommentParser::ClearParameterReferenceComments(fieldInfo.Documentation);
