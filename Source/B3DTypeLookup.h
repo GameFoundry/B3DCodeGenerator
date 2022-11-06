@@ -3,11 +3,100 @@
 
 class CommentParser;
 
+/** Determines the high level type of the exported class/struct declaration. */
+enum class ExportedClassTypeCategory
+{
+	Component, /**< Child of native builtin Component type. */
+	SceneObject,/**< Child of native builtin SceneObject type. */
+	Resource, /**< Child of native builtin Resource type. */
+	GUIElement, /**< Child of native builtin GUIElementBase type. */
+	Class, /**< Generic class (no known builtin type is a base). */
+	ReflectableClass, /**< Child of native builtin IReflectable type. */
+	Struct, /**< Generic struct (no known builtin type is a base). */
+	Enum, /**< enum or enum class. */
+	Primitive, /**< int, float, bool, etc. */
+	String, /**< Builtin String type. */
+	WString, /**< Builtin WString type. */
+	Path, /**< Builtin Path type. */
+	MonoObject /**< Builtin MonoObject type. */
+};
+
+/**
+ * Contains information about how a native type maps to a script type.
+ *
+ * Note we need this separate from ClassInfo and StructInfo as occasionally we need to provide type mapping for types that won't be generated (e.g. are builtin)
+ */
+struct TypeMappingInformation
+{
+	TypeMappingInformation() {}
+
+	TypeMappingInformation(SmallVector<std::string, 4> nativeNamespace, const std::string& scriptName, ::ExportedClassTypeCategory typeCategory, const std::string& nativeFile, const std::string& destFile)
+		:NativeNamespace(std::move(nativeNamespace)), ScriptTypeName(scriptName), TypeCategory(typeCategory), NativeFile(nativeFile), InteropFile(destFile), EditorInteropFile(destFile)
+	{ }
+
+	TypeMappingInformation(SmallVector<std::string, 4> nativeNamespace, const std::string& scriptName, ::ExportedClassTypeCategory typeCategory, const std::string& nativeFile, const std::string& destFile,
+		const std::string& destFileEditor)
+		:NativeNamespace(std::move(nativeNamespace)), ScriptTypeName(scriptName), TypeCategory(typeCategory), NativeFile(nativeFile), InteropFile(destFile), EditorInteropFile(destFileEditor)
+	{ }
+
+	bool IsInt64() const;
+	bool IsInteger() const;
+	bool IsReal() const;
+	bool IsHandleType() const;
+	bool IsClassType() const;
+
+	std::string ScriptTypeName; /**< Name of the type in the script code. */
+	SmallVector<std::string, 4> NativeNamespace; /**< Namespace in which the native type is located in. Used for e.g. forward declares in generated native interop code. */
+	std::string NativeFile; /**< File in which the native type is defined in. Used for resolving includes. */
+	std::string InteropFile; /**< File in which the interop for this type is defined in. Used for resolving includes. */
+	std::string EditorInteropFile; /**< Same as @p InteropFile, but if a type is exported in both framework and editor, then we need to generate two interop files. */
+	ExportedClassTypeCategory TypeCategory; /**< Determines a high level category that this type belongs to. */
+	BuiltinType::Kind EnumUnderlyingType; /**< Underlying primitive type for enum or enum class. */
+};
+
+/** Type of include reference. */
+enum class IncludeType
+{
+	None,
+	IncludeInHeader = 1 << 0, /**< Add an include in the generated .h file. */
+	IncludeInImplementation = 1 << 1, /**< Add an include in the generator .cpp file. */
+	ForwardDeclare = 1 << 2, /**< Forward declare the type in the .h file. */
+	ForwardDeclareAndIncludeInImplementation = ForwardDeclare | IncludeInImplementation /**< Forward declare the type in the .h file and add an include in the .cpp file. */
+};
+
+/** Information about a required include of forward declare. */
+struct IncludeInfo
+{
+	IncludeInfo() { }
+	IncludeInfo(const std::string& typeName, const TypeMappingInformation& typeInfo, IncludeType originIncludeFlags, 
+		IncludeType interopIncludeFlags, bool isStruct = false, bool isEditor = false)
+		: NativeTypeName(typeName), TypeMappingInfo(typeInfo), NativeIncludeFlags(originIncludeFlags)
+		, InteropIncludeFlags(interopIncludeFlags), IsStruct(isStruct), IsEditor(isEditor)
+	{ }
+
+	std::string NativeTypeName; /**< Native type name for which we're adding the include/forward declare. */
+	TypeMappingInformation TypeMappingInfo; /**< Determines how the native type maps to the script type. */
+	IncludeType NativeIncludeFlags = IncludeType::None; /**< Required includes/forward declares containing the native type that's being exported. */
+	IncludeType InteropIncludeFlags = IncludeType::None; /**< Required includes/forward declares containing the interop type that's wrapping the native type. */
+	bool IsStruct = false; /**< True if the type represents a struct rather than a class. */
+	bool IsEditor = false; /**< True if the type is part of the editor API. */
+};
+
+/** Contains information about all includes required for a single generated type. */
+struct IncludesInfo
+{
+	bool RequiresScriptResourceManager = false; /**< Requires the script resource manager include. */
+	bool RequiresScriptGameObjectManager = false; /**< Requires the script game object manager include. */
+	bool RequiresScriptRRef = false; /**< Requires the script resource reference include. */
+	bool RequiresRTTI = false; /**< Requires use of RTTIType. */
+	bool RequiresAsyncOp = false; /**< Requires use of an AsyncOp. */
+	std::unordered_map<std::string, IncludeInfo> Includes;
+	std::unordered_map<std::string, ForwardDeclInfo> ForwardDeclarations;
+};
 /** Contains information about types we're generating code for, and mapping between native and script types. */
 class TypeLookup
 {
 public:
-
 	/** Registers a new class to be generated in the specified file. */
 	static void RegisterEntryToGenerate(const std::string& fileName, ClassInfo classInfo);
 

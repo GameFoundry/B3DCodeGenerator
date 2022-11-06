@@ -1,6 +1,21 @@
 #pragma once
 #include "B3DCommon.h"
 
+enum class ExportFlags
+{
+	None = 0,
+	ExportAsStruct = 1 << 0,
+	PropertyGetter = 1 << 1,
+	PropertySetter = 1 << 2,
+	ExternalMethod = 1 << 3,
+	ExternalConstructor = 1 << 4,
+	Exclude = 1 << 5,
+	InteropOnly = 1 << 6,
+	FrameworkAPI = 1 << 7,
+	EngineAPI = 1 << 8,
+	EditorAPI = 1 << 9
+};
+
 /** Information used for controlling script export of a particular declaration. */
 struct ScriptExportInformation
 {

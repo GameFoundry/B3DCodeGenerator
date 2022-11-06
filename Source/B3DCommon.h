@@ -21,6 +21,8 @@
 #include <unordered_set>
 #include <vector>
 
+#include "B3DVariableTypeInformation.h"
+
 using namespace clang::driver;
 using namespace clang::tooling;
 using namespace llvm;
@@ -42,232 +44,12 @@ extern std::string sEditorExportMacro;
 extern std::string sFrameworkCopyrightNotice;
 extern std::string sEditorCopyrightNotice;
 
-/** Determines the type of variable contained in VariableTypeInformation. */
-enum class VariableTypeCategory
-{
-	General, /**< Type is not a recognized built-in type. */
-	Primitive, /**< int, bool, float, etc. */
-	Vector, /**< Vector<T>. Will also provide an underlying type information for T. */
-	SharedPointer, /**< Shared<T>. Will also provide an underlying type information for T. */
-	ResourceHandle, /**< ResourceHandle<T>. Will also provide an underlying type information for T. */
-	GameObjectHandle, /**< GameObjectHandle<T>. Will also provide an underlying type information for T. */
-	String, /**< String. */
-	WString, /**< WString. */
-	Flags, /**< Flags<T>. Will also provide an underlying type information for T. */
-	Array,/**< Array<T>. Will also provide an underlying type information for T. */
-	MonoObject, /**< MonoObject. */
-	ComponentOrActor, /**< ComponentOrActor<T>. Will also provide an underlying type information for T. */
-	Path, /**< Path */
-	AsyncOp, /**< AsyncOp<T>. Will also provide an underlying type information for T. */
-	SmallVector, /**< SmallVector<T>. Will also provide an underlying type information for T. */
-};
-
-/** Qualifiers applied to a type in VariableTypeInformation. */
-enum class VariableQualifierFlags
-{
-	None = 0,
-	IsPointer = 1 << 0,
-	IsReference = 1 << 1,
-	IsConst = 1 << 2,
-};
-
-/** Various flags that can be added to VariableTypeInformation on post-processing. */
-enum class VariablePostProcessFlags
-{
-	None = 0,
-	IsStructWrapperUsed = 1 << 0, /**< Special flag to be set during post-processing. Signals to the user that a struct wrapper had to be generated and should be used instead of the native type. */
-	IsReferencingBaseClass = 1 << 1, /**< Special flag to be set during post-processing. Signals to the user that a parameter, return value or a field is referencing a script exported base class. */
-};
-
-/** Various flags that can be added to VariableTypeInformation, specific to method parameters. */
-enum class ParameterFlags
-{
-	None = 0,
-	VarParams = 1 << 0, /**< lets the generator know to generate a variable number of parameters in place of this parameter. */
-	AsResourceRef = 1 << 1, /**< lets the generator know to pass a resource as a resource reference, rather than directly. */
-};
-
-/** Contains type information about a parameter, return value, field or local variable usage. */
-struct VariableTypeInformation
-{
-	VariableTypeInformation() = default;
-	VariableTypeInformation(const VariableTypeInformation& other);
-	VariableTypeInformation& operator=(const VariableTypeInformation& other);
-
-	bool IsParameterFlagSet(enum ParameterFlags flags) const { return (ParameterFlags & (uint32_t)flags) != 0; }
-	bool IsPostProcessFlagSet(VariablePostProcessFlags flags) const { return (PostProcessFlags & (uint32_t)flags) != 0; }
-	bool IsQualifierFlagSet(VariableQualifierFlags flags) const { return (QualifierFlags & (uint32_t)flags) != 0; }
-
-	void UnsetParameterFlag(enum ParameterFlags flags, bool recursive);
-	void SetPostProcessFlag(VariablePostProcessFlags flags, bool recursive);
-
-	/** Returns true if there is not type information assigned. */
-	bool IsEmpty() const { return TypeName.empty(); }
-
-	/** Returns true if the variable type is a non-const pointer or reference, which is recognized as a parameter output. */
-	bool IsOutputParameter() const { return (IsQualifierFlagSet(VariableQualifierFlags::IsPointer) || IsQualifierFlagSet(VariableQualifierFlags::IsReference)) && !IsQualifierFlagSet(VariableQualifierFlags::IsConst); }
-
-	/** Checks if the type category of the vector a native array, Vector, or SmallVector. */
-	bool IsArrayOrVector() const
-	{
-		return TypeCategory == VariableTypeCategory::Array || TypeCategory == VariableTypeCategory::SmallVector || TypeCategory == VariableTypeCategory::Vector;
-	}
-
-	/** Checks if the type category is a shared pointer, resource handle or a game object handle. */
-	bool IsPointerOrHandle() const
-	{
-		return TypeCategory == VariableTypeCategory::SharedPointer || TypeCategory == VariableTypeCategory::GameObjectHandle || TypeCategory == VariableTypeCategory::ResourceHandle || TypeCategory == VariableTypeCategory::ComponentOrActor;
-	}
-
-	/** Returns the underlying type. Asserts if the underlying type doesn't exist. */
-	const VariableTypeInformation& AssertGetUnderlyingType() const
-	{
-		assert(UnderlyingType != nullptr);
-		return *UnderlyingType;
-	}
-
-	/** If this type wraps another type, returns the wrapped type name. Otherwise, returns the name of this type. If there are multiple nested wrapped types this only returns the first one. */
-	const std::string& GetFirstWrappedOrSelfTypeName() const;
-
-	/** If this type wraps another type, returns the wrapped type name. Otherwise, returns the name of this type. If there are multiple nested wrapped types this returns the last one. */
-	const std::string& GetLastWrappedOrSelfTypeName() const;
-
-	VariableTypeCategory TypeCategory = VariableTypeCategory::General;
-	std::string TypeName;
-	std::unique_ptr<VariableTypeInformation> UnderlyingType;
-	uint32_t QualifierFlags = (uint32_t)VariableQualifierFlags::None;
-	uint32_t PostProcessFlags = (uint32_t)VariablePostProcessFlags::None;
-	uint32_t ParameterFlags = (uint32_t)ParameterFlags::None;
-	uint32_t ArraySize = 0; /**< Size of a native array, or SmallVector. */
-};
-
-inline VariableTypeInformation::VariableTypeInformation(const VariableTypeInformation& other)
-{
-	TypeCategory = other.TypeCategory;
-	TypeName = other.TypeName;
-	QualifierFlags = other.QualifierFlags;
-	PostProcessFlags = other.PostProcessFlags;
-	ParameterFlags = other.ParameterFlags;
-	ArraySize = other.ArraySize;
-
-	if (other.UnderlyingType != nullptr)
-	{
-		UnderlyingType = std::make_unique<VariableTypeInformation>(*other.UnderlyingType);
-	}
-}
-
-inline VariableTypeInformation& VariableTypeInformation::operator=(const VariableTypeInformation& other)
-{
-	TypeCategory = other.TypeCategory;
-	TypeName = other.TypeName;
-	QualifierFlags = other.QualifierFlags;
-	PostProcessFlags = other.PostProcessFlags;
-	ParameterFlags = other.ParameterFlags;
-	ArraySize = other.ArraySize;
-
-	if (other.UnderlyingType != nullptr)
-	{
-		UnderlyingType = std::make_unique<VariableTypeInformation>(*other.UnderlyingType);
-	}
-	else
-	{
-		UnderlyingType = nullptr;
-	}
-
-	return *this;
-}
-
-inline void VariableTypeInformation::UnsetParameterFlag(enum ParameterFlags flags, bool recursive)
-{
-	ParameterFlags &= ~(uint32_t)flags;
-
-	if(recursive && UnderlyingType)
-		UnderlyingType->UnsetParameterFlag(flags, true);
-}
-
-inline void VariableTypeInformation::SetPostProcessFlag(VariablePostProcessFlags flags, bool recursive)
-{
-	PostProcessFlags |= (uint32_t)flags;
-
-	if (recursive && UnderlyingType)
-		UnderlyingType->SetPostProcessFlag(flags, true);
-}
-
-inline const std::string& VariableTypeInformation::GetFirstWrappedOrSelfTypeName() const
-{
-	switch(TypeCategory)
-	{
-	default:
-	case VariableTypeCategory::General: 
-	case VariableTypeCategory::Primitive: 
-	case VariableTypeCategory::String: 
-	case VariableTypeCategory::WString:
-	case VariableTypeCategory::MonoObject: 
-	case VariableTypeCategory::Path:
-		return TypeName;
-	case VariableTypeCategory::Vector:
-	case VariableTypeCategory::SmallVector:
-	case VariableTypeCategory::Array:
-	case VariableTypeCategory::SharedPointer:
-	case VariableTypeCategory::ResourceHandle:
-	case VariableTypeCategory::GameObjectHandle:
-	case VariableTypeCategory::Flags:
-	case VariableTypeCategory::ComponentOrActor:
-	case VariableTypeCategory::AsyncOp:
-		return AssertGetUnderlyingType().TypeName;
-	}
-}
-
-inline const std::string& VariableTypeInformation::GetLastWrappedOrSelfTypeName() const
-{
-	if (UnderlyingType)
-		return UnderlyingType->GetLastWrappedOrSelfTypeName();
-
-	return TypeName;
-}
-
-enum class MethodFlags
-{
-	Static = 1 << 0,
-	External = 1 << 1,
-	Constructor = 1 << 2,
-	PropertyGetter = 1 << 3,
-	PropertySetter = 1 << 4,
-	InteropOnly = 1 << 5,
-	Callback = 1 << 6,
-	FieldWrapper = 1 << 7,
-	CSOnly = 1 << 8,
-};
-
+/** C# visibility of a declaration. */
 enum class CSVisibility
 {
 	Public,
 	Internal,
 	Private
-};
-
-enum class ExportFlags
-{
-	None = 0,
-	ExportAsStruct = 1 << 0,
-	PropertyGetter = 1 << 1,
-	PropertySetter = 1 << 2,
-	ExternalMethod = 1 << 3,
-	ExternalConstructor = 1 << 4,
-	Exclude = 1 << 5,
-	InteropOnly = 1 << 6,
-	FrameworkAPI = 1 << 7,
-	EngineAPI = 1 << 8,
-	EditorAPI = 1 << 9
-};
-
-enum class ClassFlags
-{
-	IsBase = 1 << 0,
-	IsModule = 1 << 1,
-	IsTemplateInst = 1 << 2,
-	IsStruct = 1 << 3,
-	HideInInspector = 1 << 4
 };
 
 enum class StyleFlags
@@ -308,83 +90,6 @@ struct ExportStyle
 
 	void SetFlag(enum StyleFlags flag) { StyleFlags |= (int)flag; }
 };
-
-/** Determines the high level type of the exported class/struct declaration. */
-enum class ExportedClassTypeCategory
-{
-	Component, /**< Child of native builtin Component type. */
-	SceneObject,/**< Child of native builtin SceneObject type. */
-	Resource, /**< Child of native builtin Resource type. */
-	GUIElement, /**< Child of native builtin GUIElementBase type. */
-	Class, /**< Generic class (no known builtin type is a base). */
-	ReflectableClass, /**< Child of native builtin IReflectable type. */
-	Struct, /**< Generic struct (no known builtin type is a base). */
-	Enum, /**< enum or enum class. */
-	Primitive, /**< int, float, bool, etc. */
-	String, /**< Builtin String type. */
-	WString, /**< Builtin WString type. */
-	Path, /**< Builtin Path type. */
-	MonoObject /**< Builtin MonoObject type. */
-};
-
-/**
- * Contains information about how a native type maps to a script type.
- *
- * Note we need this separate from ClassInfo and StructInfo as occasionally we need to provide type mapping for types that won't be generated (e.g. are builtin)
- */
-struct TypeMappingInformation // TODO - Add a new TypeMapping file/class. Registering a new struct/class/enum should auto-register this type as well. And a special method for registering existing/builtin types
-// TODO - GetTypeInfo should be moved there, and built-in types should not be constructed on the fly (But probably not important at the moment)
-{
-	TypeMappingInformation() {}
-
-	TypeMappingInformation(SmallVector<std::string, 4> nativeNamespace, const std::string& scriptName, ::ExportedClassTypeCategory typeCategory, const std::string& nativeFile, const std::string& destFile)
-		:NativeNamespace(std::move(nativeNamespace)), ScriptTypeName(scriptName), TypeCategory(typeCategory), NativeFile(nativeFile), InteropFile(destFile), EditorInteropFile(destFile)
-	{ }
-
-	TypeMappingInformation(SmallVector<std::string, 4> nativeNamespace, const std::string& scriptName, ::ExportedClassTypeCategory typeCategory, const std::string& nativeFile, const std::string& destFile,
-		const std::string& destFileEditor)
-		:NativeNamespace(std::move(nativeNamespace)), ScriptTypeName(scriptName), TypeCategory(typeCategory), NativeFile(nativeFile), InteropFile(destFile), EditorInteropFile(destFileEditor)
-	{ }
-
-	bool IsInt64() const;
-	bool IsInteger() const;
-	bool IsReal() const;
-	bool IsHandleType() const;
-	bool IsClassType() const;
-
-	std::string ScriptTypeName; /**< Name of the type in the script code. */
-	SmallVector<std::string, 4> NativeNamespace; /**< Namespace in which the native type is located in. Used for e.g. forward declares in generated native interop code. */
-	std::string NativeFile; /**< File in which the native type is defined in. Used for resolving includes. */
-	std::string InteropFile; /**< File in which the interop for this type is defined in. Used for resolving includes. */
-	std::string EditorInteropFile; /**< Same as @p InteropFile, but if a type is exported in both framework and editor, then we need to generate two interop files. */
-	ExportedClassTypeCategory TypeCategory; /**< Determines a high level category that this type belongs to. */
-	BuiltinType::Kind EnumUnderlyingType; /**< Underlying primitive type for enum or enum class. */
-};
-
-inline bool TypeMappingInformation::IsInt64() const
-{
-	return TypeCategory == ExportedClassTypeCategory::Primitive && (ScriptTypeName == "long" || ScriptTypeName == "ulong");
-}
-
-inline bool TypeMappingInformation::IsInteger() const
-{
-	return TypeCategory == ExportedClassTypeCategory::Primitive && (ScriptTypeName == "int" || ScriptTypeName == "uint" || ScriptTypeName == "long" || ScriptTypeName == "ulong" || ScriptTypeName == "short" || ScriptTypeName == "ushort" || ScriptTypeName == "byte");
-}
-
-inline bool TypeMappingInformation::IsReal() const
-{
-	return TypeCategory == ExportedClassTypeCategory::Primitive && (ScriptTypeName == "float" || ScriptTypeName == "double");
-}
-
-inline bool TypeMappingInformation::IsHandleType() const
-{
-	return TypeCategory == ExportedClassTypeCategory::Resource || TypeCategory == ExportedClassTypeCategory::SceneObject || TypeCategory == ExportedClassTypeCategory::Component;
-}
-
-inline bool TypeMappingInformation::IsClassType() const
-{
-	return TypeCategory == ExportedClassTypeCategory::Class || TypeCategory == ExportedClassTypeCategory::ReflectableClass;
-}
 
 struct VariableBase
 {
@@ -444,6 +149,20 @@ struct TemplateParamInfo
 	std::string TypeName;
 };
 
+/** Flags that describe how is a method exported. */
+enum class MethodFlags
+{
+	Static = 1 << 0,
+	External = 1 << 1,
+	Constructor = 1 << 2,
+	PropertyGetter = 1 << 3,
+	PropertySetter = 1 << 4,
+	InteropOnly = 1 << 5,
+	Callback = 1 << 6,
+	FieldWrapper = 1 << 7,
+	CSOnly = 1 << 8,
+};
+
 struct MethodInfo
 {
 	std::string NativeName;
@@ -493,6 +212,16 @@ struct GeneratedTypeInformation
 	
 	CommentEntry Documentation;
 	std::string DocumentationGroup;
+};
+
+/** Flags that describe how is a class exported. */
+enum class ClassFlags
+{
+	IsBase = 1 << 0,
+	IsModule = 1 << 1,
+	IsTemplateInst = 1 << 2,
+	IsStruct = 1 << 3,
+	HideInInspector = 1 << 4
 };
 
 struct ClassInfo : GeneratedTypeInformation
@@ -594,43 +323,6 @@ struct FileInfo
 	std::vector<std::string> ReferencedHeaderIncludes;
 	std::vector<std::string> ReferencedSourceIncludes;
 	bool InEditor = false;
-};
-
-enum class IncludeType
-{
-	None,
-	IncludeInHeader = 1 << 0,
-	IncludeInImplementation = 1 << 1,
-	ForwardDeclare = 1 << 2,
-	ForwardDeclareAndIncludeInImplementation = ForwardDeclare | IncludeInImplementation
-};
-
-struct IncludeInfo
-{
-	IncludeInfo() { }
-	IncludeInfo(const std::string& typeName, const TypeMappingInformation& typeInfo, IncludeType originIncludeFlags, 
-		IncludeType interopIncludeFlags, bool isStruct = false, bool isEditor = false)
-		: typeName(typeName), typeInfo(typeInfo), originIncludeFlags(originIncludeFlags)
-		, interopIncludeFlags(interopIncludeFlags), isStruct(isStruct), isEditor(isEditor)
-	{ }
-
-	std::string typeName;
-	TypeMappingInformation typeInfo;
-	IncludeType originIncludeFlags;
-	IncludeType interopIncludeFlags;
-	bool isStruct;
-	bool isEditor;
-};
-
-struct IncludesInfo
-{
-	bool requiresResourceManager = false;
-	bool requiresGameObjectManager = false;
-	bool requiresRRef = false;
-	bool requiresRTTI = false;
-	bool requiresAsyncOp = false;
-	std::unordered_map<std::string, IncludeInfo> includes;
-	std::unordered_map<std::string, ForwardDeclInfo> fwdDecls;
 };
 
 struct CommentMethodInformation

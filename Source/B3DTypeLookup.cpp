@@ -74,6 +74,32 @@ MethodInfo ClassInfo::FindUnusedConstructorSignature() const
 	return output;
 }
 
+bool TypeMappingInformation::IsInt64() const
+{
+	return TypeCategory == ExportedClassTypeCategory::Primitive && (ScriptTypeName == "long" || ScriptTypeName == "ulong");
+}
+
+bool TypeMappingInformation::IsInteger() const
+{
+	return TypeCategory == ExportedClassTypeCategory::Primitive && (ScriptTypeName == "int" || ScriptTypeName == "uint" || ScriptTypeName == "long" || ScriptTypeName == "ulong" || ScriptTypeName == "short" || ScriptTypeName == "ushort" || ScriptTypeName == "byte");
+}
+
+bool TypeMappingInformation::IsReal() const
+{
+	return TypeCategory == ExportedClassTypeCategory::Primitive && (ScriptTypeName == "float" || ScriptTypeName == "double");
+}
+
+bool TypeMappingInformation::IsHandleType() const
+{
+	return TypeCategory == ExportedClassTypeCategory::Resource || TypeCategory == ExportedClassTypeCategory::SceneObject || TypeCategory == ExportedClassTypeCategory::Component;
+}
+
+bool TypeMappingInformation::IsClassType() const
+{
+	return TypeCategory == ExportedClassTypeCategory::Class || TypeCategory == ExportedClassTypeCategory::ReflectableClass;
+}
+
+
 std::unordered_map<std::string, FileInfo> TypeLookup::mFilesToGenerate;
 std::unordered_map<std::string, TypeMappingInformation> TypeLookup::mNativeToScriptTypeMap;
 std::unordered_map<std::string, ExternalClassInfos> TypeLookup::mExternalClassInfos;
@@ -949,32 +975,32 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 				fileInfo.second.ReferencedHeaderIncludes.push_back(typeInfo.NativeFile);
 			}
 
-			if(includesInfo.requiresResourceManager)
+			if(includesInfo.RequiresScriptResourceManager)
 				fileInfo.second.ReferencedSourceIncludes.push_back("BsScriptResourceManager.h");
 
-			if (includesInfo.requiresRRef)
+			if (includesInfo.RequiresScriptRRef)
 				fileInfo.second.ReferencedSourceIncludes.push_back("Wrappers/BsScriptRRefBase.h");
 
-			if (includesInfo.requiresAsyncOp)
+			if (includesInfo.RequiresAsyncOp)
 				fileInfo.second.ReferencedSourceIncludes.push_back("Wrappers/BsScriptAsyncOp.h");
 
-			if(includesInfo.requiresGameObjectManager)
+			if(includesInfo.RequiresScriptGameObjectManager)
 				fileInfo.second.ReferencedSourceIncludes.push_back("BsScriptGameObjectManager.h");
 
-			if(includesInfo.requiresRTTI)
+			if(includesInfo.RequiresRTTI)
 				fileInfo.second.ReferencedSourceIncludes.push_back("Reflection/BsRTTIType.h");
 
-			for (auto& entry : includesInfo.includes)
+			for (auto& entry : includesInfo.Includes)
 			{
-				uint32_t originFlags = (uint32_t)entry.second.originIncludeFlags;
-				uint32_t interopFlags = (uint32_t)entry.second.interopIncludeFlags;
+				uint32_t originFlags = (uint32_t)entry.second.NativeIncludeFlags;
+				uint32_t interopFlags = (uint32_t)entry.second.InteropIncludeFlags;
 
 				if (originFlags != 0)
 				{
-					std::string include = entry.second.typeInfo.NativeFile;
+					std::string include = entry.second.TypeMappingInfo.NativeFile;
 
 					if ((originFlags & (uint32_t)IncludeType::ForwardDeclare) != 0)
-						fileInfo.second.ForwardDeclarations.insert(ForwardDeclInfo(entry.second.typeName, entry.second.typeInfo.NativeNamespace, {}, entry.second.isStruct));
+						fileInfo.second.ForwardDeclarations.insert(ForwardDeclInfo(entry.second.NativeTypeName, entry.second.TypeMappingInfo.NativeNamespace, {}, entry.second.IsStruct));
 
 					if((originFlags & (uint32_t)IncludeType::IncludeInImplementation) != 0)
 						fileInfo.second.ReferencedSourceIncludes.push_back(include);
@@ -985,15 +1011,15 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 				if (interopFlags != 0)
 				{
 					std::string include;
-					if(entry.second.isEditor)
-						include = entry.second.typeInfo.EditorInteropFile;
+					if(entry.second.IsEditor)
+						include = entry.second.TypeMappingInfo.EditorInteropFile;
 					else
-						include = entry.second.typeInfo.InteropFile;
+						include = entry.second.TypeMappingInfo.InteropFile;
 
 					if ((interopFlags & (uint32_t)IncludeType::ForwardDeclare) != 0)
 					{
-						if(entry.second.isEditor)
-							fileInfo.second.ForwardDeclarations.insert(ForwardDeclInfo(entry.second.typeName, entry.second.typeInfo.NativeNamespace));
+						if(entry.second.IsEditor)
+							fileInfo.second.ForwardDeclarations.insert(ForwardDeclInfo(entry.second.NativeTypeName, entry.second.TypeMappingInfo.NativeNamespace));
 					}
 
 					if(!include.empty())
@@ -1006,7 +1032,7 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 				}
 			}
 
-			for (auto& entry : includesInfo.fwdDecls)
+			for (auto& entry : includesInfo.ForwardDeclarations)
 				fileInfo.second.ForwardDeclarations.insert(entry.second);
 		}
 	}
@@ -1123,8 +1149,8 @@ void TypeLookup::GatherIncludes(const VariableTypeInformation& typeInformation, 
 		typeMappingInformation.TypeCategory == ExportedClassTypeCategory::SceneObject || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Resource ||
 		typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Enum)
 	{
-		auto iterFind = output.includes.find(typeName);
-		if (iterFind == output.includes.end())
+		auto iterFind = output.Includes.find(typeName);
+		if (iterFind == output.Includes.end())
 		{
 			IncludeType sourceIncludeType = IncludeType::None;
 			IncludeType interopIncludeType = typeMappingInformation.TypeCategory != ExportedClassTypeCategory::Enum ? IncludeType::IncludeInImplementation : IncludeType::None;
@@ -1146,7 +1172,7 @@ void TypeLookup::GatherIncludes(const VariableTypeInformation& typeInformation, 
 			if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Enum || underlyingTypeInformation.TypeCategory == VariableTypeCategory::General)
 				sourceIncludeType = IncludeType::IncludeInHeader;
 
-			output.includes[typeName] = IncludeInfo(typeName, typeMappingInformation, sourceIncludeType, interopIncludeType, isStruct, isEditor);
+			output.Includes[typeName] = IncludeInfo(typeName, typeMappingInformation, sourceIncludeType, interopIncludeType, isStruct, isEditor);
 		}
 
 		if (typeMappingInformation.IsClassType())
@@ -1158,28 +1184,28 @@ void TypeLookup::GatherIncludes(const VariableTypeInformation& typeInformation, 
 				GetDerivedClasses(typeName, derivedClasses);
 
 				for (auto& entry : derivedClasses)
-					output.includes[entry] = IncludeInfo(entry, TypeLookup::GetNativeToScriptTypeMapping(entry), IncludeType::IncludeInImplementation, IncludeType::IncludeInImplementation, false, isEditor);
+					output.Includes[entry] = IncludeInfo(entry, TypeLookup::GetNativeToScriptTypeMapping(entry), IncludeType::IncludeInImplementation, IncludeType::IncludeInImplementation, false, isEditor);
 
-				output.requiresRTTI = true;
+				output.RequiresRTTI = true;
 			}
 		}
 	}
 
 	if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Struct && underlyingTypeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsStructWrapperUsed))
-		output.fwdDecls[typeName] = ForwardDeclInfo(GetStructInteropTypeName(typeName), typeMappingInformation.NativeNamespace, {}, true);
+		output.ForwardDeclarations[typeName] = ForwardDeclInfo(GetStructInteropTypeName(typeName), typeMappingInformation.NativeNamespace, {}, true);
 
 	if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Resource)
 	{
-		output.requiresResourceManager = true;
+		output.RequiresScriptResourceManager = true;
 
 		if (underlyingTypeInformation.IsParameterFlagSet(ParameterFlags::AsResourceRef))
-			output.requiresRRef = true;
+			output.RequiresScriptRRef = true;
 	}
 	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Component || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::SceneObject)
-		output.requiresGameObjectManager = true;
+		output.RequiresScriptGameObjectManager = true;
 
 	if (underlyingTypeInformation.TypeCategory == VariableTypeCategory::AsyncOp)
-		output.requiresAsyncOp = true;
+		output.RequiresAsyncOp = true;
 }
 
 void TypeLookup::GatherIncludes(const MethodInfo& methodInfo, bool isEditor, IncludesInfo& output)
@@ -1192,11 +1218,11 @@ void TypeLookup::GatherIncludes(const MethodInfo& methodInfo, bool isEditor, Inc
 
 	if (methodInfo.IsFlagSet(MethodFlags::External))
 	{
-		auto iterFind = output.includes.find(methodInfo.ExternalClass);
-		if (iterFind == output.includes.end())
+		auto iterFind = output.Includes.find(methodInfo.ExternalClass);
+		if (iterFind == output.Includes.end())
 		{
 			TypeMappingInformation typeInfo = TypeLookup::GetNativeToScriptTypeMapping(methodInfo.ExternalClass);
-			output.includes[methodInfo.ExternalClass] = IncludeInfo(methodInfo.ExternalClass, typeInfo, IncludeType::ForwardDeclareAndIncludeInImplementation, IncludeType::None, false, isEditor);
+			output.Includes[methodInfo.ExternalClass] = IncludeInfo(methodInfo.ExternalClass, typeInfo, IncludeType::ForwardDeclareAndIncludeInImplementation, IncludeType::None, false, isEditor);
 		}
 	}
 }
@@ -1217,7 +1243,7 @@ void TypeLookup::GatherIncludes(const FieldInfo& fieldInfo, bool isEditor, Inclu
 	if (!underlyingTypeInformation.IsPointerOrHandle())
 	{
 		const bool isComplexStruct = fieldTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Struct && underlyingTypeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsStructWrapperUsed);
-		output.includes[fieldTypeName] = IncludeInfo(fieldTypeName, fieldTypeMappingInformation, IncludeType::IncludeInHeader, isComplexStruct ? IncludeType::IncludeInHeader : IncludeType::None, false, isEditor);
+		output.Includes[fieldTypeName] = IncludeInfo(fieldTypeName, fieldTypeMappingInformation, IncludeType::IncludeInHeader, isComplexStruct ? IncludeType::IncludeInHeader : IncludeType::None, false, isEditor);
 	}
 
 	if (fieldTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Class || fieldTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::ReflectableClass ||
@@ -1228,18 +1254,18 @@ void TypeLookup::GatherIncludes(const FieldInfo& fieldInfo, bool isEditor, Inclu
 		if (!fieldTypeMappingInformation.InteropFile.empty() || isRRef)
 		{
 			std::string name = "__" + fieldTypeName;
-			output.includes[name] = IncludeInfo(fieldTypeName, fieldTypeMappingInformation, IncludeType::IncludeInImplementation, IncludeType::IncludeInImplementation, false, isEditor);
+			output.Includes[name] = IncludeInfo(fieldTypeName, fieldTypeMappingInformation, IncludeType::IncludeInImplementation, IncludeType::IncludeInImplementation, false, isEditor);
 		}
 
 		if (fieldTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Resource)
 		{
-			output.requiresResourceManager = true;
+			output.RequiresScriptResourceManager = true;
 
 			if (underlyingTypeInformation.IsParameterFlagSet(ParameterFlags::AsResourceRef))
-				output.requiresRRef = true;
+				output.RequiresScriptRRef = true;
 		}
 		else if (fieldTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Component || fieldTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::SceneObject)
-			output.requiresGameObjectManager = true;
+			output.RequiresScriptGameObjectManager = true;
 		else if (fieldTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Class || fieldTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::ReflectableClass)
 		{
 			const bool isBase = underlyingTypeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsReferencingBaseClass);
@@ -1249,14 +1275,14 @@ void TypeLookup::GatherIncludes(const FieldInfo& fieldInfo, bool isEditor, Inclu
 				GetDerivedClasses(fieldTypeName, derivedClasses);
 
 				for (auto& entry : derivedClasses)
-					output.includes[entry] = IncludeInfo(entry, TypeLookup::GetNativeToScriptTypeMapping(entry), IncludeType::IncludeInImplementation, IncludeType::IncludeInImplementation, false, isEditor);
+					output.Includes[entry] = IncludeInfo(entry, TypeLookup::GetNativeToScriptTypeMapping(entry), IncludeType::IncludeInImplementation, IncludeType::IncludeInImplementation, false, isEditor);
 
-				output.requiresRTTI = true;
+				output.RequiresRTTI = true;
 			}
 		}
 
 		if (underlyingTypeInformation.TypeCategory == VariableTypeCategory::AsyncOp)
-			output.requiresAsyncOp = true;
+			output.RequiresAsyncOp = true;
 	}
 }
 

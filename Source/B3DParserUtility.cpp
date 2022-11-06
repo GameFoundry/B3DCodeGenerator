@@ -1,5 +1,6 @@
 #include "B3DParserUtility.h"
 #include "B3DCommentParser.h"
+#include "B3DScriptExportAttributeParser.h"
 #include "B3DTypeLookup.h"
 
 std::string ParserUtility::GetNamespace(const NamedDecl* decl)

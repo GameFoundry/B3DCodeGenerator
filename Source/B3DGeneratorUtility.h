@@ -1,5 +1,6 @@
 #pragma once
 #include "B3DCommon.h"
+#include "B3DTypeLookup.h"
 
 class CommentParser;
 
