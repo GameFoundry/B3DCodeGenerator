@@ -751,13 +751,13 @@ bool BansheeCodeGeneratorASTVisitor::TryEvaluateExpression(Expr* expression, std
 		ValueDecl* decl = declRefExpr->getDecl();
 		const std::string name = ParserUtility::GetFullName(decl);
 
-		if(name == (sFrameworkCppNs + "::StringUtil::BLANK") || name == (sFrameworkCppNs + "::StringUtil::WBLANK"))
+		if(name == (sFrameworkCppNs + "::StringUtil::kBlank") || name == (sFrameworkCppNs + "::StringUtil::kWblank"))
 		{
 			outEvaluatedValue = "\"\"";
 			outEvaluatedValueType = "";
 			return true;
 		}
-		else if(name == (sFrameworkCppNs + "::UUID::EMPTY"))
+		else if(name == (sFrameworkCppNs + "::UUID::kEmpty"))
 		{
 			outEvaluatedValue = "";
 			outEvaluatedValueType = "UUID";

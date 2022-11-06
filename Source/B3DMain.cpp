@@ -19,14 +19,14 @@ std::string sFrameworkCppNs = "bs";
 std::string sEditorCppNs = "bs";
 std::string sFrameworkCsNs = "bs";
 std::string sEditorCsNs = "bs.Editor";
-std::string sFrameworkExportMacro = "BS_SCR_BE_EXPORT";
-std::string sEditorExportMacro = "BS_SCR_BED_EXPORT";
+std::string sFrameworkExportMacro = "B3D_SCRIPT_INTEROP_EXPORT";
+std::string sEditorExportMacro = "B3D_EDITOR_SCRIPT_INTEROP_EXPORT";
 std::string sFrameworkCopyrightNotice = 
-	"//********************************* bs::framework - Copyright 2018-2019 Marko Pintera ************************************//\n" \
+	"//********************************* bs::framework - Copyright 2018-2022 Marko Pintera ************************************//\n" \
 	"//*********** Licensed under the MIT license. See LICENSE.md for full terms. This notice is not to be removed. ***********//\n";
 std::string sEditorCopyrightNotice = 
 	"//********************************** Banshee Engine (www.banshee3d.com) **************************************************//\n" \
-	"//************** Copyright (c) 2016-2019 Marko Pintera (marko.pintera@gmail.com). All rights reserved. *******************//\n";
+	"//************** Copyright (c) 2016-2022 Marko Pintera (marko.pintera@gmail.com). All rights reserved. *******************//\n";
 
 std::unordered_map<std::string, ExternalClassInfos> externalClassInfos;
 std::unordered_map<std::string, BaseClassInfo> baseClassLookup;

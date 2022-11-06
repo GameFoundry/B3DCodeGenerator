@@ -211,11 +211,11 @@ static std::string GenerateGetInternalCallLine(const VariableTypeInformation& ty
 		if (!isReferencingBaseClass || isPassingAsResourceReference)
 		{
 			if(isPassingAsResourceReference)
-				output << "static_resource_cast<" << nativeTypeName << ">(" << variableName << "->GetHandle())";
+				output << "B3DStaticResourceCast<" << nativeTypeName << ">(" << variableName << "->GetHandle())";
 			else
 			{
 				if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Resource && nativeTypeName == "Resource")
-					output << "static_resource_cast<" << nativeTypeName << ">(" << variableName << "->GetGenericHandle())";
+					output << "B3DStaticResourceCast<" << nativeTypeName << ">(" << variableName << "->GetGenericHandle())";
 				else
 					output << variableName << "->GetHandle()";
 			}
@@ -223,9 +223,9 @@ static std::string GenerateGetInternalCallLine(const VariableTypeInformation& ty
 		else
 		{
 			if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Resource)
-				output << "static_resource_cast<" << nativeTypeName << ">(" << variableName << "->GetGenericHandle())";
+				output << "B3DStaticResourceCast<" << nativeTypeName << ">(" << variableName << "->GetGenericHandle())";
 			else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Component)
-				output << "static_object_cast<" << nativeTypeName << ">(" << variableName << "->GetComponent())";
+				output << "B3DStaticGameObjectCast<" << nativeTypeName << ">(" << variableName << "->GetComponent())";
 		}
 	}
 	
@@ -466,9 +466,9 @@ static std::string GetReturnValueForNativeCall(const std::string& access, const 
 static std::string GenerateApiCheckBegin(ApiFlags api)
 {
 	if(api == ApiFlags::Framework)
-		return "#if !BS_IS_BANSHEE3D\n";
+		return "#if !B3D_IS_ENGINE\n";
 	else if(api == ApiFlags::Engine)
-		return "#if BS_IS_BANSHEE3D\n";
+		return "#if B3D_IS_ENGINE\n";
 
 	return "";
 }
@@ -615,7 +615,7 @@ std::string GenerateEventThunkSignature(const MethodInfo& eventInfo, bool isModu
 	const bool isStatic = eventInfo.IsFlagSet(MethodFlags::Static);
 
 	std::stringstream output;
-	output << "\t\ttypedef void(BS_THUNKCALL *" << eventInfo.NativeName << "ThunkDef) (";
+	output << "\t\ttypedef void(B3D_THUNKCALL *" << eventInfo.NativeName << "ThunkDef) (";
 	
 	if (!isStatic && !isModule)
 		output << "MonoObject*, ";
@@ -741,12 +741,12 @@ static std::string GenerateNativeClassToMonoObject(const VariableTypeInformation
 			output << indent << "if(" << inputVariableName << ")\n";
 			output << indent << "{\n";
 
-			output << indent << "\tif(rtti_is_of_type<" << derivedClasses[0] << ">(" << inputVariableName << "))\n";
+			output << indent << "\tif(B3DRTTIIsOfType<" << derivedClasses[0] << ">(" << inputVariableName << "))\n";
 			fnGenerateCreateLine(TypeLookup::GetScriptInteropTypeName(derivedClasses[0]), "std::static_pointer_cast<" + derivedClasses[0] + ">(" + inputVariableName + ")", indent + "\t\t");
 
 			for(uint32_t i = 1; i < (uint32_t)derivedClasses.size(); i++)
 			{
-				output << indent << "\telse if(rtti_is_of_type<" << derivedClasses[i] << ">(" << inputVariableName << "))\n";
+				output << indent << "\telse if(B3DRTTIIsOfType<" << derivedClasses[i] << ">(" << inputVariableName << "))\n";
 				fnGenerateCreateLine(TypeLookup::GetScriptInteropTypeName(derivedClasses[i]), "std::static_pointer_cast<" + derivedClasses[i] + ">(" + inputVariableName + ")", indent + "\t\t");
 			}
 
@@ -806,7 +806,7 @@ static std::string GenerateNativeHandleToMonoObject(const VariableTypeInformatio
 	{
 		output << indent << "ScriptComponentBase* " << scriptVariableName << " = nullptr;\n";
 		output << indent << "if(" << inputVariableAccess << ")\n";
-		output << indent << "\t" << scriptVariableName << " = ScriptGameObjectManager::Instance().GetBuiltinScriptComponent(" << "static_object_cast<Component>(" << inputVariableAccess << "));\n";
+		output << indent << "\t" << scriptVariableName << " = ScriptGameObjectManager::Instance().GetBuiltinScriptComponent(" << "B3DStaticGameObjectCast<Component>(" << inputVariableAccess << "));\n";
 	}
 	else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::SceneObject)
 	{
@@ -907,7 +907,7 @@ static std::string GenerateMethodBodyBlockForArgument(const std::string& paramet
 
 			postCallActions << "\t\tauto convertCallback = [](const Any& returnVal)\n";
 			postCallActions << "\t\t{\n";
-			postCallActions << "\t\t\t" << argumentType << " nativeObj = any_cast<" << argumentType << ">(returnVal);\n";
+			postCallActions << "\t\t\t" << argumentType << " nativeObj = AnyCast<" << argumentType << ">(returnVal);\n";
 			postCallActions << "\t\t\tMonoObject* monoObj;\n";
 
 			if (!asyncOpUnderlyingTypeInformation.IsArrayOrVector())
@@ -951,7 +951,7 @@ static std::string GenerateMethodBodyBlockForArgument(const std::string& paramet
 					postCallActions << "\t\t\t\t" << arrayElementPtrType << " " << arrayElementPtrName;
 					if (arrayElementTypeInformation.TypeCategory != VariableTypeCategory::SharedPointer)
 					{
-						postCallActions << " = bs_shared_ptr_new<" << parameterInformation.TypeInformation.TypeName << ">();\n";
+						postCallActions << " = B3DMakeShared<" << parameterInformation.TypeInformation.TypeName << ">();\n";
 
 						if (arrayElementTypeInformation.IsQualifierFlagSet(VariableQualifierFlags::IsPointer))
 						{
@@ -1046,7 +1046,7 @@ static std::string GenerateMethodBodyBlockForArgument(const std::string& paramet
 			preCallActions << "\t\t" << fullTypeName << " " << argumentName;
 
 			if (isClassType && (returnValue || isOutputParameter) && parameterInformation.TypeInformation.TypeCategory != VariableTypeCategory::SharedPointer)
-				preCallActions << " = bs_shared_ptr_new<" << parameterTypeName << ">()"; // We'll be copying by value rather than just assigning the pointer, so initialize the destination
+				preCallActions << " = B3DMakeShared<" << parameterTypeName << ">()"; // We'll be copying by value rather than just assigning the pointer, so initialize the destination
 
 			preCallActions << ";\n";
 		}
@@ -1390,7 +1390,7 @@ static std::string GenerateMethodBodyBlockForArgument(const std::string& paramet
 						errs() << "Error: Class passed as an invalid type: " << (uint32_t)arrayElementTypeInformation.TypeCategory;
 					}
 
-					postCallActions << " = bs_shared_ptr_new<" << arrayElementTypeInformation.GetLastWrappedOrSelfTypeName() << ">();\n";
+					postCallActions << " = B3DMakeShared<" << arrayElementTypeInformation.GetLastWrappedOrSelfTypeName() << ">();\n";
 
 					if (arrayElementTypeInformation.IsQualifierFlagSet(VariableQualifierFlags::IsPointer))
 					{
@@ -1570,10 +1570,10 @@ static std::string GenerateFieldConvertBlock(const std::string& name, const Vari
 					if (fieldInformation.TypeInformation.IsQualifierFlagSet(VariableQualifierFlags::IsPointer))
 					{
 						preActions << "\t\tif(value." << name << " != nullptr)\n";
-						preActions << "\t\t\t" << arg << "copy = bs_shared_ptr_new<" << fieldTypeName << ">(*value." << name << ");\n";
+						preActions << "\t\t\t" << arg << "copy = B3DMakeShared<" << fieldTypeName << ">(*value." << name << ");\n";
 					}
 					else
-						preActions << "\t\t" << arg << "copy = bs_shared_ptr_new<" << fieldTypeName << ">(value." << name << ");\n";
+						preActions << "\t\t" << arg << "copy = B3DMakeShared<" << fieldTypeName << ">(value." << name << ");\n";
 
 					preActions << GenerateNativeClassToMonoObject(fieldInformation.TypeInformation, arg, scriptType, arg + "copy");
 				}
@@ -1831,7 +1831,7 @@ static std::string GenerateFieldConvertBlock(const std::string& name, const Vari
 				preActions << "\t\t\t" << elemPtrType << " " << elemPtrName;
 				if(arrayElementTypeInformation.TypeCategory == VariableTypeCategory::General)
 				{
-					preActions << " = bs_shared_ptr_new<" << fieldTypeName << ">();\n";
+					preActions << " = B3DMakeShared<" << fieldTypeName << ">();\n";
 
 					if (arrayElementTypeInformation.IsQualifierFlagSet(VariableQualifierFlags::IsPointer))
 					{
@@ -2154,8 +2154,8 @@ static std::string GenerateInternalMethodBody(const ClassInfo& classInfo, const 
 		{
 			if (typeMappingInformation.IsClassType())
 			{
-				output << "\t\tSPtr<" << classInfo.NativeName << "> instance = bs_shared_ptr_new<" << classInfo.NativeName << ">(" << methodArgs.str() << ");" << std::endl;
-				output << "\t\tnew (bs_alloc<" << interopClassName << ">())" << interopClassName << "(managedInstance, instance);" << std::endl;
+				output << "\t\tSPtr<" << classInfo.NativeName << "> instance = B3DMakeShared<" << classInfo.NativeName << ">(" << methodArgs.str() << ");" << std::endl;
+				output << "\t\tnew (B3DAllocate<" << interopClassName << ">())" << interopClassName << "(managedInstance, instance);" << std::endl;
 				isValid = true;
 			}
 		}
@@ -2166,7 +2166,7 @@ static std::string GenerateInternalMethodBody(const ClassInfo& classInfo, const 
 			if (typeMappingInformation.IsClassType())
 			{
 				output << "\t\tSPtr<" << classInfo.NativeName << "> instance = " << fullMethodName << "(" << methodArgs.str() << ");" << std::endl;
-				output << "\t\tnew (bs_alloc<" << interopClassName << ">())" << interopClassName << "(managedInstance, instance);" << std::endl;
+				output << "\t\tnew (B3DAllocate<" << interopClassName << ">())" << interopClassName << "(managedInstance, instance);" << std::endl;
 				isValid = true;
 			}
 			else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Resource)
@@ -2178,7 +2178,7 @@ static std::string GenerateInternalMethodBody(const ClassInfo& classInfo, const 
 			else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
 			{
 				output << "\t\t" << classInfo.NativeName << "* instance = " << fullMethodName << "(" << methodArgs.str() << ");" << std::endl;
-				output << "\t\tnew (bs_alloc<" << interopClassName << ">())" << interopClassName << "(managedInstance, instance);" << std::endl;
+				output << "\t\tnew (B3DAllocate<" << interopClassName << ">())" << interopClassName << "(managedInstance, instance);" << std::endl;
 				isValid = true;
 			}
 		}
@@ -2580,9 +2580,9 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 	output << "\tpublic:" << std::endl;
 
 	if (!inEditor)
-		output << "\t\tSCRIPT_OBJ(ENGINE_ASSEMBLY, ENGINE_NS, \"" << typeMappingInformation.ScriptTypeName << "\")" << std::endl;
+		output << "\t\tSCRIPT_OBJ(kEngineAssembly, kEngineNs, \"" << typeMappingInformation.ScriptTypeName << "\")" << std::endl;
 	else
-		output << "\t\tSCRIPT_OBJ(EDITOR_ASSEMBLY, EDITOR_NS, \"" << typeMappingInformation.ScriptTypeName << "\")" << std::endl;
+		output << "\t\tSCRIPT_OBJ(kEditorAssembly, kEditorNs, \"" << typeMappingInformation.ScriptTypeName << "\")" << std::endl;
 
 	output << std::endl;
 
@@ -3044,7 +3044,7 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 
 			output << ctorParamsInit.str();
 			output << "\t\tMonoObject* managedInstance = metaData.ScriptClass->CreateInstance(\"" << ctorSignature.str() << "\", ctorParams);" << std::endl;
-			output << "\t\tnew (bs_alloc<" << interopClassName << ">()) " << interopClassName << "(managedInstance, value);" << std::endl;
+			output << "\t\tnew (B3DAllocate<" << interopClassName << ">()) " << interopClassName << "(managedInstance, value);" << std::endl;
 			output << "\t\treturn managedInstance;" << std::endl;
 
 			output << "\t}" << std::endl;
@@ -3273,9 +3273,9 @@ static std::string GenerateStructDeclaration(const StructInfo& structInfo)
 	output << "\tpublic:" << std::endl;
 
 	if (!inEditor)
-		output << "\t\tSCRIPT_OBJ(ENGINE_ASSEMBLY, ENGINE_NS, \"" << typeMappingInformation.ScriptTypeName << "\")" << std::endl;
+		output << "\t\tSCRIPT_OBJ(kEngineAssembly, kEngineNs, \"" << typeMappingInformation.ScriptTypeName << "\")" << std::endl;
 	else
-		output << "\t\tSCRIPT_OBJ(EDITOR_ASSEMBLY, EDITOR_NS, \"" << typeMappingInformation.ScriptTypeName << "\")" << std::endl;
+		output << "\t\tSCRIPT_OBJ(kEditorAssembly, kEditorNs, \"" << typeMappingInformation.ScriptTypeName << "\")" << std::endl;
 
 	output << std::endl;
 
