@@ -1,5 +1,6 @@
 #include "B3DParser.h"
 #include "B3DParserUtility.h"
+#include "B3DScriptExportAttributeParser.h"
 #include "B3DTypeLookup.h"
 
 /** Parses the declaration and determines what exported type category should be used to represent this type in scripting. */
@@ -843,7 +844,7 @@ bool BansheeCodeGeneratorASTVisitor::TryParseEvent(ValueDecl* decl, const std::s
 	StringRef sourceFieldName = decl->getName();
 
 	ScriptExportInformation parsedEventInfo;
-	if (!ScriptExportUtility::ParseExportAttribute(fieldAttr, sourceFieldName, parsedEventInfo))
+	if (!ScriptExportAttributeParser::ParseExportAttribute(fieldAttr, sourceFieldName, parsedEventInfo))
 		return false;
 
 	MethodInfo eventSignature;
@@ -959,7 +960,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitEnumDecl(EnumDecl* decl)
 	ScriptExportInformation parsedEnumInfo;
 	parsedEnumInfo.ExportedTypeName = sourceClassName.str();
 
-	if (!ScriptExportUtility::ParseExportAttribute(attr, sourceClassName, parsedEnumInfo))
+	if (!ScriptExportAttributeParser::ParseExportAttribute(attr, sourceClassName, parsedEnumInfo))
 		return true;
 
 	if (TypeLookup::FindEnumInformationInFile(parsedEnumInfo.ExportedFileName, sourceClassName.str()) != nullptr)
@@ -1008,7 +1009,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitEnumDecl(EnumDecl* decl)
 		parsedEnumEntryInfo.ExportFlags = 0;
 
 		if (enumAttr != nullptr)
-			ScriptExportUtility::ParseExportAttribute(enumAttr, entryName, parsedEnumEntryInfo);
+			ScriptExportAttributeParser::ParseExportAttribute(enumAttr, entryName, parsedEnumEntryInfo);
 
 		if ((parsedEnumEntryInfo.ExportFlags & (int)ExportFlags::Exclude) != 0)
 		{
@@ -1049,7 +1050,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 	ScriptExportInformation parsedClassInfo;
 	parsedClassInfo.ExportedTypeName = declName.str();
 
-	if (!ScriptExportUtility::ParseExportAttribute(attr, declName, parsedClassInfo))
+	if (!ScriptExportAttributeParser::ParseExportAttribute(attr, declName, parsedClassInfo))
 		return true;
 
 	std::string srcClassName = declName.str();
@@ -1073,7 +1074,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 		StructInfo structInfo;
 		structInfo.NativeName = srcClassName;
 		structInfo.NativeNameWithoutTemplateArguments = declName.str();
-		structInfo.BaseClassName = ScriptExportUtility::FindExportableBasePlainClassName(decl);
+		structInfo.BaseClassName = ScriptExportAttributeParser::FindExportableBasePlainClassName(decl);
 		structInfo.Visibility = parsedClassInfo.Visibility;
 		structInfo.RequiresInteropType = decl->isPolymorphic();
 		structInfo.DocumentationGroup = parsedClassInfo.DocumentationGroup;
@@ -1106,7 +1107,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 				if (ctorAttr != nullptr)
 				{
 					ScriptExportInformation parsedCtorInfo;
-					ScriptExportUtility::ParseExportAttribute(ctorAttr, srcClassName, parsedCtorInfo);
+					ScriptExportAttributeParser::ParseExportAttribute(ctorAttr, srcClassName, parsedCtorInfo);
 
 					if ((parsedCtorInfo.ExportFlags & (int)ExportFlags::Exclude) != 0)
 					{
@@ -1326,7 +1327,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 				fieldInfo.Name = fieldDecl->getName().str();
 
 				ScriptExportInformation parsedFieldInfo;
-				if (ScriptExportUtility::ParseExportAttribute(fieldDecl, srcClassName, parsedFieldInfo))
+				if (ScriptExportAttributeParser::ParseExportAttribute(fieldDecl, srcClassName, parsedFieldInfo))
 				{
 					if ((parsedFieldInfo.ExportFlags & (int)ExportFlags::Exclude) != 0)
 					{
@@ -1422,7 +1423,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 		classInfo.Visibility = parsedClassInfo.Visibility;
 		classInfo.API = ParserUtility::ParseAPIFromExportFlags(parsedClassInfo.ExportFlags);
 		classInfo.ClassFlags = 0;
-		classInfo.BaseClassName = ScriptExportUtility::FindExportableBaseClassName(decl);
+		classInfo.BaseClassName = ScriptExportAttributeParser::FindExportableBaseClassName(decl);
 		classInfo.DocumentationGroup = parsedClassInfo.DocumentationGroup;
 		classInfo.TemplateParameters = templParams;
 		mCommentParser.ParseComments(templatedDecl, classInfo.Documentation);
@@ -1469,7 +1470,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 
 					StringRef dummy;
 					ScriptExportInformation parsedMethodInfo;
-					if (!ScriptExportUtility::ParseExportAttribute(methodAttr, dummy, parsedMethodInfo))
+					if (!ScriptExportAttributeParser::ParseExportAttribute(methodAttr, dummy, parsedMethodInfo))
 						continue;
 
 					MethodInfo methodInfo;
@@ -1540,7 +1541,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 				StringRef sourceMethodName = methodDecl->getName();
 
 				ScriptExportInformation parsedMethodInfo;
-				if (!ScriptExportUtility::ParseExportAttribute(methodDecl, sourceMethodName, parsedMethodInfo))
+				if (!ScriptExportAttributeParser::ParseExportAttribute(methodDecl, sourceMethodName, parsedMethodInfo))
 					continue;
 
 				if (methodDecl->getAccess() != AS_public)
@@ -1734,9 +1735,9 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 					bool foundExportAttrib = false;
 					for(const auto& entry : fieldDecl->specific_attrs<AnnotateAttr>())
 					{
-						if(ScriptExportUtility::IsExportAttribute(entry))
+						if(ScriptExportAttributeParser::IsExportAttribute(entry))
 						{
-							if (ScriptExportUtility::ParseExportAttribute(entry, fieldInfo.Name, parsedFieldInfo))
+							if (ScriptExportAttributeParser::ParseExportAttribute(entry, fieldInfo.Name, parsedFieldInfo))
 								foundExportAttrib = true;
 
 							break;
@@ -1828,7 +1829,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 				CXXRecordDecl* baseDecl = baseSpec->getType()->getAsCXXRecordDecl();
 
 				// Base classes never need to be exported. Exportable classes will handle their own methods/fields.
-				if (ParserUtility::IsBuiltinBaseType(baseDecl) || ScriptExportUtility::IsExportable(baseDecl))
+				if (ParserUtility::IsBuiltinBaseType(baseDecl) || ScriptExportAttributeParser::IsExportable(baseDecl))
 				{
 					iter++;
 					continue;
