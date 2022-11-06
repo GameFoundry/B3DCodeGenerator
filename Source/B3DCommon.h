@@ -87,8 +87,6 @@ enum class ParameterFlags
 	AsResourceRef = 1 << 1, /**< lets the generator know to pass a resource as a resource reference, rather than directly. */
 };
 
-// TODO - Refactor type parsing to output this struct instead, replace uses of TypeFlags
-// - Move all the getters that check flags here
 /** Contains type information about a parameter, return value, field or local variable usage. */
 struct VariableTypeInformation
 {
@@ -653,11 +651,6 @@ struct CommentInformation
 	bool isFunction = false;
 };
 
-struct BaseClassInfo
-{
-	std::vector<std::string> childClasses;
-};
-
 enum FileType
 {
 	FT_ENGINE_H,
@@ -690,10 +683,6 @@ inline bool IsAPIValid(ApiFlags api, bool editor)
    return (editor && IsAPIEditor(api)) || (!editor && (IsAPIEngine(api) || IsAPIFramework(api)));
 }
 
-/** Contains a map of native types to script types. The key is the native name as provided in ClassInfo.Name, StructInfo.Name or EnumInfo.Name. */
-extern std::unordered_map<std::string, ExternalClassInfos> externalClassInfos; // TODO - Move to TypeLookup
-extern std::unordered_map<std::string, BaseClassInfo> baseClassLookup; // TODO - Move to TypeLookup
-
 /** Removes C++ templates parameters from the provided type name. */
 inline std::string CleanTemplateParameters(const std::string& name)
 {
@@ -721,20 +710,20 @@ inline std::string GetStructInteropTypeName(const std::string& name)
 	return "__" + CleanTemplateParameters(name) + "Interop";
 }
 
-inline void getDerivedClasses(const std::string& typeName, std::vector<std::string>& output, bool onlyDirect = false)
-{
-	auto iterFind = baseClassLookup.find(typeName);
-	if(iterFind == baseClassLookup.end())
-		return;
-
-	for(auto& entry : iterFind->second.childClasses)
-	{
-		output.push_back(entry);
-
-		if(!onlyDirect)
-			getDerivedClasses(entry, output);
-	}
-}
-
+/**
+ * Generates all C++ generated files.
+ *
+ * @param engineOutputFolder			Folder to output engine/framework files.
+ * @param editorOutputFolder			Folder to output editor-specific files.
+ * @param generateEditorCode			If true, we're generating code for the editor, rather than the engine/framework.
+ */
 void GenerateCpp(StringRef engineOutputFolder, StringRef editorOutputFolder, bool generateEditorCode);
+
+/**
+ * Generates all C# generated files.
+ *
+ * @param engineOutputFolder			Folder to output engine/framework files.
+ * @param editorOutputFolder			Folder to output editor-specific files.
+ * @param generateEditorCode			If true, we're generating code for the editor, rather than the engine/framework.
+ */
 void GenerateCSharp(StringRef engineOutputFolder, StringRef editorOutputFolder, bool generateEditorCode);

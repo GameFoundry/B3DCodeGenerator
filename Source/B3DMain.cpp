@@ -28,9 +28,6 @@ std::string sEditorCopyrightNotice =
 	"//********************************** Banshee Engine (www.banshee3d.com) **************************************************//\n" \
 	"//************** Copyright (c) 2016-2022 Marko Pintera (marko.pintera@gmail.com). All rights reserved. *******************//\n";
 
-std::unordered_map<std::string, ExternalClassInfos> externalClassInfos;
-std::unordered_map<std::string, BaseClassInfo> baseClassLookup;
-
 static cl::OptionCategory OptCategory("Script binding options");
 static cl::extrahelp CommonHelp(CommonOptionsParser::HelpMessage);
 static cl::extrahelp CustomHelp("\nAdd \"-- <compiler arguments>\" at the end to setup the compiler "
@@ -233,7 +230,7 @@ int main(int argc, const char** argv)
 	int output = Tool.run(factory.get());
 
 	CommentParser& commentParser = factory->GetCommentParser();
-	ParserUtility::PostProcessFileInfos(commentParser);
+	TypeLookup::FinalizeFilesToGenerate(commentParser);
 
 	bool genEditor = GenerateEditorOption.getValue();
 

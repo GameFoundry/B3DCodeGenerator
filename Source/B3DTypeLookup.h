@@ -1,6 +1,8 @@
 #pragma once
 #include "B3DCommon.h"
 
+class CommentParser;
+
 /** Contains information about types we're generating code for, and mapping between native and script types. */
 class TypeLookup
 {
@@ -36,9 +38,6 @@ public:
 	/** Returns a list of all files that need to be generated. */
 	static const std::unordered_map<std::string, FileInfo>& GetFilesToGenerate() { return mFilesToGenerate; }
 
-	/** Returns a list of all files that need to be generated. */
-	static std::unordered_map<std::string, FileInfo>& GetFilesToGenerateMutable() { return mFilesToGenerate; }
-
 	/**
 	 * Registers a mapping between a native and script type. This mapping will be used whenever the native type is encountered during code generation.
 	 *
@@ -73,12 +72,92 @@ public:
 	 * @return						Name of the type used for script interop for the provided type name.
 	 */
 	static std::string GetScriptInteropTypeName(const std::string& typeName, bool isResourceReference = false);
+
+	/**
+	 * Performs final post processing on all files to generate. Should be called once after all files to generate have been registered, before actually using the types for code generation.
+	 *
+	 * @param commentParser			Contains lookup for all comments registered during parsing.
+	 */
+	static void FinalizeFilesToGenerate(CommentParser& commentParser);
+
+	/**
+	 * Finds derived classes of the provided class.
+	 *
+	 * @param typeName			Type name of the class to do the lookup for.
+	 * @param output			A list of all derived classes.
+	 * @param onlyDirect		If true, only the direct children will be returned, and if false, all derived classes will be returned.
+	 */
+	static void GetDerivedClasses(const std::string& typeName, std::vector<std::string>& output, bool onlyDirect = false);
+
+	/**
+	 * Registers a new external method for the provided type.
+	 *
+	 * @param typeName			Type for which we're providing the extension.
+	 * @param methodInfo		Information about the extension method.
+	 */
+	static void RegisterExternalMethod(const std::string& typeName, const MethodInfo& methodInfo);
 private:
+	/** Information about which classes derive from a base class. */
+	struct BaseClassInfo
+	{
+		std::vector<std::string> ChildClasses;
+	};
+
 	/** Maps a C++ primitive type such as int uint32_t or int8_t, to C# type. */
 	static std::string MapCppPrimitiveTypeToCSharpType(const std::string& cppType);
 
+	/** Splits a method with default parameters into multiple methods, if some of the parameter default values cannot be parsed. */
+	static void PostProcessDefaultParameters(MethodInfo& methodInfo, std::vector<MethodInfo>& newMethodInfos);
+
+	/**
+	 * Gathers includes required for the specified type.
+	 *
+	 * @param	typeInformation		Information about the type.
+	 * @param	isEditor			True if the type is part of editor API.
+	 * @param	output				List of includes and forward declares required for the declaration. This will be appended with any new includes/forward declares.
+	 */
+	static void GatherIncludes(const VariableTypeInformation& typeInformation, bool isEditor, IncludesInfo& output);
+
+	/**
+	 * Gathers includes required for the specified method.
+	 *
+	 * @param	methodInfo			Information about the type.
+	 * @param	isEditor			True if the method is part of editor API.
+	 * @param	output				List of includes and forward declares required for the declaration. This will be appended with any new includes/forward declares.
+	 */
+	static void GatherIncludes(const MethodInfo& methodInfo, bool isEditor, IncludesInfo& output);
+
+	/**
+	 * Gathers includes required for the specified field.
+	 *
+	 * @param	fieldInfo			Information about the field.
+	 * @param	isEditor			True if the field is part of editor API.
+	 * @param	output				List of includes and forward declares required for the declaration. This will be appended with any new includes/forward declares.
+	 */
+	static void GatherIncludes(const FieldInfo& fieldInfo, bool isEditor, IncludesInfo& output);
+
+	/**
+	 * Gathers includes required for the specified class.
+	 *
+	 * @param	classInfo			Information about the class.
+	 * @param	output				List of includes and forward declares required for the declaration. This will be appended with any new includes/forward declares.
+	 */
+	static void GatherIncludes(const ClassInfo& classInfo, IncludesInfo& output);
+
+	/**
+	 * Gathers includes required for the specified struct.
+	 *
+	 * @param	structInfo			Information about the struct.
+	 * @param	output				List of includes and forward declares required for the declaration. This will be appended with any new includes/forward declares.
+	 */
+	static void GatherIncludes(const StructInfo& structInfo, IncludesInfo& output);
+
+	/** Contains a map of native types to script types. The key is the native name as provided in ClassInfo.Name, StructInfo.Name or EnumInfo.Name. */
 	static std::unordered_map<std::string, FileInfo> mFilesToGenerate;
 	static std::unordered_map<std::string, TypeMappingInformation> mNativeToScriptTypeMap;
+	static std::unordered_map<std::string, ExternalClassInfos> mExternalClassInfos;
+	static std::unordered_map<std::string, BaseClassInfo> mBaseClassLookup;
+
 
 	
 };

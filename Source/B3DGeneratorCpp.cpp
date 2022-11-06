@@ -734,7 +734,7 @@ static std::string GenerateNativeClassToMonoObject(const VariableTypeInformation
 	if(typeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsReferencingBaseClass))
 	{
 		std::vector<std::string> derivedClasses;
-		getDerivedClasses(typeInformation.GetLastWrappedOrSelfTypeName(), derivedClasses);
+		TypeLookup::GetDerivedClasses(typeInformation.GetLastWrappedOrSelfTypeName(), derivedClasses);
 
 		if(!derivedClasses.empty())
 		{

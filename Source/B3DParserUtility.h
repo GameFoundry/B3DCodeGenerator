@@ -19,20 +19,8 @@ public:
 	/** Returns true if the provided declaration is one of the builtin base types (e.g. component, resource, IReflectable). */
 	static bool IsBuiltinBaseType(const CXXRecordDecl* decl);
 
-	static void PostProcessFileInfos(CommentParser& commentParser);
-
 	static bool MapBuiltinPrimitiveTypeToCppType(BuiltinType::Kind kind, std::string& output);
 	static ApiFlags ParseAPIFromExportFlags(int exportFlags);
-
-private:
-	/** Splits a method with default parameters into multiple methods, if some of the parameter default values cannot be parsed. */
-	static void PostProcessDefaultParameters(MethodInfo& methodInfo, std::vector<MethodInfo>& newMethodInfos);
-
-	static void GatherIncludes(const VariableTypeInformation& typeInformation, bool isEditor, IncludesInfo& output);
-	static void GatherIncludes(const MethodInfo& methodInfo, bool isEditor, IncludesInfo& output);
-	static void GatherIncludes(const FieldInfo& fieldInfo, bool isEditor, IncludesInfo& output);
-	static void GatherIncludes(const ClassInfo& classInfo, IncludesInfo& output);
-	static void GatherIncludes(const StructInfo& structInfo, IncludesInfo& output);
 };
 
 /** Information used for controlling script export of a particular declaration. */

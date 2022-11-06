@@ -1711,8 +1711,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 					if (parsedMethodInfo.ExtensionOfType == "T")
 						parsedMethodInfo.ExtensionOfType = srcClassName;
 
-					ExternalClassInfos& infos = externalClassInfos[parsedMethodInfo.ExtensionOfType];
-					infos.Methods.push_back(methodInfo);
+					TypeLookup::RegisterExternalMethod(parsedMethodInfo.ExtensionOfType, methodInfo);
 				}
 				else
 					classInfo.Methods.push_back(methodInfo);
