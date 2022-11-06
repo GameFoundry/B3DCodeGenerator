@@ -410,7 +410,7 @@ struct CommentReference
 };
 
 /** Contains a single paragraph of comment text for a particular type, method, field or parameter. */
-struct CommentText
+struct CommentParagraph
 {
 	std::string Text;
 	SmallVector<CommentReference, 2> ParameterReferences; /**< Locations within @p text at which method parameters are referenced. Only relevant if the current comment is part of a method comment. */
@@ -421,16 +421,16 @@ struct CommentText
 struct CommentParameterEntry
 {
 	std::string Name; /**< Name of the parameter that's being commented. */
-	SmallVector<CommentText, 2> Comments; /**< Zero or multiple comment text paragraphs. */
+	SmallVector<CommentParagraph, 2> Comments; /**< Zero or multiple comment text paragraphs. */
 };
 
 /** Contains comment text for a particular type, method or field. */
 struct CommentEntry
 {
-	SmallVector<CommentText, 2> Brief; /**< Summary comment describing the type, method or field. */
+	SmallVector<CommentParagraph, 2> Brief; /**< Summary comment describing the type, method or field. */
 
 	SmallVector<CommentParameterEntry, 4> ParameterComments; /**< Comments for method parameters, if this is a method comment. */
-	SmallVector<CommentText, 2> ReturnValueComments; /**< Zero or multiple comment paragraphs describing method return value, if this is a method comment. */
+	SmallVector<CommentParagraph, 2> ReturnValueComments; /**< Zero or multiple comment paragraphs describing method return value, if this is a method comment. */
 };
 
 struct FieldInfo : VariableInformation

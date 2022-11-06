@@ -48,18 +48,13 @@ public:
 	void ResolveCopydocComments(CommentEntry& comment, const std::string& parentType, const SmallVector<std::string, 4>& currentNamespace);
 
 	/** Checks if any of the parameters referenced in the comment text don't exist in the actual parameter list, and if so, converts them to generic declaration references. */
-	static void EnsureValidParameterReferenceComments(const std::vector<VariableInformation>& paramInfos, CommentText& comment);
+	static void EnsureValidParameterReferenceComments(const std::vector<VariableInformation>& paramInfos, CommentParagraph& comment);
 
 	/** Checks if any of the parameters referenced in the comment don't exist in the actual parameter list, and if so, converts them to generic declaration references. */
 	static void EnsureValidParameterReferenceComments(const std::vector<VariableInformation>& paramInfos, CommentEntry& comment);
 
 	/** Clears any parameter references from the provided comment entry, and converts them to generic declaration references. */
 	static void ClearParameterReferenceComments(CommentEntry& comment);
-
-	// TODO - Move to XMLCommentGenerator class
-	static std::string GenerateXMLCommentText(const CommentText& commentTextEntry);
-	static std::string GenerateXMLCommentText(const SmallVector<CommentText, 2>& commentTextEntries);
-	static std::string GenerateXMLComments(const CommentEntry& commentEntry, const std::string& indent);
 private:
 	/** Parses information about the provided declaration, including type name and namespace. Performs additional parameter parsing in case this is a function declaration. */
 	void ParseCommentInfo(const NamedDecl* decl, CommentInformation& commentInfo);
