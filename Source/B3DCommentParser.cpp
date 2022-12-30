@@ -240,7 +240,7 @@ void CommentParser::ParseCommentMethodInfo(const FunctionDecl* decl, CommentInfo
 	if (decl->hasWrittenPrototype())
 		ft = dyn_cast<FunctionProtoType>(decl->getType()->castAs<FunctionProtoType>());
 
-	CommentMethodInformation methodInfo;
+	MethodCommentInformation methodInfo;
 	if (ft)
 	{
 		std::string currentNS = ParserUtility::GetNamespace(decl);
@@ -281,16 +281,16 @@ void CommentParser::ParseCommentMethodInfo(const FunctionDecl* decl, CommentInfo
 			else if (type->isPointerType())
 				typeStream << "*";
 
-			methodInfo.params.push_back(typeStream.str());
+			methodInfo.ParameterNames.push_back(typeStream.str());
 		}
 	}
 
-	commentInfo.overloads.push_back(methodInfo);
+	commentInfo.Overloads.push_back(methodInfo);
 }
 
 void CommentParser::ParseCommentInfo(const NamedDecl* decl, CommentInformation& commentInfo)
 {
-	commentInfo.isFunction = false;
+	commentInfo.IsMethod = false;
 
 	const DeclContext* context = decl->getDeclContext();
 	SmallVector<const NamedDecl *, 8> contexts;
@@ -311,7 +311,7 @@ void CommentParser::ParseCommentInfo(const NamedDecl* decl, CommentInformation& 
 		if (const auto* nd = dyn_cast<NamespaceDecl>(dc)) 
 		{
 			if (!nd->isAnonymousNamespace())
-				commentInfo.namespaces.push_back(nd->getDeclName().getAsString());
+				commentInfo.Namespaces.push_back(nd->getDeclName().getAsString());
 		}
 		else if (const auto* rd = dyn_cast<RecordDecl>(dc)) 
 		{
@@ -323,7 +323,7 @@ void CommentParser::ParseCommentInfo(const NamedDecl* decl, CommentInformation& 
 			ParseCommentMethodInfo(fd, commentInfo);
 
 			typeName.push_back(fd->getDeclName().getAsString());
-			commentInfo.isFunction = true;
+			commentInfo.IsMethod = true;
 		}
 		else if (const auto* ed = dyn_cast<EnumDecl>(dc)) {
 			if (ed->isScoped() || ed->getIdentifier())
@@ -344,57 +344,57 @@ void CommentParser::ParseCommentInfo(const NamedDecl* decl, CommentInformation& 
 		typeNameStream << typeName[i];
 	}
 
-	commentInfo.name = typeNameStream.str();
+	commentInfo.TypeName = typeNameStream.str();
 
 	std::stringstream fullTypeNameStream;
-	for(int i = 0; i < (int)commentInfo.namespaces.size(); i++)
+	for(int i = 0; i < (int)commentInfo.Namespaces.size(); i++)
 	{
 		if (i > 0)
 			fullTypeNameStream << "::";
 
-		fullTypeNameStream << commentInfo.namespaces[i];
+		fullTypeNameStream << commentInfo.Namespaces[i];
 	}
 
-	fullTypeNameStream << "::" << commentInfo.name;
-	commentInfo.fullName = fullTypeNameStream.str();
+	fullTypeNameStream << "::" << commentInfo.TypeName;
+	commentInfo.FullName = fullTypeNameStream.str();
 }
 
 void CommentParser::LookupOrParseComments(const NamedDecl* decl, CommentInformation& commentInfo)
 {
-	auto iterFind = mCommentLookupViaFullName.find(commentInfo.fullName);
+	auto iterFind = mCommentLookupViaFullName.find(commentInfo.FullName);
 	if (iterFind == mCommentLookupViaFullName.end())
 	{
 		bool hasComment;
-		if (commentInfo.isFunction)
-			hasComment = ParseComments(decl, commentInfo.overloads[0].comment);
+		if (commentInfo.IsMethod)
+			hasComment = ParseComments(decl, commentInfo.Overloads[0].Comment);
 		else
-			hasComment = ParseComments(decl, commentInfo.comment);
+			hasComment = ParseComments(decl, commentInfo.Comment);
 
 		if (!hasComment)
 			return;
 
-		mCommentLookupViaFullName[commentInfo.fullName] = (int)mCommentTypeInformation.size();
+		mCommentLookupViaFullName[commentInfo.FullName] = (int)mCommentTypeInformation.size();
 
-		SmallVector<int, 2>& entries = mCommentLookupViaTypeName[commentInfo.name];
+		SmallVector<int, 2>& entries = mCommentLookupViaTypeName[commentInfo.TypeName];
 		entries.push_back((int)mCommentTypeInformation.size());
 
 		mCommentTypeInformation.push_back(commentInfo);
 	}
-	else if(commentInfo.isFunction) // Can be an overload
+	else if(commentInfo.IsMethod) // Can be an overload
 	{
 		CommentInformation& existingInfo = mCommentTypeInformation[iterFind->second];
 
 		bool foundExisting = false;
-		for(auto& paramInfo : existingInfo.overloads)
+		for(auto& paramInfo : existingInfo.Overloads)
 		{
-			int numParams = paramInfo.params.size();
-			if (numParams != commentInfo.overloads[0].params.size())
+			int numParams = paramInfo.ParameterNames.size();
+			if (numParams != commentInfo.Overloads[0].ParameterNames.size())
 				continue;
 
 			bool paramsMatch = true;
 			for(int i = 0; i < numParams; i++)
 			{
-				if(paramInfo.params[i] != commentInfo.overloads[0].params[i])
+				if(paramInfo.ParameterNames[i] != commentInfo.Overloads[0].ParameterNames[i])
 				{
 					paramsMatch = false;
 					break;
@@ -410,9 +410,9 @@ void CommentParser::LookupOrParseComments(const NamedDecl* decl, CommentInformat
 
 		if(!foundExisting)
 		{
-			bool hasComment = ParseComments(decl, commentInfo.overloads[0].comment);
+			bool hasComment = ParseComments(decl, commentInfo.Overloads[0].Comment);
 			if (hasComment)
-				existingInfo.overloads.push_back(commentInfo.overloads[0]);
+				existingInfo.Overloads.push_back(commentInfo.Overloads[0]);
 		}
 	}
 }
@@ -444,10 +444,10 @@ void CommentParser::ParseAndRegisterAllComments(const CXXRecordDecl* decl)
 			if (const auto* fd = dyn_cast<FunctionDecl>(*I))
 			{
 				CommentInformation methodCommentInfo;
-				methodCommentInfo.isFunction = true;
-				methodCommentInfo.namespaces = commentInfo.namespaces;
-				methodCommentInfo.name = commentInfo.name + "::" + I->getDeclName().getAsString();
-				methodCommentInfo.fullName = commentInfo.fullName + "::" + I->getDeclName().getAsString();
+				methodCommentInfo.IsMethod = true;
+				methodCommentInfo.Namespaces = commentInfo.Namespaces;
+				methodCommentInfo.TypeName = commentInfo.TypeName + "::" + I->getDeclName().getAsString();
+				methodCommentInfo.FullName = commentInfo.FullName + "::" + I->getDeclName().getAsString();
 
 				ParseCommentMethodInfo(fd, methodCommentInfo);
 				LookupOrParseComments(fd, methodCommentInfo);
@@ -459,10 +459,10 @@ void CommentParser::ParseAndRegisterAllComments(const CXXRecordDecl* decl)
 			if (const auto* fd = dyn_cast<FieldDecl>(*I))
 			{
 				CommentInformation fieldCommentInfo;
-				fieldCommentInfo.isFunction = false;
-				fieldCommentInfo.namespaces = commentInfo.namespaces;
-				fieldCommentInfo.name = commentInfo.name + "::" + I->getDeclName().getAsString();
-				fieldCommentInfo.fullName = commentInfo.fullName + "::" + I->getDeclName().getAsString();
+				fieldCommentInfo.IsMethod = false;
+				fieldCommentInfo.Namespaces = commentInfo.Namespaces;
+				fieldCommentInfo.TypeName = commentInfo.TypeName + "::" + I->getDeclName().getAsString();
+				fieldCommentInfo.FullName = commentInfo.FullName + "::" + I->getDeclName().getAsString();
 
 				LookupOrParseComments(fd, fieldCommentInfo);
 			}
@@ -587,13 +587,13 @@ bool CommentParser::TryLookupComment(const std::string& value, const std::string
 	{
 		CommentInformation& curCommentInfo = mCommentTypeInformation[lookup[i]];
 
-		if (fullNS.size() != curCommentInfo.namespaces.size())
+		if (fullNS.size() != curCommentInfo.Namespaces.size())
 			continue;
 
 		bool matches = true;
-		for (int j = 0; j < (int)curCommentInfo.namespaces.size(); j++)
+		for (int j = 0; j < (int)curCommentInfo.Namespaces.size(); j++)
 		{
-			if (fullNS[j] != curCommentInfo.namespaces[j])
+			if (fullNS[j] != curCommentInfo.Namespaces[j])
 			{
 				matches = false;
 				break;
@@ -614,13 +614,13 @@ bool CommentParser::TryLookupComment(const std::string& value, const std::string
 		{
 			CommentInformation& curCommentInfo = mCommentTypeInformation[lookup[i]];
 
-			if (copydocNS.size() != curCommentInfo.namespaces.size())
+			if (copydocNS.size() != curCommentInfo.Namespaces.size())
 				continue;
 
 			bool matches = true;
-			for (int j = 0; j < (int)curCommentInfo.namespaces.size(); j++)
+			for (int j = 0; j < (int)curCommentInfo.Namespaces.size(); j++)
 			{
-				if (copydocNS[j] != curCommentInfo.namespaces[j])
+				if (copydocNS[j] != curCommentInfo.Namespaces[j])
 				{
 					matches = false;
 					break;
@@ -644,7 +644,7 @@ bool CommentParser::TryLookupComment(const std::string& value, const std::string
 	CommentInformation& finalCommentInfo = mCommentTypeInformation[lookup[entryMatch]];
 	if (hasParamList)
 	{
-		if (!finalCommentInfo.isFunction)
+		if (!finalCommentInfo.IsMethod)
 		{
 			outs() << "Warning: Cannot find identifier referenced by the @copydoc command: \"" << value << "\".\n";
 			return false;
@@ -657,15 +657,15 @@ bool CommentParser::TryLookupComment(const std::string& value, const std::string
 			paramSplits[i] = paramSplits[i].trim();
 
 		int overloadMatch = -1;
-		for (int i = 0; i < (int)finalCommentInfo.overloads.size(); i++)
+		for (int i = 0; i < (int)finalCommentInfo.Overloads.size(); i++)
 		{
-			if (paramSplits.size() != finalCommentInfo.overloads[i].params.size())
+			if (paramSplits.size() != finalCommentInfo.Overloads[i].ParameterNames.size())
 				continue;
 
 			bool matches = true;
 			for (int j = 0; j < (int)paramSplits.size(); j++)
 			{
-				if (paramSplits[j] != finalCommentInfo.overloads[i].params[j])
+				if (paramSplits[j] != finalCommentInfo.Overloads[i].ParameterNames[j])
 				{
 					matches = false;
 					break;
@@ -691,14 +691,14 @@ bool CommentParser::TryLookupComment(const std::string& value, const std::string
 			}
 		}
 
-		outputComment = finalCommentInfo.overloads[overloadMatch].comment;
+		outputComment = finalCommentInfo.Overloads[overloadMatch].Comment;
 		return true;
 	}
 
-	if (finalCommentInfo.isFunction)
-		outputComment = finalCommentInfo.overloads[0].comment;
+	if (finalCommentInfo.IsMethod)
+		outputComment = finalCommentInfo.Overloads[0].Comment;
 	else
-		outputComment = finalCommentInfo.comment;
+		outputComment = finalCommentInfo.Comment;
 
 	return true;
 }

@@ -184,31 +184,31 @@ void ScriptExportAttributeParser::ParseScriptExportAttributeCommand(const std::s
 	{
 		if (value == "Hide")
 		{
-			output.Style.SetFlag(StyleFlags::ForceHide);
+			output.MetaData.SetFlag(MetaDataFlags::ForceHideInInspector);
 		}
 		else if (value == "Show")
 		{
-			output.Style.SetFlag(StyleFlags::ForceShow);
+			output.MetaData.SetFlag(MetaDataFlags::ForceShowInInspector);
 		}
 		else if (value == "AsLayerMask")
 		{
-			output.Style.SetFlag(StyleFlags::AsLayerMask);
+			output.MetaData.SetFlag(MetaDataFlags::ShowAsLayerMask);
 		}
 		else if (value == "AsSlider")
 		{
-			output.Style.SetFlag(StyleFlags::AsSlider);
+			output.MetaData.SetFlag(MetaDataFlags::ShowAsSlider);
 		}
 		else if (value == "IsHDRColor")
 		{
-			output.Style.SetFlag(StyleFlags::HDR);
+			output.MetaData.SetFlag(MetaDataFlags::HDR);
 		}
 		else if (value == "AsQuaternion")
 		{
-			output.Style.SetFlag(StyleFlags::AsQuaternion);
+			output.MetaData.SetFlag(MetaDataFlags::AsQuaternion);
 		}
 		else if (value == "Inline")
 		{
-			output.Style.SetFlag(StyleFlags::Inline);
+			output.MetaData.SetFlag(MetaDataFlags::Inline);
 		}
 		else
 		{
@@ -218,22 +218,22 @@ void ScriptExportAttributeParser::ParseScriptExportAttributeCommand(const std::s
 	else if (name == "PassByCopy")
 	{
 		if (fnParseBoolean(value, false)) 
-			output.Style.SetFlag(StyleFlags::PassByCopy);
+			output.MetaData.SetFlag(MetaDataFlags::PassByCopy);
 	}
 	else if (name == "ApplyOnDirty")
 	{
 		if (fnParseBoolean(value, false)) 
-			output.Style.SetFlag(StyleFlags::ApplyOnDirty);
+			output.MetaData.SetFlag(MetaDataFlags::ApplyOnDirty);
 	}
 	else if (name == "LoadOnAssign")
 	{
 		if (fnParseBoolean(value, false)) 
-			output.Style.SetFlag(StyleFlags::LoadOnAssign);
+			output.MetaData.SetFlag(MetaDataFlags::LoadOnAssign);
 	}
 	else if (name == "NotNullable")
 	{
 		if (fnParseBoolean(value, false)) 
-			output.Style.SetFlag(StyleFlags::NotNull);
+			output.MetaData.SetFlag(MetaDataFlags::NotNull);
 	}
 	else if (name == "UIIncrementStep")
 	{
@@ -243,8 +243,8 @@ void ScriptExportAttributeParser::ParseScriptExportAttributeCommand(const std::s
 		}
 		else
 		{
-			output.Style.SetFlag(StyleFlags::Step);
-			output.Style.IncrementStep = (float)atof(value.c_str());
+			output.MetaData.SetFlag(MetaDataFlags::Step);
+			output.MetaData.IncrementStep = (float)atof(value.c_str());
 		}
 	}
 	else if (name == "UIValueRange")
@@ -302,9 +302,9 @@ void ScriptExportAttributeParser::ParseScriptExportAttributeCommand(const std::s
 					outs() << "Warning: Missing closing ] in value provided for script export option \"" << name << "\" on type \"" << typeName << "\". Value: " << value << "\n";
 				}
 
-				output.Style.SetFlag(StyleFlags::Range);
-				output.Style.RangeMinimum = firstValue;
-				output.Style.RangeMaximum = secondValue;
+				output.MetaData.SetFlag(MetaDataFlags::Range);
+				output.MetaData.RangeMinimum = firstValue;
+				output.MetaData.RangeMaximum = secondValue;
 			}
 		}
 	}
@@ -316,8 +316,8 @@ void ScriptExportAttributeParser::ParseScriptExportAttributeCommand(const std::s
 		}
 		else
 		{
-			output.Style.StyleFlags |= (int)StyleFlags::Order;
-			output.Style.UIOrder = atoi(value.c_str());
+			output.MetaData.Flags |= (int)MetaDataFlags::Order;
+			output.MetaData.UIOrder = atoi(value.c_str());
 		}
 	}
 	else if (name == "UICategory")
@@ -328,8 +328,8 @@ void ScriptExportAttributeParser::ParseScriptExportAttributeCommand(const std::s
 		}
 		else
 		{
-			output.Style.StyleFlags |= (int)StyleFlags::Category;
-			output.Style.UICategory = value;
+			output.MetaData.Flags |= (int)MetaDataFlags::Category;
+			output.MetaData.UICategory = value;
 		}
 	}
 	else

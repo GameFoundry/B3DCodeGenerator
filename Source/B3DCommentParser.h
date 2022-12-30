@@ -56,6 +56,27 @@ public:
 	/** Clears any parameter references from the provided comment entry, and converts them to generic declaration references. */
 	static void ClearParameterReferenceComments(CommentEntry& comment);
 private:
+
+	/** Parsed comment information for a single method. */
+	struct MethodCommentInformation
+	{
+		SmallVector<std::string, 3> ParameterNames; /**< Name of the method parameters. */
+		CommentEntry Comment; /**< Comments for the overload. */
+	};
+
+	/** Parsed comments for a single declaration. */
+	struct CommentInformation
+	{
+		std::string TypeName; /**< Type name of the declaration. */
+		std::string FullName; /**< Type name of the declaration, including the namespace. */
+
+		SmallVector<std::string, 2> Namespaces; /**< Namespace of the declaration type. */
+		SmallVector<MethodCommentInformation, 2> Overloads; /**< If the declaration represents a method, this will contain comments for overloads of that method. */
+
+		CommentEntry Comment; /**< Documentation comment for the declaration. */
+		bool IsMethod = false; /**< True if the declaration represents a method. If true, the documentation should be looked up in the Overloads array, otherwise it can be found in Comment field. */
+	};
+
 	/** Parses information about the provided declaration, including type name and namespace. Performs additional parameter parsing in case this is a function declaration. */
 	void ParseCommentInfo(const NamedDecl* decl, CommentInformation& commentInfo);
 

@@ -130,42 +130,42 @@ static bool IsInternalMethodParameterValueType(const VariableTypeInformation& ty
 }
 
 /**
- * Generates C# attributes that control property or field style.
+ * Generates C# attributes that represent property or field meta-data.
  *
- * @param	style						Information about the style attributes to generate.
+ * @param	metaData					Information about the metaData attributes to generate.
  * @param	typeInformation				Native type we're generating the attributes for.
  * @param	typeMappingInformation		Mapping of the provided type in script.
  * @param	isGeneratingStructFields	True if we're generating struct fields, false if generating properties.
  */
-static std::string GenerateCSharpStyleAttributes(const ExportStyle& style, const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation, bool isGeneratingStructFields)
+static std::string GenerateCSharpMetaDataAttributes(const MemberMetaData& metaData, const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation, bool isGeneratingStructFields)
 {
 	std::stringstream output;
 
-	if(((style.StyleFlags & (int)StyleFlags::AsLayerMask) != 0) && typeMappingInformation.IsInt64())
+	if(((metaData.Flags & (int)MetaDataFlags::ShowAsLayerMask) != 0) && typeMappingInformation.IsInt64())
 		output << "\t\t[LayerMask]\n";
 
-	if ((style.StyleFlags & (int)StyleFlags::Step) != 0)
-		output << "\t\t[Step(" << style.IncrementStep << "f)]\n";
+	if ((metaData.Flags & (int)MetaDataFlags::Step) != 0)
+		output << "\t\t[Step(" << metaData.IncrementStep << "f)]\n";
 
-	if ((style.StyleFlags & (int)StyleFlags::Range) != 0)
+	if ((metaData.Flags & (int)MetaDataFlags::Range) != 0)
 	{
-		std::string isSlider = ((style.StyleFlags & (int)StyleFlags::AsSlider) != 0) ? "true" : "false";
-		output << "\t\t[Range(" << style.RangeMinimum << "f, " << style.RangeMaximum << "f, " << isSlider << ")]\n";
+		std::string isSlider = ((metaData.Flags & (int)MetaDataFlags::ShowAsSlider) != 0) ? "true" : "false";
+		output << "\t\t[Range(" << metaData.RangeMinimum << "f, " << metaData.RangeMaximum << "f, " << isSlider << ")]\n";
 	}
-	else if ((style.StyleFlags & (int)StyleFlags::AsSlider) != 0)
+	else if ((metaData.Flags & (int)MetaDataFlags::ShowAsSlider) != 0)
 		output << "\t\t[Range(float.MinValue, float.MaxValue, true)]\n";
 
-	if(((style.StyleFlags & (int)StyleFlags::Order) != 0))
-		output << "\t\t[Order(" << style.UIOrder << ")]\n";
+	if(((metaData.Flags & (int)MetaDataFlags::Order) != 0))
+		output << "\t\t[Order(" << metaData.UIOrder << ")]\n";
 
-	if(((style.StyleFlags & (int)StyleFlags::Category) != 0))
-		output << "\t\t[Category(\"" << style.UICategory << "\")]\n";
+	if(((metaData.Flags & (int)MetaDataFlags::Category) != 0))
+		output << "\t\t[Category(\"" << metaData.UICategory << "\")]\n";
 
-	if(((style.StyleFlags & (int)StyleFlags::Inline) != 0))
+	if(((metaData.Flags & (int)MetaDataFlags::Inline) != 0))
 		output << "\t\t[Inline]\n";
 
-	bool notNull = (style.StyleFlags & (int)StyleFlags::NotNull) != 0;
-	bool passByCopy = (style.StyleFlags & (int)StyleFlags::PassByCopy) != 0;
+	bool notNull = (metaData.Flags & (int)MetaDataFlags::NotNull) != 0;
+	bool passByCopy = (metaData.Flags & (int)MetaDataFlags::PassByCopy) != 0;
 
 	const bool isPassedByValue = IsInternalMethodParameterValueType(typeInformation);
 	if(!isGeneratingStructFields && (typeMappingInformation.IsClassType() && isPassedByValue))
@@ -180,16 +180,16 @@ static std::string GenerateCSharpStyleAttributes(const ExportStyle& style, const
 	if(passByCopy)
 		output << "\t\t[PassByCopy]\n";
 
-	if(((style.StyleFlags & (int)StyleFlags::ApplyOnDirty) != 0))
+	if(((metaData.Flags & (int)MetaDataFlags::ApplyOnDirty) != 0))
 		output << "\t\t[ApplyOnDirty]\n";
 
-	if(((style.StyleFlags & (int)StyleFlags::AsQuaternion) != 0))
+	if(((metaData.Flags & (int)MetaDataFlags::AsQuaternion) != 0))
 		output << "\t\t[AsQuaternion]\n";
 
-	if(((style.StyleFlags & (int)StyleFlags::LoadOnAssign) != 0))
+	if(((metaData.Flags & (int)MetaDataFlags::LoadOnAssign) != 0))
 		output << "\t\t[LoadOnAssign]\n";
 
-	if(((style.StyleFlags & (int)StyleFlags::HDR) != 0))
+	if(((metaData.Flags & (int)MetaDataFlags::HDR) != 0))
 		output << "\t\t[HDR]\n";
 
 	return output.str();
@@ -660,16 +660,16 @@ static std::string GenerateCSharpClass(const ClassInfo& classInformation)
 			!entry.SetterName.empty();
 		if (defaultVisible)
 		{
-			if ((entry.Style.StyleFlags & (int)StyleFlags::ForceHide) == 0)
+			if ((entry.MetaData.Flags & (int)MetaDataFlags::ForceHideInInspector) == 0)
 				properties << "\t\t[ShowInInspector]" << std::endl;
 		}
 		else
 		{
-			if ((entry.Style.StyleFlags & (int)StyleFlags::ForceShow) != 0)
+			if ((entry.MetaData.Flags & (int)MetaDataFlags::ForceShowInInspector) != 0)
 				properties << "\t\t[ShowInInspector]" << std::endl;
 		}
 
-		properties << GenerateCSharpStyleAttributes(entry.Style, entry.TypeInformation, propertyTypeMappingInformation, false);
+		properties << GenerateCSharpMetaDataAttributes(entry.MetaData, entry.TypeInformation, propertyTypeMappingInformation, false);
 
 		properties << "\t\t[NativeWrapper]\n";
 
@@ -1044,9 +1044,9 @@ static std::string GenerateCSharpStruct(const StructInfo& input)
 		}
 
 		output << XMLCommentGenerator::GenerateXMLComment(fieldInformation.Documentation, "\t\t");
-		output << GenerateCSharpStyleAttributes(fieldInformation.Style, fieldInformation.TypeInformation, fieldTypeMappingInformation, true);
+		output << GenerateCSharpMetaDataAttributes(fieldInformation.MetaData, fieldInformation.TypeInformation, fieldTypeMappingInformation, true);
 
-		if ((fieldInformation.Style.StyleFlags & (int)StyleFlags::ForceHide) != 0)
+		if ((fieldInformation.MetaData.Flags & (int)MetaDataFlags::ForceHideInInspector) != 0)
 			output << "\t\t[HideInInspector]" << std::endl;
 
 		output << "\t\tpublic ";

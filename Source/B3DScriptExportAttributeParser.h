@@ -1,6 +1,7 @@
 #pragma once
 #include "B3DCommon.h"
 
+/** Flags generated as part of the script export attribute parsing step. */
 enum class ExportFlags
 {
 	None = 0,
@@ -25,7 +26,7 @@ struct ScriptExportInformation
 	std::string DocumentationGroup; /**< Name of the documentation group to wrap the generated code in. */
 	CSVisibility Visibility = CSVisibility::Public; /**< Visibility of the declaration in generated code. */
 	int ExportFlags = 0; /**< Various flags controlling export. */
-	ExportStyle Style; /**< Additional settings controlling how is the exported declaration API generated. */
+	MemberMetaData MetaData; /**< Additional settings controlling how is the exported declaration API generated. */
 
 	void SetExportFlag(enum ExportFlags flag) { ExportFlags |= (int)flag; }
 };

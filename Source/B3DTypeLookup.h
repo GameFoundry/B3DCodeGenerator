@@ -91,7 +91,7 @@ struct IncludesInfo
 	bool RequiresRTTI = false; /**< Requires use of RTTIType. */
 	bool RequiresAsyncOp = false; /**< Requires use of an AsyncOp. */
 	std::unordered_map<std::string, IncludeInfo> Includes;
-	std::unordered_map<std::string, ForwardDeclInfo> ForwardDeclarations;
+	std::unordered_map<std::string, ForwardDeclarationInformation> ForwardDeclarations;
 };
 /** Contains information about types we're generating code for, and mapping between native and script types. */
 class TypeLookup

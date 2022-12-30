@@ -1094,7 +1094,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 			auto ctorIter = decl->ctor_begin();
 			while (ctorIter != decl->ctor_end())
 			{
-				SimpleConstructorInfo ctorInfo;
+				StructConstructorInfo ctorInfo;
 				CXXConstructorDecl* ctorDecl = *ctorIter;
 
 				if (ctorDecl->isImplicit())
@@ -1335,7 +1335,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 						continue;
 					}
 
-					fieldInfo.Style = parsedFieldInfo.Style;
+					fieldInfo.MetaData = parsedFieldInfo.MetaData;
 				}
 
 				auto iterFind = defaultFieldValues.find(fieldDecl);
@@ -1406,7 +1406,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 
 		// If struct has in-class default values assigned, but no explicit constructors, add a parameterless constructor
 		if (structInfo.Constructors.empty() && hasDefaultValue)
-			structInfo.Constructors.push_back(SimpleConstructorInfo());
+			structInfo.Constructors.push_back(StructConstructorInfo());
 
 		std::string declFile = astContext->getSourceManager().getFilename(decl->getSourceRange().getBegin()).str();
 		TypeLookup::RegisterNativeToScriptTypeMapping(structInfo.Namespace, srcClassName, declFile, parsedClassInfo.ExportedTypeName, parsedClassInfo.ExportedFileName, structInfo.API, ExportedClassTypeCategory::Struct);
@@ -1431,7 +1431,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 
 		ParseNamespace(decl, classInfo.Namespace);
 
-		if ((parsedClassInfo.Style.StyleFlags & (int)StyleFlags::ForceHide) != 0)
+		if ((parsedClassInfo.MetaData.Flags & (int)MetaDataFlags::ForceHideInInspector) != 0)
 			classInfo.ClassFlags |= (int)ClassFlags::HideInInspector;
 
 		if (specDecl != nullptr)
@@ -1586,7 +1586,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 				methodInfo.ExternalClass = srcClassName;
 				methodInfo.Visibility = parsedMethodInfo.Visibility;
 				methodInfo.API = ParserUtility::ParseAPIFromExportFlags(parsedMethodInfo.ExportFlags);
-				methodInfo.Style = parsedMethodInfo.Style;
+				methodInfo.MetaData = parsedMethodInfo.MetaData;
 				mCommentParser.ParseComments(methodDecl, methodInfo.Documentation);
 
 				bool isProperty = (parsedMethodInfo.ExportFlags & ((int)ExportFlags::PropertyGetter | (int)ExportFlags::PropertySetter));
@@ -1758,7 +1758,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 					if (fieldDecl->getAccess() != AS_public)
 						outs() << "Error: Exported field \"" + fieldInfo.Name + "\" isn't public. This will likely result in invalid code generation.";
 
-					fieldInfo.Style = parsedFieldInfo.Style;
+					fieldInfo.MetaData = parsedFieldInfo.MetaData;
 
 					mCommentParser.ParseComments(fieldDecl, fieldInfo.Documentation);
 					CommentParser::ClearParameterReferenceComments(fieldInfo.Documentation);
@@ -1772,7 +1772,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 					getterInfo.Visibility = parsedFieldInfo.Visibility;
 					getterInfo.API = ParserUtility::ParseAPIFromExportFlags(parsedFieldInfo.ExportFlags);
 					getterInfo.MethodFlags = (int)MethodFlags::PropertyGetter | (int)MethodFlags::FieldWrapper;
-					getterInfo.Style = fieldInfo.Style;
+					getterInfo.MetaData = fieldInfo.MetaData;
 
 					getterInfo.ReturnValue.TypeInformation = fieldInfo.TypeInformation;
 					ParseParameterOrFieldAttribute(fieldDecl, true, getterInfo.ReturnValue.TypeInformation);
@@ -1794,7 +1794,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 					setterInfo.Visibility = parsedFieldInfo.Visibility;
 					setterInfo.API = ParserUtility::ParseAPIFromExportFlags(parsedFieldInfo.ExportFlags);
 					setterInfo.MethodFlags = (int)MethodFlags::PropertySetter | (int)MethodFlags::FieldWrapper;
-					setterInfo.Style = fieldInfo.Style;
+					setterInfo.MetaData = fieldInfo.MetaData;
 
 					if ((parsedFieldInfo.ExportFlags & (int)ExportFlags::InteropOnly) != 0)
 						setterInfo.MethodFlags |= (int)MethodFlags::InteropOnly;

@@ -50,7 +50,7 @@ private:
 	 * @param indent			Indent level of the generated code.
 	 * @return					Generated XML entry.
 	 */
-	static std::string GenerateXMLMethodInfo(const SimpleConstructorInfo& constructorInfo, const std::string& indent);
+	static std::string GenerateXMLMethodInfo(const StructConstructorInfo& constructorInfo, const std::string& indent);
 
 	/**
 	 * Generates mapping information for a property.

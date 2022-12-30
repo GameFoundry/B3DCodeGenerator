@@ -73,7 +73,7 @@ std::string XMLMappingGenerator::GenerateXMLMethodInfo(const MethodInfo& methodI
 	return output.str();
 }
 
-std::string XMLMappingGenerator::GenerateXMLMethodInfo(const SimpleConstructorInfo& constructorInfo, const std::string& indent)
+std::string XMLMappingGenerator::GenerateXMLMethodInfo(const StructConstructorInfo& constructorInfo, const std::string& indent)
 {
 	std::stringstream output;
 	output << indent << "<ctor>\n";

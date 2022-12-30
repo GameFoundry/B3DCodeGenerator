@@ -667,7 +667,7 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 				propertyInfo.IsStatic = methodInfo.IsFlagSet(MethodFlags::Static);
 				propertyInfo.Visibility = methodInfo.Visibility;
 				propertyInfo.API = methodInfo.API;
-				propertyInfo.Style = methodInfo.Style;
+				propertyInfo.MetaData = methodInfo.MetaData;
 
 				if (isGetter)
 				{
@@ -708,7 +708,7 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 					else
 					{
 						existingInfo.SetterName = propertyInfo.SetterName;
-						existingInfo.Style = propertyInfo.Style; // Always prefer style flags from the setter
+						existingInfo.MetaData = propertyInfo.MetaData; // Always prefer style flags from the setter
 
 						if (!propertyInfo.Documentation.Brief.empty())
 							existingInfo.Documentation = propertyInfo.Documentation;
@@ -930,7 +930,7 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 			{
 				const TypeMappingInformation& typeInfo = TypeLookup::GetNativeToScriptTypeMapping(classInfo.NativeName);
 
-				fileInfo.second.ForwardDeclarations.insert(ForwardDeclInfo(classInfo.NativeNameWithoutTemplateArguments, classInfo.Namespace, classInfo.TemplateParameters, classInfo.IsFlagSet(ClassFlags::IsStruct)));
+				fileInfo.second.ForwardDeclarations.insert(ForwardDeclarationInformation(classInfo.NativeNameWithoutTemplateArguments, classInfo.Namespace, classInfo.TemplateParameters, classInfo.IsFlagSet(ClassFlags::IsStruct)));
 
 				if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource)
 					fileInfo.second.ReferencedHeaderIncludes.push_back("Wrappers/BsScriptResource.h");
@@ -1000,7 +1000,7 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 					std::string include = entry.second.TypeMappingInfo.NativeFile;
 
 					if ((originFlags & (uint32_t)IncludeType::ForwardDeclare) != 0)
-						fileInfo.second.ForwardDeclarations.insert(ForwardDeclInfo(entry.second.NativeTypeName, entry.second.TypeMappingInfo.NativeNamespace, {}, entry.second.IsStruct));
+						fileInfo.second.ForwardDeclarations.insert(ForwardDeclarationInformation(entry.second.NativeTypeName, entry.second.TypeMappingInfo.NativeNamespace, {}, entry.second.IsStruct));
 
 					if((originFlags & (uint32_t)IncludeType::IncludeInImplementation) != 0)
 						fileInfo.second.ReferencedSourceIncludes.push_back(include);
@@ -1019,7 +1019,7 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 					if ((interopFlags & (uint32_t)IncludeType::ForwardDeclare) != 0)
 					{
 						if(entry.second.IsEditor)
-							fileInfo.second.ForwardDeclarations.insert(ForwardDeclInfo(entry.second.NativeTypeName, entry.second.TypeMappingInfo.NativeNamespace));
+							fileInfo.second.ForwardDeclarations.insert(ForwardDeclarationInformation(entry.second.NativeTypeName, entry.second.TypeMappingInfo.NativeNamespace));
 					}
 
 					if(!include.empty())
@@ -1192,7 +1192,7 @@ void TypeLookup::GatherIncludes(const VariableTypeInformation& typeInformation, 
 	}
 
 	if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Struct && underlyingTypeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsStructWrapperUsed))
-		output.ForwardDeclarations[typeName] = ForwardDeclInfo(GetStructInteropTypeName(typeName), typeMappingInformation.NativeNamespace, {}, true);
+		output.ForwardDeclarations[typeName] = ForwardDeclarationInformation(GetStructInteropTypeName(typeName), typeMappingInformation.NativeNamespace, {}, true);
 
 	if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Resource)
 	{
