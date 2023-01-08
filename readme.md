@@ -12,8 +12,8 @@ Build Clang:
  - Follow guide here: https://clang.llvm.org/get_started.html
  - In short:
   - git clone https://github.com/llvm/llvm-project.git
-  - git checkout llvmorg-15.0.1 (Or tag matching the release you wish to compile)
   - cd llvm-project
+  - git checkout llvmorg-15.0.1 (Or tag matching the release you wish to compile)
   - mkdir build
   - cd build
   - cmake -DLLVM_ENABLE_PROJECTS=clang -DCMAKE_INSTALL_PREFIX="F:/ThirdParty/llvm-15-install" -DLLVM_ENABLE_EH=ON -DLLVM_ENABLE_RTTI=ON -Thost=x64 ..\llvm

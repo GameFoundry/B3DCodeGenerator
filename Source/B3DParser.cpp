@@ -1349,7 +1349,10 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 				{
 					Expr* initExpr = fieldDecl->getInClassInitializer();
 
-					TryEvaluateExpression(initExpr, fieldInfo.DefaultValue, fieldInfo.DefaultValueType);
+					if (initExpr != nullptr)
+					{
+						TryEvaluateExpression(initExpr, fieldInfo.DefaultValue, fieldInfo.DefaultValueType);
+					}
 				}
 
 				std::string typeName;

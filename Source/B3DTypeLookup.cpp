@@ -479,7 +479,7 @@ std::string TypeLookup::GetScriptInteropTypeName(const std::string& typeName, bo
 	if (!isValidInteropType)
 		outs() << "Error: Type \"" << typeName << "\" referenced as a script interop type, but script interop object cannot be generated for this object type.\n";
 
-	std::string cleanName = CleanTemplateParameters(typeName);
+	std::string cleanName = iterFind->second.ScriptTypeName;
 
 	if(isResourceReference)
 	{

@@ -206,7 +206,7 @@ static std::string GenerateGetInternalCallLine(const VariableTypeInformation& ty
 		output << "static_cast<" << nativeTypeName << "*>(" << variableName << "->GetGuiElement())";
 	else // Must be one of the handle types
 	{
-		assert(isHandleType(typeMappingInformation.TypeCategory));
+		assert(typeMappingInformation.IsHandleType());
 
 		if (!isReferencingBaseClass || isPassingAsResourceReference)
 		{
