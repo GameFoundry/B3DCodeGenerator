@@ -379,20 +379,9 @@ inline bool IsAPIValid(ApiFlags api, bool editor)
 /** Removes C++ templates parameters from the provided type name. */
 inline std::string CleanTemplateParameters(const std::string& name)
 {
-	std::string cleanName;
-	int lBracket = name.find_first_of('<');
-	if (lBracket != -1)
-	{
-		cleanName = name.substr(0, lBracket);
-
-		int rBracket = name.find_last_of('>');
-		if (rBracket != -1 && rBracket > lBracket)
-			cleanName += name.substr(lBracket + 1, rBracket - lBracket - 1);
-		else
-			cleanName += name.substr(lBracket + 1, name.size() - rBracket - 1);
-	}
-	else
-		cleanName = name;
+	std::string cleanName = name;
+	std::replace(cleanName.begin(), cleanName.end(), '<', '_');
+	std::replace(cleanName.begin(), cleanName.end(), '>', '_');
 
 	return cleanName;
 }

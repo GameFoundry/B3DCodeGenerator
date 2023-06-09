@@ -504,16 +504,12 @@ bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, Variabl
 
 		std::string sourceTypeName = recordDecl->getName().str();
 
-		// Handle special templated types
-		const TemplateSpecializationType* specType = realType->getAs<TemplateSpecializationType>();
-		if (specType != nullptr)
+		// Handle specialized template types
+		const ClassTemplateSpecializationDecl* const specDecl = dyn_cast<ClassTemplateSpecializationDecl>(recordDecl);
+		if (specDecl != nullptr)
 		{
-			int numArgs = specType->getNumArgs();
-			if (numArgs > 0)
-			{
-				// Handle generic template specializations
-				sourceTypeName += ParseTemplateArguments(sourceTypeName, specType->getArgs(), specType->getNumArgs(), nullptr);
-			}
+			auto& templateInstantiationArguments = specDecl->getTemplateInstantiationArgs();
+			sourceTypeName += ParseTemplateArguments(sourceTypeName, templateInstantiationArguments.data(), templateInstantiationArguments.size(), nullptr);
 		}
 		else
 		{

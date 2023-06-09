@@ -202,14 +202,14 @@ int main(int argc, const char** argv)
 	// Note: I could auto-generate C++ wrappers for these types
 	SmallVector<std::string, 4> frameworkNamespace = { sFrameworkCppNs };
 	
-	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Vector2", "Math/BsVector2.h", "Vector2", "Wrappers/BsScriptVector.h", ExportedClassTypeCategory::Struct);
-	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Vector3", "Math/BsVector3.h", "Vector3", "Wrappers/BsScriptVector.h", ExportedClassTypeCategory::Struct);
-	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Vector4", "Math/BsVector4.h", "Vector4", "Wrappers/BsScriptVector.h", ExportedClassTypeCategory::Struct);
+	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "TVector2<float>", "Math/BsVector2.h", "Vector2", "Wrappers/BsScriptVector.h", ExportedClassTypeCategory::Struct);
+	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "TVector3<float>", "Math/BsVector3.h", "Vector3", "Wrappers/BsScriptVector.h", ExportedClassTypeCategory::Struct);
+	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "TVector4<float>", "Math/BsVector4.h", "Vector4", "Wrappers/BsScriptVector.h", ExportedClassTypeCategory::Struct);
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Matrix3", "Math/BsMatrix3.h", "Matrix3", "", ExportedClassTypeCategory::Struct);
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Matrix4", "Math/BsMatrix4.h", "Matrix4", "", ExportedClassTypeCategory::Struct);
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Quaternion", "Math/BsQuaternion.h", "Quaternion", "Wrappers/BsScriptQuaternion.h", ExportedClassTypeCategory::Struct);
-	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Radian", "Math/BsRadian.h", "Radian", "", ExportedClassTypeCategory::Struct);
-	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Degree", "Math/BsDegree.h", "Degree", "", ExportedClassTypeCategory::Struct);
+	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "TRadian<float>", "Math/BsRadian.h", "Radian", "", ExportedClassTypeCategory::Struct);
+	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "TDegree<float>", "Math/BsDegree.h", "Degree", "", ExportedClassTypeCategory::Struct);
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Color", "Image/BsColor.h", "Color", "Wrappers/BsScriptColor.h", ExportedClassTypeCategory::Struct);
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "AABox", "Math/BsAABox.h", "AABox", "", ExportedClassTypeCategory::Struct);
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Sphere", "Math/BsSphere.h", "Sphere", "", ExportedClassTypeCategory::Struct);
