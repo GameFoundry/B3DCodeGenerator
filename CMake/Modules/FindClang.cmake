@@ -14,6 +14,7 @@ set(clang_BINARY_SEARCH_DIRS "${clang_INSTALL_DIR}/bin")
 message(STATUS "Looking for Clang & LLVM installation...")
 find_path(clang_INCLUDE_DIR llvm/Pass.h PATHS "${clang_INCLUDE_SEARCH_DIRS}")
 
+mark_as_advanced(clang_INSTALL_DIR)
 mark_as_advanced(clang_INCLUDE_DIR)
 
 if(clang_INCLUDE_DIR)
