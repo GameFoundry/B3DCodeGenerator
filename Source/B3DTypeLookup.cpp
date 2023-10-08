@@ -436,7 +436,8 @@ TypeMappingInformation TypeLookup::GetNativeToScriptTypeMapping(const VariableTy
 	}
 	// Just forward the type resolve to the underlying type. Note we don't support nested vectors, arrays or shared pointers
 	case VariableTypeCategory::Vector:
-	case VariableTypeCategory::SmallVector:
+	case VariableTypeCategory::TInlineArray:
+	case VariableTypeCategory::TArray:
 	case VariableTypeCategory::Array:
 	case VariableTypeCategory::GameObjectHandle:
 	case VariableTypeCategory::ComponentOrActor:

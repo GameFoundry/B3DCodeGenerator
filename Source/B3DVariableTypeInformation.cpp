@@ -66,7 +66,8 @@ const std::string& VariableTypeInformation::GetFirstWrappedOrSelfTypeName() cons
 	case VariableTypeCategory::Path:
 		return TypeName;
 	case VariableTypeCategory::Vector:
-	case VariableTypeCategory::SmallVector:
+	case VariableTypeCategory::TInlineArray:
+	case VariableTypeCategory::TArray:
 	case VariableTypeCategory::Array:
 	case VariableTypeCategory::SharedPointer:
 	case VariableTypeCategory::ResourceHandle:

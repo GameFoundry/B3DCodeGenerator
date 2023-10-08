@@ -234,42 +234,67 @@ bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, Variabl
 				outType.UnderlyingType = std::make_unique<VariableTypeInformation>(std::move(underlyingTypeInformation));
 				return true;
 			}
-			else if(sourceTypeName == "SmallVector")
+			else if(sourceTypeName == "TArray")
 			{
-				outType.TypeName = "SmallVector";
-				outType.TypeCategory = VariableTypeCategory::SmallVector;
+				QualType aliasedType = specType->getAliasedType();
+				specType = aliasedType->getAs<TemplateSpecializationType>(); // TODO - Move this above, we always want to work on the aliased type
 
-				uint32_t smallVectorSize = 0;
-				if(numArgs > 1)
+				QualType allocatorType = specType->getArg(1).getAsType();
+				VariableTypeInformation allocatorTypeInformation;
+				if (!ParseTypeInformation(allocatorType, allocatorTypeInformation))
 				{
-					std::string tmplArgExprValue, exprType;
-					if (TryEvaluateExpression(specType->getArg(1).getAsExpr(), tmplArgExprValue, exprType))
-					{
-						try
-						{
-							smallVectorSize = std::stoi(tmplArgExprValue);
-						}
-						catch(const std::invalid_argument& ex)
-						{
-							errs() << "Error: Cannot convert SmallVector size template argument to a number, ignoring it.\n";
-						}
-						catch(const std::out_of_range& ex)
-						{
-							errs() << "Error: Cannot convert SmallVector size template argument to a number, ignoring it.\n";
-						}
-						
-					}
-					else
-						errs() << "Error: Template argument for SmallVector cannot be constantly evaluated, ignoring it.\n";
+					outs() << "Error: Failed parsing underlying TArray<T> allocator.\n";
+					return false;
 				}
 
-				outType.ArraySize = smallVectorSize;
+				const RecordType* allocatorRecordType = allocatorType->getAs<RecordType>();
+				const RecordDecl* allocatorRecordDecl = allocatorRecordType->getDecl();
+				std::string allocatorTypeName = allocatorRecordDecl->getName().str();
+
+				if(allocatorTypeName == "InlineContainerAllocator")
+				{
+					outType.TypeName = "TInlineArray";
+					outType.TypeCategory = VariableTypeCategory::TInlineArray;
+
+					const TemplateSpecializationType* allocatorSpecializationType = allocatorType->getAs<TemplateSpecializationType>();
+
+					uint32_t inlineVectorSize = 0;
+					if(allocatorSpecializationType->getNumArgs() > 0)
+					{
+						std::string tmplArgExprValue, exprType;
+						if (TryEvaluateExpression(allocatorSpecializationType->getArg(0).getAsExpr(), tmplArgExprValue, exprType))
+						{
+							try
+							{
+								inlineVectorSize = std::stoi(tmplArgExprValue);
+							}
+							catch(const std::invalid_argument& ex)
+							{
+								errs() << "Error: Cannot convert TInlineArray size template argument to a number, ignoring it.\n";
+							}
+							catch(const std::out_of_range& ex)
+							{
+								errs() << "Error: Cannot convert TInlineArray size template argument to a number, ignoring it.\n";
+							}
+							
+						}
+						else
+							errs() << "Error: Template argument for TInlineArray cannot be constantly evaluated, ignoring it.\n";
+					}
+
+					outType.ArraySize = inlineVectorSize;
+				}
+				else
+				{
+					outType.TypeName = "TArray";
+					outType.TypeCategory = VariableTypeCategory::TArray;
+				}
 
 				QualType underlyingType = specType->getArg(0).getAsType();
 				VariableTypeInformation underlyingTypeInformation;
 				if (!ParseTypeInformation(underlyingType, underlyingTypeInformation))
 				{
-					errs() << "Error: Failed parsing underlying SmallVector<T> type.\n";
+					errs() << "Error: Failed parsing underlying TArray<T> type.\n";
 					return false;
 				}
 

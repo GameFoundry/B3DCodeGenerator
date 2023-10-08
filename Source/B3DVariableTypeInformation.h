@@ -17,7 +17,8 @@ enum class VariableTypeCategory
 	ComponentOrActor, /**< ComponentOrActor<T>. Will also provide an underlying type information for T. */
 	Path, /**< Path */
 	AsyncOp, /**< AsyncOp<T>. Will also provide an underlying type information for T. */
-	SmallVector, /**< SmallVector<T>. Will also provide an underlying type information for T. */
+	TInlineArray, /**< TArray<T, InlineContainerAllocator<Size>>. Will also provide an underlying type information for T. */
+	TArray, /**< TArray<T>. Will also provide an underlying type information for T. */
 };
 
 /** Qualifiers applied to a type in VariableTypeInformation. */
@@ -65,10 +66,10 @@ struct VariableTypeInformation
 	/** Returns true if the variable type is a non-const pointer or reference, which is recognized as a parameter output. */
 	bool IsOutputParameter() const { return (IsQualifierFlagSet(VariableQualifierFlags::IsPointer) || IsQualifierFlagSet(VariableQualifierFlags::IsReference)) && !IsQualifierFlagSet(VariableQualifierFlags::IsConst); }
 
-	/** Checks if the type category of the vector a native array, Vector, or SmallVector. */
-	bool IsArrayOrVector() const
+	/** Checks if the type category of the vector a native array, Vector, or TArray. If @p includeNative is false, native arrays won't be counted. */
+	bool IsArrayOrVector(bool includeNative = true) const
 	{
-		return TypeCategory == VariableTypeCategory::Array || TypeCategory == VariableTypeCategory::SmallVector || TypeCategory == VariableTypeCategory::Vector;
+		return (includeNative && TypeCategory == VariableTypeCategory::Array) || TypeCategory == VariableTypeCategory::TInlineArray || TypeCategory == VariableTypeCategory::TArray || TypeCategory == VariableTypeCategory::Vector;
 	}
 
 	/** Checks if the type category is a shared pointer, resource handle or a game object handle. */

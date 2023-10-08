@@ -121,7 +121,8 @@ static bool IsInternalMethodParameterValueType(const VariableTypeInformation& ty
 	case VariableTypeCategory::GameObjectHandle:
 		return false;
 	case VariableTypeCategory::Vector:
-	case VariableTypeCategory::SmallVector:
+	case VariableTypeCategory::TInlineArray:
+	case VariableTypeCategory::TArray:
 	case VariableTypeCategory::Array:
 		return IsInternalMethodParameterValueType(typeInformation.AssertGetUnderlyingType());
 	default: 

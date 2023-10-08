@@ -83,8 +83,10 @@ static std::string GetCppNativeQualifiedTypeName(const VariableTypeInformation& 
 
 	if (typeInformation.TypeCategory == VariableTypeCategory::Vector)
 		output << "Vector<" + GetCppNativeQualifiedTypeName(typeInformation.AssertGetUnderlyingType(), typeMappingInformation, false) + ">";
-	else if (typeInformation.TypeCategory == VariableTypeCategory::SmallVector)
-		output << "SmallVector<" + GetCppNativeQualifiedTypeName(typeInformation.AssertGetUnderlyingType(), typeMappingInformation, false) + ", " + std::to_string(typeInformation.ArraySize) + ">";
+	else if (typeInformation.TypeCategory == VariableTypeCategory::TInlineArray)
+		output << "TInlineArray<" + GetCppNativeQualifiedTypeName(typeInformation.AssertGetUnderlyingType(), typeMappingInformation, false) + ", " + std::to_string(typeInformation.ArraySize) + ">";
+	else if (typeInformation.TypeCategory == VariableTypeCategory::TArray)
+		output << "TArray<" + GetCppNativeQualifiedTypeName(typeInformation.AssertGetUnderlyingType(), typeMappingInformation, false)  + ">";
 	else if (typeInformation.TypeCategory == VariableTypeCategory::AsyncOp)
 		output << "TAsyncOp<" + GetCppNativeQualifiedTypeName(typeInformation.AssertGetUnderlyingType(), typeMappingInformation, false) + ">";
 	else if (typeInformation.TypeCategory == VariableTypeCategory::Array || typeInformation.TypeCategory == VariableTypeCategory::ComponentOrActor)
@@ -925,7 +927,7 @@ static std::string GenerateMethodBodyBlockForArgument(const std::string& paramet
 				const std::string arrayName = "scriptArray";
 
 				postCallActions << "\t\t\tint arraySize = ";
-				if (asyncOpUnderlyingTypeInformation.TypeCategory == VariableTypeCategory::Vector || asyncOpUnderlyingTypeInformation.TypeCategory == VariableTypeCategory::SmallVector)
+				if (asyncOpUnderlyingTypeInformation.IsArrayOrVector(false))
 					postCallActions << "(int)" << argumentName << ".size()";
 				else
 					postCallActions << asyncOpUnderlyingTypeInformation.ArraySize;
@@ -1216,7 +1218,7 @@ static std::string GenerateMethodBodyBlockForArgument(const std::string& paramet
 
 			preCallActions << "\t\t\tScriptArray " << scriptArrayName << "(" << parameterName << ");\n";
 
-			if (parameterInformation.TypeInformation.TypeCategory == VariableTypeCategory::Vector || parameterInformation.TypeInformation.TypeCategory == VariableTypeCategory::SmallVector)
+			if (parameterInformation.TypeInformation.IsArrayOrVector(false))
 				preCallActions << "\t\t\t" << arrayArgumentName << ".resize(" << scriptArrayName << ".Size());\n";
 
 			preCallActions << "\t\t\tfor(int i = 0; i < (int)" << scriptArrayName << ".Size(); i++)\n";
@@ -1318,7 +1320,7 @@ static std::string GenerateMethodBodyBlockForArgument(const std::string& paramet
 			const std::string scriptArrayName = "array" + parameterName;
 
 			postCallActions << "\t\tint arraySize" << parameterName << " = ";
-			if (parameterInformation.TypeInformation.TypeCategory == VariableTypeCategory::Vector || parameterInformation.TypeInformation.TypeCategory == VariableTypeCategory::SmallVector)
+			if (parameterInformation.TypeInformation.IsArrayOrVector(false))
 				postCallActions << "(int)" << arrayArgumentName << ".size()";
 			else
 				postCallActions << parameterInformation.TypeInformation.ArraySize;
@@ -1681,7 +1683,7 @@ static std::string GenerateFieldConvertBlock(const std::string& name, const Vari
 			preActions << "\t\t{\n";
 			preActions << "\t\t\tScriptArray " << scriptArrayName << "(value." << name << ");\n";
 
-			if (fieldInformation.TypeInformation.TypeCategory == VariableTypeCategory::SmallVector || fieldInformation.TypeInformation.TypeCategory == VariableTypeCategory::Vector)
+			if (fieldInformation.TypeInformation.IsArrayOrVector(false))
 				preActions << "\t\t\t" << argName << ".resize(" << scriptArrayName << ".Size());\n";
 
 			preActions << "\t\t\tfor(int i = 0; i < (int)" << scriptArrayName << ".Size(); i++)" << std::endl;
@@ -1774,7 +1776,7 @@ static std::string GenerateFieldConvertBlock(const std::string& name, const Vari
 		else
 		{
 			preActions << "\t\tint arraySize" << name << " = ";
-			if (fieldInformation.TypeInformation.TypeCategory == VariableTypeCategory::Vector || fieldInformation.TypeInformation.TypeCategory == VariableTypeCategory::SmallVector)
+			if (fieldInformation.TypeInformation.IsArrayOrVector(false))
 				preActions << "(int)value." << name << ".size()";
 			else
 				preActions << fieldInformation.TypeInformation.ArraySize;
@@ -2009,7 +2011,7 @@ static std::string GenerateEventCallbackBodyBlockForArgument(const std::string& 
 		preCallActions << "\t\tMonoArray* " << argName << ";" << std::endl;
 
 		preCallActions << "\t\tint arraySize" << name << " = ";
-		if (parameterInformation.TypeInformation.TypeCategory == VariableTypeCategory::Vector || parameterInformation.TypeInformation.TypeCategory == VariableTypeCategory::SmallVector)
+		if (parameterInformation.TypeInformation.IsArrayOrVector(false))
 			preCallActions << "(int)value." << name << ".size()";
 		else
 			preCallActions << parameterInformation.TypeInformation.ArraySize;
