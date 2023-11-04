@@ -205,6 +205,8 @@ int main(int argc, const char** argv)
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "TVector2<float>", "Math/BsVector2.h", "Vector2", "Wrappers/BsScriptVector.h", ExportedClassTypeCategory::Struct);
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "TVector3<float>", "Math/BsVector3.h", "Vector3", "Wrappers/BsScriptVector.h", ExportedClassTypeCategory::Struct);
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "TVector4<float>", "Math/BsVector4.h", "Vector4", "Wrappers/BsScriptVector.h", ExportedClassTypeCategory::Struct);
+	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "TSize2<float>", "Utility/BsUtil.h", "Size2", "Wrappers/BsScriptSize.h", ExportedClassTypeCategory::Struct);
+	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "TSize2<uint32_t>", "Utility/BsUtil.h", "Size2UI", "Wrappers/BsScriptSize.h", ExportedClassTypeCategory::Struct);
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Matrix3", "Math/BsMatrix3.h", "Matrix3", "", ExportedClassTypeCategory::Struct);
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Matrix4", "Math/BsMatrix4.h", "Matrix4", "", ExportedClassTypeCategory::Struct);
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Quaternion", "Math/BsQuaternion.h", "Quaternion", "Wrappers/BsScriptQuaternion.h", ExportedClassTypeCategory::Struct);

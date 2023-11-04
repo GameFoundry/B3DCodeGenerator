@@ -3143,7 +3143,11 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 	{
 		output << "\tMonoObject* " << interopClassName << "::InternalGetRef(" << interopClassThisPtrType << "* thisPtr)\n";
 		output << "\t{\n";
-		output << "\t\treturn thisPtr->GetRRef();\n";
+		if(isBase)
+			output << "\t\treturn thisPtr->GetRRef(thisPtr->GetGenericHandle(), " + classInfo.NativeName + "::GetRttiStatic()->GetRttiId());\n";
+		else
+			output << "\t\treturn thisPtr->GetRRef();\n";
+
 		output << "\t}\n\n";
 	}
 
