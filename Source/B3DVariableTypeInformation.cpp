@@ -37,6 +37,14 @@ VariableTypeInformation& VariableTypeInformation::operator=(const VariableTypeIn
 	return *this;
 }
 
+void VariableTypeInformation::SetParameterFlag(enum ParameterFlags flags, bool recursive)
+{
+	ParameterFlags |= (uint32_t)flags;
+
+	if(recursive && UnderlyingType)
+		UnderlyingType->SetParameterFlag(flags, true);
+}
+
 void VariableTypeInformation::UnsetParameterFlag(enum ParameterFlags flags, bool recursive)
 {
 	ParameterFlags &= ~(uint32_t)flags;

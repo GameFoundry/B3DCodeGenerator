@@ -898,7 +898,13 @@ static std::string GenerateCSharpStruct(const StructInfo& input)
 	for (auto& entry : input.Constructors)
 	{
 		bool isParameterless = entry.Parameters.size() == 0;
-		if (isParameterless) // Parameterless constructors not supported on C# structs
+		bool isStaticMethod = !entry.StaticMethodName.empty() || isParameterless;
+		if(!entry.StaticMethodName.empty())
+		{
+			output << XMLCommentGenerator::GenerateXMLComment(entry.Documentation, "\t\t");
+			output << "\t\tpublic static " << scriptName << " " << entry.StaticMethodName << "(";
+		}
+		else if (isParameterless) // Parameterless constructors not supported on C# structs
 		{
 			output << "\t\t/// <summary>Initializes the struct with default values.</summary>" << std::endl;
 			output << "\t\tpublic static " << scriptName << " Default(";
@@ -920,7 +926,6 @@ static std::string GenerateCSharpStruct(const StructInfo& input)
 				continue;
 			}
 
-
 			if(!parameterInformation.DefaultValueType.empty() && parameterInformation.TypeInformation.TypeCategory != VariableTypeCategory::Flags)
 			{
 				// We don't generate parameters that have complex default values (as they're not supported in C#).
@@ -929,7 +934,13 @@ static std::string GenerateCSharpStruct(const StructInfo& input)
 				continue;
 			}
 
-			output << parameterTypeMappingInformation.ScriptTypeName << " " << parameterInformation.Name;
+			const std::string qualifiedType = GetScriptQualifiedType(parameterInformation.TypeInformation, parameterTypeMappingInformation, true, false);
+
+			bool isLastParameter = (I + 1) == entry.Parameters.end();
+			if (parameterInformation.TypeInformation.IsParameterFlagSet(ParameterFlags::VarParams) && isLastParameter)
+				output << "params ";
+
+			output << qualifiedType << " " << parameterInformation.Name;
 
 			if (!parameterInformation.DefaultValue.empty())
 				output << " = " << GenerateCSharpDefaultValueAssignment(parameterInformation);
@@ -942,7 +953,7 @@ static std::string GenerateCSharpStruct(const StructInfo& input)
 		output << "\t\t{" << std::endl;
 
 		std::string thisPtr;
-		if (isParameterless)
+		if (isStaticMethod)
 		{
 			output << "\t\t\t" << scriptName << " value = new " << scriptName << "();" << std::endl;
 			thisPtr = "value";

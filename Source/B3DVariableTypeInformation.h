@@ -57,6 +57,7 @@ struct VariableTypeInformation
 	bool IsPostProcessFlagSet(VariablePostProcessFlags flags) const { return (PostProcessFlags & (uint32_t)flags) != 0; }
 	bool IsQualifierFlagSet(VariableQualifierFlags flags) const { return (QualifierFlags & (uint32_t)flags) != 0; }
 
+	void SetParameterFlag(enum ParameterFlags flags, bool recursive);
 	void UnsetParameterFlag(enum ParameterFlags flags, bool recursive);
 	void SetPostProcessFlag(VariablePostProcessFlags flags, bool recursive);
 

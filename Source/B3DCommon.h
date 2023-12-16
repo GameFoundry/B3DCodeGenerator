@@ -263,6 +263,7 @@ struct ExternalClassInfos
 /** Contains information about a constructor of a struct. */
 struct StructConstructorInfo
 {
+	std::string StaticMethodName; /**< If provided, the constructor will be created as a static method that returns object of the type. */
 	std::vector<VariableInformation> Parameters; /**< Parameters to the constructor. */
 	std::unordered_map<std::string, std::string> FieldAssignments; /**< Maps which class/struct field maps to which constructor parameter, by name. */
 	CommentEntry Documentation; /**< Documentation comments for the constructor. */

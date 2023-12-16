@@ -138,7 +138,7 @@ static bool ParseParameterOrFieldAttribute(Decl* decl, bool isField, VariableTyp
 	{
 		if (!isField && entry->getAnnotation() == "params")
 		{
-			typeInformation.UnsetParameterFlag(ParameterFlags::VarParams, true);
+			typeInformation.SetParameterFlag(ParameterFlags::VarParams, true);
 			return true;
 		}
 
@@ -1109,6 +1109,99 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 
 		std::unordered_map<FieldDecl*, std::pair<std::string, std::string>> defaultFieldValues;
 
+		// Parses assignment operations in the provided method body and outputs it to @p outAssignments map
+		auto fnParseAssignmentsInBody = [&srcClassName](const CXXMethodDecl& methodDecl, std::unordered_map<FieldDecl*, ParmVarDecl*> outAssignments)
+		{
+			// Parse any assignments in the function body
+			// Note: Searching for trivially simple assignments only, ignoring anything else
+			if(!methodDecl.hasBody())
+				return;
+
+			CompoundStmt* functionBody = dyn_cast<CompoundStmt>(methodDecl.getBody()); // Note: Not handling inner blocks
+			assert(functionBody != nullptr);
+
+			for(auto I = functionBody->child_begin(); I != functionBody->child_end(); ++I)
+			{
+				Stmt* stmt = *I;
+
+				BinaryOperator* binaryOp = dyn_cast<BinaryOperator>(stmt);
+				if(binaryOp == nullptr)
+					continue;
+
+				if(binaryOp->getOpcode() != BO_Assign)
+					continue;
+
+				Expr* lhsExpr = binaryOp->getLHS()->IgnoreParenCasts(); // Note: Ignoring even explicit casts
+				Decl* lhsDecl;
+
+				if(DeclRefExpr* varExpr = dyn_cast<DeclRefExpr>(lhsExpr))
+					lhsDecl = varExpr->getDecl();
+				else if(MemberExpr* memberExpr = dyn_cast<MemberExpr>(lhsExpr))
+					lhsDecl = memberExpr->getMemberDecl();
+				else
+					continue;
+
+				FieldDecl* fieldDecl = dyn_cast<FieldDecl>(lhsDecl);
+				if(fieldDecl == nullptr)
+					continue;
+
+				Expr* rhsExpr = binaryOp->getRHS()->IgnoreParenCasts();
+				Decl* rhsDecl = nullptr;
+
+				if(DeclRefExpr* varExpr = dyn_cast<DeclRefExpr>(rhsExpr))
+					rhsDecl = varExpr->getDecl();
+				else if(MemberExpr* memberExpr = dyn_cast<MemberExpr>(rhsExpr))
+					rhsDecl = memberExpr->getMemberDecl();
+
+				ParmVarDecl* parmVarDecl = nullptr;
+				if(rhsDecl != nullptr)
+					parmVarDecl = dyn_cast<ParmVarDecl>(rhsDecl);
+
+				if(parmVarDecl == nullptr)
+				{
+					outs() << "Warning: Found a non-trivial field assignment for field \"" << fieldDecl->getName() << "\" in"
+						   << " constructor of \"" << srcClassName << "\". Ignoring assignment.\n";
+					continue;
+				}
+
+				outAssignments[fieldDecl] = parmVarDecl;
+			}
+		};
+
+		// Parses information about every parameter in the method, and outputs information about parameters in @p outParameters.
+		auto fnParseMethodParameters = [this](const CXXMethodDecl& methodDecl, std::vector<VariableInformation>& outParameters) {
+			bool skippedDefaultArgument = false;
+			for (auto I = methodDecl.param_begin(); I != methodDecl.param_end(); ++I)
+			{
+				ParmVarDecl* paramDecl = *I;
+
+				VariableInformation paramInfo;
+				paramInfo.Name = paramDecl->getName().str();
+
+				std::string typeName;
+				unsigned arraySize;
+				if (!ParseTypeInformation(paramDecl->getType(), paramInfo.TypeInformation))
+				{
+					outs() << "Error: Unable to detect type for constructor parameter \"" << paramDecl->getName().str()
+						<< "\". Skipping.\n";
+					continue;
+				}
+
+				if (paramDecl->hasDefaultArg() && !skippedDefaultArgument)
+				{
+					if (!TryEvaluateExpression(paramDecl->getDefaultArg(), paramInfo.DefaultValue, paramInfo.DefaultValueType))
+					{
+						outs() << "Error: Constructor parameter \"" << paramDecl->getName().str() << "\" has a default "
+							<< "argument that cannot be constantly evaluated, ignoring it.\n";
+						skippedDefaultArgument = true;
+					}
+				}
+
+				ParseParameterOrFieldAttribute(paramDecl, false, paramInfo.TypeInformation);
+				outParameters.push_back(paramInfo);
+			}
+		};
+
 		// Parse non-default constructors & determine default values for fields
 		if (decl->hasUserDeclaredConstructor())
 		{
@@ -1139,36 +1232,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 
 				mCommentParser.ParseComments(ctorDecl, ctorInfo.Documentation);
 
-				bool skippedDefaultArgument = false;
-				for (auto I = ctorDecl->param_begin(); I != ctorDecl->param_end(); ++I)
-				{
-					ParmVarDecl* paramDecl = *I;
-
-					VariableInformation paramInfo;
-					paramInfo.Name = paramDecl->getName().str();
-
-					std::string typeName;
-					unsigned arraySize;
-					if (!ParseTypeInformation(paramDecl->getType(), paramInfo.TypeInformation))
-					{
-						outs() << "Error: Unable to detect type for constructor parameter \"" << paramDecl->getName().str()
-							<< "\". Skipping.\n";
-						continue;
-					}
-
-					if (paramDecl->hasDefaultArg() && !skippedDefaultArgument)
-					{
-						if (!TryEvaluateExpression(paramDecl->getDefaultArg(), paramInfo.DefaultValue, paramInfo.DefaultValueType))
-						{
-							outs() << "Error: Constructor parameter \"" << paramDecl->getName().str() << "\" has a default "
-								<< "argument that cannot be constantly evaluated, ignoring it.\n";
-							skippedDefaultArgument = true;
-						}
-					}
-
-					ctorInfo.Parameters.push_back(paramInfo);
-				}
-
+				fnParseMethodParameters(*ctorDecl, ctorInfo.Parameters);
 				std::unordered_map<FieldDecl*, ParmVarDecl*> assignments;
 
 				// Parse initializers for assignments & default values
@@ -1258,60 +1322,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 					}
 				}
 
-				// Parse any assignments in the function body
-				// Note: Searching for trivially simple assignments only, ignoring anything else
-				if (ctorDecl->hasBody())
-				{
-					CompoundStmt* functionBody = dyn_cast<CompoundStmt>(ctorDecl->getBody()); // Note: Not handling inner blocks
-					assert(functionBody != nullptr);
-
-					for (auto I = functionBody->child_begin(); I != functionBody->child_end(); ++I)
-					{
-						Stmt* stmt = *I;
-
-						BinaryOperator* binaryOp = dyn_cast<BinaryOperator>(stmt);
-						if (binaryOp == nullptr)
-							continue;
-
-						if (binaryOp->getOpcode() != BO_Assign)
-							continue;
-
-						Expr* lhsExpr = binaryOp->getLHS()->IgnoreParenCasts(); // Note: Ignoring even explicit casts
-						Decl* lhsDecl;
-
-						if (DeclRefExpr* varExpr = dyn_cast<DeclRefExpr>(lhsExpr))
-							lhsDecl = varExpr->getDecl();
-						else if (MemberExpr* memberExpr = dyn_cast<MemberExpr>(lhsExpr))
-							lhsDecl = memberExpr->getMemberDecl();
-						else
-							continue;
-
-						FieldDecl* fieldDecl = dyn_cast<FieldDecl>(lhsDecl);
-						if (fieldDecl == nullptr)
-							continue;
-
-						Expr* rhsExpr = binaryOp->getRHS()->IgnoreParenCasts();
-						Decl* rhsDecl = nullptr;
-
-						if (DeclRefExpr* varExpr = dyn_cast<DeclRefExpr>(rhsExpr))
-							rhsDecl = varExpr->getDecl();
-						else if (MemberExpr* memberExpr = dyn_cast<MemberExpr>(rhsExpr))
-							rhsDecl = memberExpr->getMemberDecl();
-
-						ParmVarDecl* parmVarDecl = nullptr;
-						if (rhsDecl != nullptr)
-							parmVarDecl = dyn_cast<ParmVarDecl>(rhsDecl);
-
-						if (parmVarDecl == nullptr)
-						{
-							outs() << "Warning: Found a non-trivial field assignment for field \"" << fieldDecl->getName() << "\" in"
-								<< " constructor of \"" << srcClassName << "\". Ignoring assignment.\n";
-							continue;
-						}
-
-						assignments[fieldDecl] = parmVarDecl;
-					}
-				}
+				fnParseAssignmentsInBody(*ctorDecl, assignments);
 
 				for (auto I = decl->field_begin(); I != decl->field_end(); ++I)
 				{
@@ -1330,6 +1341,61 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 				structInfo.Constructors.push_back(ctorInfo);
 				++ctorIter;
 			}
+		}
+
+		// Look for external constructors
+		for (auto I = decl->method_begin(); I != decl->method_end(); ++I)
+		{
+			CXXMethodDecl* methodDecl = *I;
+
+			CXXConstructorDecl* ctorDecl = dyn_cast<CXXConstructorDecl>(methodDecl);
+			if (ctorDecl != nullptr)
+				continue;
+
+			if (!methodDecl->isUserProvided() || methodDecl->isImplicit())
+				continue;
+
+			AnnotateAttr* methodAttr = methodDecl->getAttr<AnnotateAttr>();
+			if (methodAttr == nullptr)
+				continue;
+
+			StringRef sourceMethodName = methodDecl->getName();
+
+			ScriptExportInformation parsedMethodInfo;
+			if (!ScriptExportAttributeParser::ParseExportAttribute(methodDecl, sourceMethodName, parsedMethodInfo))
+				continue;
+
+			if((parsedMethodInfo.ExportFlags & (int)ExportFlags::ExternalConstructor) == 0)
+				continue;
+
+			if (methodDecl->getAccess() != AS_public)
+				outs() << "Error: Exported method \"" + sourceMethodName + "\" isn't public. This will likely result in invalid code generation.";
+
+			StructConstructorInfo ctorInfo;
+
+			mCommentParser.ParseComments(ctorDecl, ctorInfo.Documentation);
+
+			fnParseMethodParameters(*ctorDecl, ctorInfo.Parameters);
+
+			std::unordered_map<FieldDecl*, ParmVarDecl*> assignments;
+			fnParseAssignmentsInBody(*ctorDecl, assignments);
+
+			for (auto I = decl->field_begin(); I != decl->field_end(); ++I)
+			{
+				auto iterFind = assignments.find(*I);
+				if (iterFind == assignments.end())
+					continue;
+
+				std::string fieldName = iterFind->first->getName().str();
+				std::string paramName = iterFind->second->getName().str();
+
+				ctorInfo.FieldAssignments[fieldName] = paramName;
+			}
+
+			CommentParser::EnsureValidParameterReferenceComments(ctorInfo.Parameters, ctorInfo.Documentation);
+
+			ctorInfo.StaticMethodName = sourceMethodName.str();
+			structInfo.Constructors.push_back(ctorInfo);
 		}
 
 		std::stack<const CXXRecordDecl*> todo;
