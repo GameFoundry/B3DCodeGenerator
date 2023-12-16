@@ -1344,6 +1344,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
 		}
 
 		// Look for external constructors
+		// Note: This is not fully implemented. We're not parsing obj.field = param assignments, just field = param.
 		for (auto I = decl->method_begin(); I != decl->method_end(); ++I)
 		{
 			CXXMethodDecl* methodDecl = *I;
