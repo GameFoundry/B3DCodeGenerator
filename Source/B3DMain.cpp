@@ -12,7 +12,7 @@ const char *const kBuiltinComponentType = "Component";
 const char *const kBuiltinSceneObjectType = "SceneObject";
 const char *const kBuiltinResourceType = "Resource";
 const char *const kBuiltinModuleType = "Module";
-const char *const kBuiltinGUIElementType = "GUIElement";
+const char *const kBuiltinGUIElementType = "GUIInteractable";
 const char *const kBuiltinReflectableType = "IReflectable";
 
 std::string sFrameworkCppNs = "bs";

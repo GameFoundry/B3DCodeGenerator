@@ -9,7 +9,7 @@ enum class ExportedClassTypeCategory
 	Component, /**< Child of native builtin Component type. */
 	SceneObject,/**< Child of native builtin SceneObject type. */
 	Resource, /**< Child of native builtin Resource type. */
-	GUIElement, /**< Child of native builtin GUIElementBase type. */
+	GUIElement, /**< Child of native builtin GUIElement type. */
 	Class, /**< Generic class (no known builtin type is a base). */
 	ReflectableClass, /**< Child of native builtin IReflectable type. */
 	Struct, /**< Generic struct (no known builtin type is a base). */
