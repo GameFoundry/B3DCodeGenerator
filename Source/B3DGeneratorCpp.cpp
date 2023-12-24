@@ -697,7 +697,7 @@ static std::string GenerateMonoToScriptObject(const std::string& indent, const s
 	{
 		std::string scriptBaseType;
 		if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
-			scriptBaseType = "ScriptGUIElementBaseTBase";
+			scriptBaseType = "ScriptGUIElementBase";
 		else
 			scriptBaseType = scriptType + "Base";
 
@@ -2566,7 +2566,7 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 	else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Component)
 		output << "TScriptComponent<" << interopClassName << ", " << classInfo.NativeName;
 	else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
-		output << "TScriptGUIElement<" << interopClassName;
+		output << "TScriptGUIInteractable<" << interopClassName;
 	else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
 		output << "TScriptReflectable<" << interopClassName << ", " << classInfo.NativeName;
 	else // Class
@@ -2699,7 +2699,7 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 	if (isBase)
 	{
 		if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
-			interopClassThisPtrType = "ScriptGUIElementBaseTBase";
+			interopClassThisPtrType = "ScriptGUIElementBase";
 		else
 			interopClassThisPtrType = interopBaseClassName;
 	}
@@ -2865,7 +2865,7 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 	else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Component)
 		output << "TScriptComponent(managedInstance, value)";
 	else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
-		output << "TScriptGUIElement(managedInstance, value)";
+		output << "TScriptGUIInteractable(managedInstance, value)";
 	else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
 	{
 		if(!isModule)
@@ -3131,7 +3131,7 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 	if (isBase)
 	{
 		if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
-			interopClassThisPtrType = "ScriptGUIElementBaseTBase";
+			interopClassThisPtrType = "ScriptGUIElementBase";
 		else
 			interopClassThisPtrType = interopBaseClassName;
 	}
