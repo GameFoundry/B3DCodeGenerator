@@ -1739,9 +1739,9 @@ static std::string GenerateFieldConvertBlock(const std::string& name, const Vari
 				if(parameterTypeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Class || parameterTypeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
 				{
 					// Cast from SPtr to the destination type
-					if (fieldInformation.TypeInformation.TypeCategory == VariableTypeCategory::General)
+					if (arrayElementTypeInformation.TypeCategory == VariableTypeCategory::General)
 					{
-						if(fieldInformation.TypeInformation.IsQualifierFlagSet(VariableQualifierFlags::IsPointer))
+						if(arrayElementTypeInformation.IsQualifierFlagSet(VariableQualifierFlags::IsPointer))
 						{
 							preActions << "\t\t\t\t\t" << argName << "[i] = " << elemPtrName << ".get();\n";
 						}
