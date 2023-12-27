@@ -121,7 +121,9 @@ bool ParserUtility::IsBuiltinBaseType(const CXXRecordDecl* decl)
 {
 	std::string className = decl->getName().str();
 
-	if (className == kBuiltinComponentType)
+	if(className == kBuiltinGameObjectType)
+		return true;
+	else if (className == kBuiltinComponentType)
 		return true;
 	else if (className == kBuiltinResourceType)
 		return true;

@@ -93,7 +93,7 @@ static std::string GetCppNativeQualifiedTypeName(const VariableTypeInformation& 
 		output << GetCppNativeQualifiedTypeName(typeInformation.AssertGetUnderlyingType(), typeMappingInformation, false);
 	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Resource)
 		output << "ResourceHandle<" + typeName + ">";
-	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::SceneObject || typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Component)
+	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GameObject || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::SceneObject || typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Component)
 		output << "GameObjectHandle<" + typeName + ">";
 	else if (typeMappingInformation.IsClassType())
 	{
@@ -315,6 +315,7 @@ static std::string GetArgumentForInternalToNativeCall(const MethodInfo& methodIn
 		return fnGetPlainArgument(true);
 	case ExportedClassTypeCategory::Component: // Input type is always a handle
 	case ExportedClassTypeCategory::SceneObject:
+	case ExportedClassTypeCategory::GameObject:
 		return fnGetHandleArgument(HandleType::GameObjectHandle);
 	case ExportedClassTypeCategory::Resource:
 		return fnGetHandleArgument(HandleType::ResourceHandle);
@@ -369,6 +370,7 @@ static std::string GetArgumentForInteropEventToThunkCall(const MethodInfo& metho
 	case ExportedClassTypeCategory::String:
 	case ExportedClassTypeCategory::WString:
 	case ExportedClassTypeCategory::Path:
+	case ExportedClassTypeCategory::GameObject:
 	case ExportedClassTypeCategory::Component:
 	case ExportedClassTypeCategory::SceneObject:
 	case ExportedClassTypeCategory::Resource:
@@ -425,6 +427,7 @@ static std::string GetReturnValueForNativeCall(const std::string& access, const 
 
 		return access;
 	}
+	case ExportedClassTypeCategory::GameObject:
 	case ExportedClassTypeCategory::SceneObject:
 		if (underlyingType.TypeCategory != VariableTypeCategory::GameObjectHandle)
 		{
@@ -803,6 +806,12 @@ static std::string GenerateNativeHandleToMonoObject(const VariableTypeInformatio
 			output << indent << "ScriptResourceBase* " << scriptVariableName << ";\n";
 			output << indent << scriptVariableName << " = ScriptResourceManager::Instance().GetScriptResource(" << inputVariableAccess << ", true);\n";
 		}
+	}
+	else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::GameObject)
+	{
+		output << indent << "ScriptGameObjectBase* " << scriptVariableName << " = nullptr;\n";
+		output << indent << "if(" << inputVariableAccess << ")\n";
+		output << indent << scriptVariableName << " = ScriptGameObjectManager::Instance().GetOrCreateScriptGameObject(" << inputVariableAccess << ");\n";
 	}
 	else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Component)
 	{

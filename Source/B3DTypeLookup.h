@@ -6,6 +6,7 @@ class CommentParser;
 /** Determines the high level type of the exported class/struct declaration. */
 enum class ExportedClassTypeCategory
 {
+	GameObject, /**< Child of the native builtin GameObject type. */
 	Component, /**< Child of native builtin Component type. */
 	SceneObject,/**< Child of native builtin SceneObject type. */
 	Resource, /**< Child of native builtin Resource type. */

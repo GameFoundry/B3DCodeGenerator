@@ -24,7 +24,9 @@ static ExportedClassTypeCategory DetermineExportedTypeCategory(const CXXRecordDe
 
 				std::string className = baseDecl->getName().str();
 
-				if (className == kBuiltinComponentType)
+				if (className == kBuiltinGameObjectType)
+					return ::ExportedClassTypeCategory::GameObject;
+				else if (className == kBuiltinComponentType)
 					return ::ExportedClassTypeCategory::Component;
 				else if (className == kBuiltinResourceType)
 					return ::ExportedClassTypeCategory::Resource;

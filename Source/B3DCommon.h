@@ -28,6 +28,7 @@ using namespace clang::tooling;
 using namespace llvm;
 using namespace clang;
 
+extern const char *const kBuiltinGameObjectType;
 extern const char *const kBuiltinComponentType;
 extern const char *const kBuiltinSceneObjectType;
 extern const char *const kBuiltinResourceType;
