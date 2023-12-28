@@ -218,6 +218,8 @@ static std::string GenerateGetInternalCallLine(const VariableTypeInformation& ty
 			{
 				if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Resource && nativeTypeName == "Resource")
 					output << "B3DStaticResourceCast<" << nativeTypeName << ">(" << variableName << "->GetGenericHandle())";
+				else if(typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GameObject)
+					output << variableName << "->GetNativeHandle()";
 				else
 					output << variableName << "->GetHandle()";
 			}
