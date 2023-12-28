@@ -762,6 +762,10 @@ bool BansheeCodeGeneratorASTVisitor::TryEvaluateExpression(Expr* expression, std
 	if (MaterializeTemporaryExpr* materialize = dyn_cast<MaterializeTemporaryExpr>(expression))
 		expression = materialize->getSubExpr();
 
+	// Skip casts. e.g. `const GUIContent& content = GUIContent()` will result in a cast
+	if(ImplicitCastExpr* castExpr = dyn_cast<ImplicitCastExpr>(expression))
+		expression = castExpr->getSubExpr();
+
 	// Skip any temporary bindings; they're implicit.
 	if (CXXBindTemporaryExpr* binder = dyn_cast<CXXBindTemporaryExpr>(expression))
 		expression = binder->getSubExpr();
@@ -794,6 +798,7 @@ bool BansheeCodeGeneratorASTVisitor::TryEvaluateExpression(Expr* expression, std
 		return false;
 
 	// Check for special case of a single null parameter
+	if(ctorExp->getNumArgs() > 0)
 	{
 		expression = ctorExp->getArg(0);
 

@@ -915,6 +915,7 @@ static std::string GenerateCSharpStruct(const StructInfo& input)
 			output << "\t\tpublic " << scriptName << "(";
 		}
 
+		std::vector<std::string> skippedParameters;
 		for (auto I = entry.Parameters.begin(); I != entry.Parameters.end(); ++I)
 		{
 			const VariableInformation& parameterInformation = *I;
@@ -931,6 +932,7 @@ static std::string GenerateCSharpStruct(const StructInfo& input)
 				// We don't generate parameters that have complex default values (as they're not supported in C#).
 				// Instead the post-processor has generated different versions of this method, so we can just skip
 				// such parameters
+				skippedParameters.push_back(parameterInformation.Name);
 				continue;
 			}
 
@@ -973,13 +975,20 @@ static std::string GenerateCSharpStruct(const StructInfo& input)
 
 			std::string fieldName = fieldInformation.Name;
 
+			bool foundFieldAssignment = false;
 			auto iterFind = entry.FieldAssignments.find(fieldInformation.Name);
 			if (iterFind != entry.FieldAssignments.end())
 			{
-				std::string paramName = iterFind->second;
-				output << "\t\t\t" << thisPtr << "." << fieldName << " = " << paramName << ";" << std::endl;
+				const std::string& parameterName = iterFind->second;
+				auto itFoundSkippedParameter = std::find(skippedParameters.begin(), skippedParameters.end(), parameterName);
+				if(itFoundSkippedParameter == skippedParameters.end())
+				{
+					output << "\t\t\t" << thisPtr << "." << fieldName << " = " << parameterName << ";" << std::endl;
+					foundFieldAssignment = true;
+				}
 			}
-			else
+
+			if(!foundFieldAssignment)
 			{
 				std::string defaultValue;
 				if (!fieldInformation.DefaultValue.empty())

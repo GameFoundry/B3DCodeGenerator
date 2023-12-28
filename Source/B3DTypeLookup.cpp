@@ -1059,6 +1059,16 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 			for (auto& ctorInfo : newCtorInfos)
 				classInfo.Constructors.push_back(ctorInfo);
 		}
+
+		for(auto& structInfo : fileInfo.second.Structs)
+		{
+			std::vector<StructConstructorInfo> newConstructorInfos;
+			for(auto& constructorInfo : structInfo.Constructors)
+				PostProcessDefaultParameters(constructorInfo, newConstructorInfos);
+
+			for (auto& constructorInfo : newConstructorInfos)
+				structInfo.Constructors.push_back(constructorInfo);
+		}
 	}
 }
 
@@ -1070,7 +1080,7 @@ void TypeLookup::PostProcessDefaultParameters(MethodInfo& methodInfo, std::vecto
 	{
 		const VariableInformation& param = methodInfo.Parameters[i];
 
-		if (!param.DefaultValue.empty())
+		if (!param.DefaultValue.empty() || !param.DefaultValueType.empty())
 		{
 			firstDefaultParam = i;
 			break;
@@ -1135,6 +1145,83 @@ void TypeLookup::PostProcessDefaultParameters(MethodInfo& methodInfo, std::vecto
 	for (int i = firstDefaultParam; i <= lastInvalidParam; i++)
 	{
 		VariableInformation& param = methodInfo.Parameters[i];
+		param.DefaultValue = "";
+		param.DefaultValueType = "";
+	}
+}
+
+void TypeLookup::PostProcessDefaultParameters(StructConstructorInfo& constructorInfo, std::vector<StructConstructorInfo>& outNewConstructorInfos)
+{
+	int firstDefaultParam = -1;
+	int lastInvalidParam = -1;
+	for (int i = 0; i < constructorInfo.Parameters.size(); i++)
+	{
+		const VariableInformation& param = constructorInfo.Parameters[i];
+
+		if (!param.DefaultValue.empty() || !param.DefaultValueType.empty())
+		{
+			firstDefaultParam = i;
+			break;
+		}
+	}
+
+	for (int i = 0; i < constructorInfo.Parameters.size(); i++)
+	{
+		const VariableInformation& parameterInformation = constructorInfo.Parameters[i];
+
+		if (!parameterInformation.DefaultValueType.empty() && parameterInformation.TypeInformation.TypeCategory != VariableTypeCategory::Flags)
+			lastInvalidParam = i;
+	}
+
+	// Nothing to handle
+	if (lastInvalidParam == -1)
+		return;
+
+	// Mark any non-complex default params as complex, so the generator doesn't generate them (since default arguments
+	// must follow them, which they can't because at least one is complex)
+	for (int i = firstDefaultParam; i <= lastInvalidParam; i++)
+	{
+		VariableInformation& param = constructorInfo.Parameters[i];
+
+		if (param.DefaultValueType.empty())
+			param.DefaultValueType = "null";
+	}
+
+	// Generate a method for each default param
+	for (int i = lastInvalidParam; i >= firstDefaultParam; i--)
+	{
+		StructConstructorInfo copyMethodInfo = constructorInfo;
+
+		// Clear all param default values
+		for (int j = firstDefaultParam; j < i; j++)
+		{
+			VariableInformation& param = copyMethodInfo.Parameters[j];
+			param.DefaultValue = "";
+			param.DefaultValueType = "";
+		}
+
+		// Erase docs for the params we'll skip during generation
+		CommentEntry& docs = copyMethodInfo.Documentation;
+		for (int j = i; j <= lastInvalidParam; j++)
+		{
+			const std::string& paramName = copyMethodInfo.Parameters[j].Name;
+
+			for (auto iter = docs.ParameterComments.begin(); iter != docs.ParameterComments.end();)
+			{
+				if (iter->Name == paramName)
+					iter = docs.ParameterComments.erase(iter);
+				else
+					++iter;
+			}
+		}
+
+		outNewConstructorInfos.push_back(copyMethodInfo);
+	}
+
+	// Clear default params from this method
+	for (int i = firstDefaultParam; i <= lastInvalidParam; i++)
+	{
+		VariableInformation& param = constructorInfo.Parameters[i];
 		param.DefaultValue = "";
 		param.DefaultValueType = "";
 	}
