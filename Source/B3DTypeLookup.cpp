@@ -1,6 +1,16 @@
 #include "B3DTypeLookup.h"
 #include "B3DCommentParser.h"
 
+/** Assigns a new method flag to the provided method info. */
+static void SetMethodFlag(MethodInfo& methodInfo, MethodFlags flag)
+{
+	methodInfo.MethodFlags |= (int)flag;
+}
+
+/** Does nothing. Ensures templated methods can call this method on different method info types. */
+static void SetMethodFlag(StructConstructorInfo& constructorInfo, MethodFlags flag)
+{ }
+
 MethodInfo ClassInfo::FindUnusedConstructorSignature() const
 {
 	auto checkSignature = [](int numParams, const MethodInfo& info)
@@ -1072,7 +1082,8 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 	}
 }
 
-void TypeLookup::PostProcessDefaultParameters(MethodInfo& methodInfo, std::vector<MethodInfo>& newMethodInfos)
+template<class T>
+void TypeLookup::PostProcessDefaultParameters(T& methodInfo, std::vector<T>& newMethodInfos)
 {
 	int firstDefaultParam = -1;
 	int lastInvalidParam = -1;
@@ -1112,7 +1123,7 @@ void TypeLookup::PostProcessDefaultParameters(MethodInfo& methodInfo, std::vecto
 	// Generate a method for each default param
 	for (int i = lastInvalidParam; i >= firstDefaultParam; i--)
 	{
-		MethodInfo copyMethodInfo = methodInfo;
+		T copyMethodInfo = methodInfo;
 
 		// Clear all param default values
 		for (int j = firstDefaultParam; j < i; j++)
@@ -1137,7 +1148,7 @@ void TypeLookup::PostProcessDefaultParameters(MethodInfo& methodInfo, std::vecto
 			}
 		}
 
-		copyMethodInfo.MethodFlags |= (int)MethodFlags::CSOnly;
+		SetMethodFlag(copyMethodInfo, MethodFlags::CSOnly);
 		newMethodInfos.push_back(copyMethodInfo);
 	}
 
@@ -1145,83 +1156,6 @@ void TypeLookup::PostProcessDefaultParameters(MethodInfo& methodInfo, std::vecto
 	for (int i = firstDefaultParam; i <= lastInvalidParam; i++)
 	{
 		VariableInformation& param = methodInfo.Parameters[i];
-		param.DefaultValue = "";
-		param.DefaultValueType = "";
-	}
-}
-
-void TypeLookup::PostProcessDefaultParameters(StructConstructorInfo& constructorInfo, std::vector<StructConstructorInfo>& outNewConstructorInfos)
-{
-	int firstDefaultParam = -1;
-	int lastInvalidParam = -1;
-	for (int i = 0; i < constructorInfo.Parameters.size(); i++)
-	{
-		const VariableInformation& param = constructorInfo.Parameters[i];
-
-		if (!param.DefaultValue.empty() || !param.DefaultValueType.empty())
-		{
-			firstDefaultParam = i;
-			break;
-		}
-	}
-
-	for (int i = 0; i < constructorInfo.Parameters.size(); i++)
-	{
-		const VariableInformation& parameterInformation = constructorInfo.Parameters[i];
-
-		if (!parameterInformation.DefaultValueType.empty() && parameterInformation.TypeInformation.TypeCategory != VariableTypeCategory::Flags)
-			lastInvalidParam = i;
-	}
-
-	// Nothing to handle
-	if (lastInvalidParam == -1)
-		return;
-
-	// Mark any non-complex default params as complex, so the generator doesn't generate them (since default arguments
-	// must follow them, which they can't because at least one is complex)
-	for (int i = firstDefaultParam; i <= lastInvalidParam; i++)
-	{
-		VariableInformation& param = constructorInfo.Parameters[i];
-
-		if (param.DefaultValueType.empty())
-			param.DefaultValueType = "null";
-	}
-
-	// Generate a method for each default param
-	for (int i = lastInvalidParam; i >= firstDefaultParam; i--)
-	{
-		StructConstructorInfo copyMethodInfo = constructorInfo;
-
-		// Clear all param default values
-		for (int j = firstDefaultParam; j < i; j++)
-		{
-			VariableInformation& param = copyMethodInfo.Parameters[j];
-			param.DefaultValue = "";
-			param.DefaultValueType = "";
-		}
-
-		// Erase docs for the params we'll skip during generation
-		CommentEntry& docs = copyMethodInfo.Documentation;
-		for (int j = i; j <= lastInvalidParam; j++)
-		{
-			const std::string& paramName = copyMethodInfo.Parameters[j].Name;
-
-			for (auto iter = docs.ParameterComments.begin(); iter != docs.ParameterComments.end();)
-			{
-				if (iter->Name == paramName)
-					iter = docs.ParameterComments.erase(iter);
-				else
-					++iter;
-			}
-		}
-
-		outNewConstructorInfos.push_back(copyMethodInfo);
-	}
-
-	// Clear default params from this method
-	for (int i = firstDefaultParam; i <= lastInvalidParam; i++)
-	{
-		VariableInformation& param = constructorInfo.Parameters[i];
 		param.DefaultValue = "";
 		param.DefaultValueType = "";
 	}

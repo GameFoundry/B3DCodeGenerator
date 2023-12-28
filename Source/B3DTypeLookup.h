@@ -197,10 +197,8 @@ private:
 	static std::string MapCppPrimitiveTypeToCSharpType(const std::string& cppType);
 
 	/** Splits a method with default parameters into multiple methods, if some of the parameter default values cannot be parsed. */
-	static void PostProcessDefaultParameters(MethodInfo& methodInfo, std::vector<MethodInfo>& newMethodInfos);
-
-	/** Splits a method with default parameters into multiple methods, if some of the parameter default values cannot be parsed. */
-	static void PostProcessDefaultParameters(StructConstructorInfo& constructorInfo, std::vector<StructConstructorInfo>& outNewConstructorInfos);
+	template<class T>
+	static void PostProcessDefaultParameters(T& methodInfo, std::vector<T>& newMethodInfos);
 
 	/**
 	 * Gathers includes required for the specified type.
