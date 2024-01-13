@@ -2476,16 +2476,16 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 	bool isRootBase = classInfo.BaseClassName.empty();
 
 	bool hasStaticEvents = isModule && !classInfo.Events.empty();
+	bool hasNonStaticEvents = !isModule && !classInfo.Events.empty();
 	if (!hasStaticEvents)
 	{
 		for (auto& eventInfo : classInfo.Events)
 		{
 			bool isStatic = eventInfo.IsFlagSet(MethodFlags::Static);
-			if (isStatic)
-			{
+			if(isStatic)
 				hasStaticEvents = true;
-				break;
-			}
+			else
+				hasNonStaticEvents = true;
 		}
 	}
 
@@ -2571,6 +2571,9 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 		output << "\tpublic:" << std::endl;
 		output << "\t\t" << interopBaseClassName << "(MonoObject* instance);" << std::endl;
 		output << "\t\tvirtual ~" << interopBaseClassName << "() {}" << std::endl;
+
+		if(hasNonStaticEvents && typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GUIElement) // TODO - Currently only implement for GUIElement, see definition generation code
+			output << "\t\tvoid RegisterEvents(GUIElement* value) override;\n";
 
 		fnGenerateEventCallbackMethods(output);
 
@@ -2671,6 +2674,9 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 		else
 			output << "\t\t" << wrappedDataType << " GetInternal() const { return mInternal; }" << std::endl;
 	}
+
+	if(hasNonStaticEvents && !isBase && typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GUIElement) // TODO - Currently only implement for GUIElement, see definition generation code
+		output << "\t\tvoid RegisterEvents(GUIElement* value) override;\n";
 
 	if(typeMappingInformation.IsClassType() && !isModule)
 	{
@@ -2791,14 +2797,14 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 	const bool isModule = classInfo.IsFlagSet(ClassFlags::IsModule);
 
 	bool hasStaticEvents = isModule && !classInfo.Events.empty();
+	bool hasNonStaticEvents = !isModule && !classInfo.Events.empty();
 	for(auto& eventInfo : classInfo.Events)
 	{
 		bool isStatic = eventInfo.IsFlagSet(MethodFlags::Static);
 		if(isStatic)
-		{
 			hasStaticEvents = true;
-			break;
-		}
+		else
+			hasNonStaticEvents = true;
 	}
 
 	auto fnGenerateEventHandles = [&classInfo](std::stringstream& stream, const std::string& className)
@@ -2851,6 +2857,49 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 		}
 	};
 
+	auto fnGenerateRegisterEvents = [&classInfo](std::stringstream& stream, const std::string& className, const std::string& wrappedDataType)
+	{
+		for(auto& eventInfo : classInfo.Events)
+		{
+			bool isStatic = eventInfo.IsFlagSet(MethodFlags::Static);
+			bool isCallback = eventInfo.IsFlagSet(MethodFlags::Callback);
+			if(!isStatic)
+			{
+				stream << GenerateApiCheckBegin(eventInfo.API);
+
+				if(!isCallback)
+					stream << "\t\tstatic_cast<" << wrappedDataType << ">(value)->" << eventInfo.NativeName << ".Connect(";
+				else
+					stream << "\t\tstatic_cast<" << wrappedDataType << ">(value)->" << eventInfo.NativeName << " = ";
+
+				stream << "std::bind(&" << className << "::" << eventInfo.InteropName << ", this";
+
+				for(int i = 0; i < (int)eventInfo.Parameters.size(); i++)
+					stream << ", std::placeholders::_" << (i + 1);
+
+				if(!isCallback)
+					stream << ")";
+
+				stream << ");\n";
+				stream << GenerateApiCheckEnd(eventInfo.API);
+			}
+		}
+	};
+
+	auto fnGenerateRegisterEventsMethodBody = [&fnGenerateRegisterEvents](std::stringstream& stream, const std::string& className, const std::string& baseClassName, const std::string& wrappedDataType) {
+		stream << "\tvoid " << className << "::RegisterEvents(GUIElement* value)\n";
+		stream << "\t{\n";
+
+		fnGenerateRegisterEvents(stream, className, wrappedDataType);
+
+		if(!baseClassName.empty())
+			stream << "\t\t" << baseClassName << "::RegisterEvents(value);\n";
+		else
+			stream << "\t\tScriptGUIElementBase::RegisterEvents(value);\n";
+
+		stream << "\t}\n";
+	};
+
 	const TypeMappingInformation& typeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(classInfo.NativeName);
 	std::string interopClassName = TypeLookup::GetScriptInteropTypeName(classInfo.NativeName);
 	std::string wrappedDataType = GetCppNativeQualifiedTypeName(classInfo.NativeName, typeMappingInformation);
@@ -2878,25 +2927,26 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 		output << "\t\t:";
 
 		bool isRootBase = classInfo.BaseClassName.empty();
+		std::string parentBaseClassName;
 		if (isRootBase)
 		{
 			if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Class)
-				output << "ScriptObjectBase";
+				parentBaseClassName = "ScriptObjectBase";
 			if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
-				output << "ScriptReflectableBase";
+				parentBaseClassName = "ScriptReflectableBase";
 			else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Component)
-				output << "ScriptComponentBase";
+				parentBaseClassName = "ScriptComponentBase";
 			else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Resource)
-				output << "ScriptResourceBase";
+				parentBaseClassName = "ScriptResourceBase";
 			else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
-				output << "ScriptGUIInteractableBase";
+				parentBaseClassName = "ScriptGUIInteractableBase";
 		}
 		else
 		{
-			std::string parentBaseClassName = TypeLookup::GetScriptInteropTypeName(classInfo.BaseClassName) + "Base";
-			output << parentBaseClassName;
+			parentBaseClassName = TypeLookup::GetScriptInteropTypeName(classInfo.BaseClassName) + "Base";
 		}
 
+		output << parentBaseClassName;
 		output << "(managedInstance)\n";
 		output << "\t { }\n";
 		output << "\n";
@@ -2912,6 +2962,10 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 
 		// Event callback method implementations
 		fnGenerateEventCallbacks(output, interopBaseClassName);
+
+		// RegisterEvents method
+		if(hasNonStaticEvents && typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GUIElement) // TODO - Currently only implemented for GUIElement, see below.
+			fnGenerateRegisterEventsMethodBody(output, interopBaseClassName, parentBaseClassName, wrappedDataType);
 	}
 
 	// Event thunks
@@ -2972,34 +3026,11 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 	}
 
 	// Register any non-static events
-	if (!isModule)
-	{
-		for (auto& eventInfo : classInfo.Events)
-		{
-			bool isStatic = eventInfo.IsFlagSet(MethodFlags::Static);
-			bool isCallback = eventInfo.IsFlagSet(MethodFlags::Callback);
-			if (!isStatic)
-			{
-				output << GenerateApiCheckBegin(eventInfo.API);
+	if (!isModule && typeMappingInformation.TypeCategory != ExportedClassTypeCategory::GUIElement)
+		fnGenerateRegisterEvents(output, interopClassName, wrappedDataType); // TODO - Generating events in the constructor is wrong, as derived classes won't call the constructor. GUIElement currently implements a proper fix via RegisterEvents() methods, but this hasn't been implement for other types yet. Basically all that is missing is to add the RegisterEvents() methods to other supported types. But ideally I create a common class for all script exportable objects, and add the method there.
 
-				if (!isCallback)
-					output << "\t\tvalue->" << eventInfo.NativeName << ".Connect(";
-				else
-					output << "\t\tvalue->" << eventInfo.NativeName << " = ";
-
-				output << "std::bind(&" << interopClassName << "::" << eventInfo.InteropName << ", this";
-
-				for (int i = 0; i < (int)eventInfo.Parameters.size(); i++)
-					output << ", std::placeholders::_" << (i + 1);
-
-				if (!isCallback)
-					output << ")";
-
-				output << ");\n";
-				output << GenerateApiCheckEnd(eventInfo.API);
-			}
-		}
-	}
+	if(!isBase && typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GUIElement)
+		output << "\t\tRegisterEvents(value);\n";
 
 	output << "\t}" << std::endl;
 	output << std::endl;
@@ -3090,7 +3121,7 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 	output << "\t}" << std::endl;
 	output << std::endl;
 
-	// create() or createInstance() methods
+	// Create() or CreateInstance() methods
 	if ((typeMappingInformation.IsClassType() && !isModule) || typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Resource)
 	{
 		std::stringstream ctorSignature;
@@ -3194,6 +3225,10 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 	// Event callback method implementations
 	if(!isBase)
 		fnGenerateEventCallbacks(output, interopClassName);
+
+	// RegisterEvents method
+	if(hasNonStaticEvents && !isBase && typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GUIElement) // TODO - Currently only implemented for GUIElement, see above.
+		fnGenerateRegisterEventsMethodBody(output, interopClassName, interopBaseClassName, wrappedDataType);
 
 	// CLR hook method implementations
 	std::string interopClassThisPtrType;
