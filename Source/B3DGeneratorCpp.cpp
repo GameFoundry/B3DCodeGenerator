@@ -2503,67 +2503,65 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 	output << GenerateApiCheckBegin(classInfo.API);
 
 	// Generate a common base class if required
-	// (GUIElements already have one by default)
-	if(typeMappingInformation.TypeCategory != ::ExportedClassTypeCategory::GUIElement)
+	if (isBase)
 	{
-		if (isBase)
+		interopBaseClassName = TypeLookup::GetScriptInteropTypeName(classInfo.NativeName) + "Base";
+
+		output << "\tclass " << exportAttr << " ";
+		output << interopBaseClassName << " : public ";
+
+		if (isRootBase)
 		{
-			interopBaseClassName = TypeLookup::GetScriptInteropTypeName(classInfo.NativeName) + "Base";
-
-			output << "\tclass " << exportAttr << " ";
-			output << interopBaseClassName << " : public ";
-
-			if (isRootBase)
-			{
-				if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Class)
-					output << "ScriptObjectBase";
-				if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
-					output << "ScriptReflectableBase";
-				else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Component)
-					output << "ScriptComponentBase";
-				else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Resource)
-					output << "ScriptResourceBase";
-			}
-			else
-			{
-				std::string parentBaseClassName = TypeLookup::GetScriptInteropTypeName(classInfo.BaseClassName) + "Base";
-				output << parentBaseClassName;
-			}
-
-			output << std::endl;
-			output << "\t{" << std::endl;
-			output << "\tpublic:" << std::endl;
-			output << "\t\t" << interopBaseClassName << "(MonoObject* instance);" << std::endl;
-			output << "\t\tvirtual ~" << interopBaseClassName << "() {}" << std::endl;
-
-			if(!isModule)
-			{
-				if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
-				{
-					output << std::endl;
-					output << "\t\t" << wrappedDataType << " GetInternal() const;\n";
-				}
-				else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Class)
-				{
-					output << std::endl;
-					output << "\t\t" << wrappedDataType << " GetInternal() const { return mInternal; }" << std::endl;
-
-					// Data member only present in the top-most base class
-					if (isRootBase)
-					{
-						output << "\tprotected:" << std::endl;
-						output << "\t\t" << wrappedDataType << " mInternal;" << std::endl;
-					}
-				}
-			}
-
-			output << "\t};" << std::endl;
-			output << std::endl;
+			if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Class)
+				output << "ScriptObjectBase";
+			if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
+				output << "ScriptReflectableBase";
+			else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Component)
+				output << "ScriptComponentBase";
+			else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Resource)
+				output << "ScriptResourceBase";
+			else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
+				output << "ScriptGUIInteractableBase";
 		}
-		else if (!classInfo.BaseClassName.empty())
+		else
 		{
-			interopBaseClassName = TypeLookup::GetScriptInteropTypeName(classInfo.BaseClassName) + "Base";
+			std::string parentBaseClassName = TypeLookup::GetScriptInteropTypeName(classInfo.BaseClassName) + "Base";
+			output << parentBaseClassName;
 		}
+
+		output << std::endl;
+		output << "\t{" << std::endl;
+		output << "\tpublic:" << std::endl;
+		output << "\t\t" << interopBaseClassName << "(MonoObject* instance);" << std::endl;
+		output << "\t\tvirtual ~" << interopBaseClassName << "() {}" << std::endl;
+
+		if(!isModule)
+		{
+			if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
+			{
+				output << std::endl;
+				output << "\t\t" << wrappedDataType << " GetInternal() const;\n";
+			}
+			else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Class)
+			{
+				output << std::endl;
+				output << "\t\t" << wrappedDataType << " GetInternal() const { return mInternal; }" << std::endl;
+
+				// Data member only present in the top-most base class
+				if (isRootBase)
+				{
+					output << "\tprotected:" << std::endl;
+					output << "\t\t" << wrappedDataType << " mInternal;" << std::endl;
+				}
+			}
+		}
+
+		output << "\t};" << std::endl;
+		output << std::endl;
+	}
+	else if (!classInfo.BaseClassName.empty())
+	{
+		interopBaseClassName = TypeLookup::GetScriptInteropTypeName(classInfo.BaseClassName) + "Base";
 	}
 
 	// Generate main class
@@ -2775,18 +2773,15 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 
 	std::string interopBaseClassName;
 
-	if(typeMappingInformation.TypeCategory != ::ExportedClassTypeCategory::GUIElement)
-	{
-		if (isBase)
-			interopBaseClassName = TypeLookup::GetScriptInteropTypeName(classInfo.NativeName) + "Base";
-		else if (!classInfo.BaseClassName.empty())
-			interopBaseClassName = TypeLookup::GetScriptInteropTypeName(classInfo.BaseClassName) + "Base";
-	}
+	if (isBase)
+		interopBaseClassName = TypeLookup::GetScriptInteropTypeName(classInfo.NativeName) + "Base";
+	else if (!classInfo.BaseClassName.empty())
+		interopBaseClassName = TypeLookup::GetScriptInteropTypeName(classInfo.BaseClassName) + "Base";
 
 	std::stringstream output;
 	output << GenerateApiCheckBegin(classInfo.API);
 
-	if (isBase && typeMappingInformation.TypeCategory != ::ExportedClassTypeCategory::GUIElement)
+	if (isBase)
 	{
 		// Base class constructor
 		output << "\t" << interopBaseClassName << "::" << interopBaseClassName << "(MonoObject* managedInstance)\n";
@@ -2803,6 +2798,8 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 				output << "ScriptComponentBase";
 			else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Resource)
 				output << "ScriptResourceBase";
+			else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
+				output << "ScriptGUIInteractableBase";
 		}
 		else
 		{
