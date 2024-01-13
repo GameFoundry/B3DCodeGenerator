@@ -2495,6 +2495,43 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 	else
 		exportAttr = sEditorExportMacro;
 
+	auto fnGenerateEventCallbackMethods = [&classInfo](std::stringstream& stream)
+	{
+		for(auto& eventInfo : classInfo.Events)
+		{
+			stream << GenerateApiCheckBegin(eventInfo.API);
+			stream << "\t\t" << GenerateEventCallbackSignature(classInfo, eventInfo, "") << ";" << std::endl;
+			stream << GenerateApiCheckEnd(eventInfo.API);
+		}
+	};
+
+	auto fnGenerateEventThunks = [&classInfo](std::stringstream& stream)
+	{
+		const bool isModule = classInfo.IsFlagSet(ClassFlags::IsModule);
+		for(auto& eventInfo : classInfo.Events)
+		{
+			stream << GenerateApiCheckBegin(eventInfo.API);
+			stream << GenerateEventThunkSignature(eventInfo, isModule);
+			stream << GenerateApiCheckEnd(eventInfo.API);
+		}
+	};
+
+	auto fnGenerateEventHandles = [&classInfo](std::stringstream& stream)
+	{
+		const bool isModule = classInfo.IsFlagSet(ClassFlags::IsModule);
+		for (auto& eventInfo : classInfo.Events)
+		{
+			const bool isStatic = eventInfo.IsFlagSet(MethodFlags::Static);
+			const bool isCallback = eventInfo.IsFlagSet(MethodFlags::Callback);
+			if(!isCallback && (isStatic || isModule))
+			{
+				stream << GenerateApiCheckBegin(eventInfo.API);
+				stream << "\t\tstatic HEvent " << eventInfo.NativeName << "Conn;" << std::endl;
+				stream << GenerateApiCheckEnd(eventInfo.API);
+			}
+		}
+	};
+
 	const TypeMappingInformation& typeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(classInfo.NativeName);
 	std::string wrappedDataType = GetCppNativeQualifiedTypeName(classInfo.NativeName, typeMappingInformation);
 	std::string interopBaseClassName;
@@ -2535,6 +2572,11 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 		output << "\t\t" << interopBaseClassName << "(MonoObject* instance);" << std::endl;
 		output << "\t\tvirtual ~" << interopBaseClassName << "() {}" << std::endl;
 
+		fnGenerateEventCallbackMethods(output);
+
+		if(!classInfo.Events.empty())
+			output << std::endl;
+
 		if(!isModule)
 		{
 			if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
@@ -2555,6 +2597,13 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 				}
 			}
 		}
+
+		fnGenerateEventThunks(output);
+
+		if(!classInfo.Events.empty())
+			output << std::endl;
+
+		fnGenerateEventHandles(output);
 
 		output << "\t};" << std::endl;
 		output << std::endl;
@@ -2659,15 +2708,13 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 	}
 
 	// Event callback methods
-	for (auto& eventInfo : classInfo.Events)
+	if(!isBase)
 	{
-		output << GenerateApiCheckBegin(eventInfo.API);
-		output << "\t\t" << GenerateEventCallbackSignature(classInfo, eventInfo, "") << ";" << std::endl;
-		output << GenerateApiCheckEnd(eventInfo.API);
-	}
+		fnGenerateEventCallbackMethods(output);
 
-	if(!classInfo.Events.empty())
-		output << std::endl;
+		if(!classInfo.Events.empty())
+			output << std::endl;
+	}
 
 	// Data member
 	if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Class && !isModule && classInfo.BaseClassName.empty() && !isBase)
@@ -2676,28 +2723,15 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 		output << std::endl;
 	}
 
-	// Event thunks
-	for (auto& eventInfo : classInfo.Events)
+	// Event thunks & handles
+	if(!isBase)
 	{
-		output << GenerateApiCheckBegin(eventInfo.API);
-		output << GenerateEventThunkSignature(eventInfo, isModule);
-		output << GenerateApiCheckEnd(eventInfo.API);
-	}
+		fnGenerateEventThunks(output);
+		
+		if(!classInfo.Events.empty())
+			output << std::endl;
 
-	if(!classInfo.Events.empty())
-		output << std::endl;
-
-	// Event handles
-	for (auto& eventInfo : classInfo.Events)
-	{
-		bool isStatic = eventInfo.IsFlagSet(MethodFlags::Static);
-		bool isCallback = eventInfo.IsFlagSet(MethodFlags::Callback);
-		if(!isCallback && (isStatic || isModule))
-		{
-			output << GenerateApiCheckBegin(eventInfo.API);
-			output << "\t\tstatic HEvent " << eventInfo.NativeName << "Conn;" << std::endl;
-			output << GenerateApiCheckEnd(eventInfo.API);
-		}
+		fnGenerateEventHandles(output);
 	}
 
 	if(hasStaticEvents)
@@ -2767,6 +2801,56 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 		}
 	}
 
+	auto fnGenerateEventHandles = [&classInfo](std::stringstream& stream, const std::string& className)
+	{
+		const bool isModule = classInfo.IsFlagSet(ClassFlags::IsModule);
+
+		bool hasEventHandles = false;
+		for(auto& eventInfo : classInfo.Events)
+		{
+			const bool isStatic = eventInfo.IsFlagSet(MethodFlags::Static);
+			const bool isCallback = eventInfo.IsFlagSet(MethodFlags::Callback);
+			if(!isCallback && (isStatic || isModule))
+			{
+				stream << GenerateApiCheckBegin(eventInfo.API);
+				stream << "\tHEvent " << className << "::" << eventInfo.NativeName << "Conn;\n";
+				stream << GenerateApiCheckEnd(eventInfo.API);
+
+				hasEventHandles = true;
+			}
+		}
+
+		if(hasEventHandles)
+			stream << "\n";
+	};
+
+	auto fnGenerateEventThunks = [&classInfo](std::stringstream& stream, const std::string& className)
+	{
+		for(auto& eventInfo : classInfo.Events)
+		{
+			stream << GenerateApiCheckBegin(eventInfo.API);
+			stream << "\t" << className << "::" << eventInfo.NativeName << "ThunkDef " << className << "::" << eventInfo.NativeName << "Thunk; \n";
+			stream << GenerateApiCheckEnd(eventInfo.API);
+		}
+
+		if(!classInfo.Events.empty())
+			stream << "\n";
+	};
+
+	auto fnGenerateEventCallbacks = [&classInfo](std::stringstream& stream, const std::string& className)
+	{
+		for(auto I = classInfo.Events.begin(); I != classInfo.Events.end(); ++I)
+		{
+			const MethodInfo& eventInfo = *I;
+
+			stream << GenerateApiCheckBegin(eventInfo.API);
+			stream << "\t" << GenerateEventCallbackSignature(classInfo, eventInfo, className) << std::endl;
+			stream << GenerateInternalEventCallbackBody(classInfo, eventInfo);
+			stream << GenerateApiCheckEnd(eventInfo.API);
+			stream << "\n";
+		}
+	};
+
 	const TypeMappingInformation& typeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(classInfo.NativeName);
 	std::string interopClassName = TypeLookup::GetScriptInteropTypeName(classInfo.NativeName);
 	std::string wrappedDataType = GetCppNativeQualifiedTypeName(classInfo.NativeName, typeMappingInformation);
@@ -2783,6 +2867,12 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 
 	if (isBase)
 	{
+		// Event thunks
+		fnGenerateEventThunks(output, interopBaseClassName);
+
+		// Event handles
+		fnGenerateEventHandles(output, interopBaseClassName);
+
 		// Base class constructor
 		output << "\t" << interopBaseClassName << "::" << interopBaseClassName << "(MonoObject* managedInstance)\n";
 		output << "\t\t:";
@@ -2811,7 +2901,7 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 		output << "\t { }\n";
 		output << "\n";
 
-		// Base class getInternal() method
+		// Base class GetInternal() method
 		if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
 		{
 			output << "\t" << wrappedDataType << " " << interopBaseClassName << "::" << "GetInternal() const\n";
@@ -2819,37 +2909,18 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 			output << "\t\treturn std::static_pointer_cast<" << classInfo.NativeName << ">(mInternal);\n";
 			output << "\t}\n";
 		}
+
+		// Event callback method implementations
+		fnGenerateEventCallbacks(output, interopBaseClassName);
 	}
 
 	// Event thunks
-	for (auto& eventInfo : classInfo.Events)
-	{
-		output << GenerateApiCheckBegin(eventInfo.API);
-		output << "\t" << interopClassName << "::" << eventInfo.NativeName << "ThunkDef " << interopClassName << "::" << eventInfo.NativeName << "Thunk; \n";
-		output << GenerateApiCheckEnd(eventInfo.API);
-	}
-
-	if (!classInfo.Events.empty())
-		output << "\n";
+	if(!isBase)
+		fnGenerateEventThunks(output, interopClassName);
 
 	// Event handles
-	bool hasEventHandles = false;
-	for (auto& eventInfo : classInfo.Events)
-	{
-		const bool isStatic = eventInfo.IsFlagSet(MethodFlags::Static);
-		const bool isCallback = eventInfo.IsFlagSet(MethodFlags::Callback);
-		if(!isCallback && (isStatic || isModule))
-		{
-			output << GenerateApiCheckBegin(eventInfo.API);
-			output << "\tHEvent " << interopClassName << "::" << eventInfo.NativeName << "Conn;\n";
-			output << GenerateApiCheckEnd(eventInfo.API);
-
-			hasEventHandles = true;
-		}
-	}
-
-	if (hasEventHandles)
-		output << "\n";
+	if(!isBase)
+		fnGenerateEventHandles(output, interopClassName);
 
 	// Constructor
 	if (!isModule)
@@ -2935,7 +3006,7 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 
 	if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Class)
 	{
-		// getInternal method
+		// GetInternal method
 		if (isBase || !classInfo.BaseClassName.empty())
 		{
 			output << "\t" << wrappedDataType << " " << interopClassName << "::GetInternal() const \n";
@@ -2947,7 +3018,7 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 
 	if (typeMappingInformation.IsClassType() && !isModule)
 	{
-		// getManagedInstance() method (needed for events)
+		// GetManagedInstance() method (needed for events)
 		if (!classInfo.Events.empty())
 		{
 			output << "\tMonoObject* " << interopClassName << "::GetManagedInstance() const\n";
@@ -3121,18 +3192,8 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 	}
 
 	// Event callback method implementations
-	for (auto I = classInfo.Events.begin(); I != classInfo.Events.end(); ++I)
-	{
-		const MethodInfo& eventInfo = *I;
-
-		output << GenerateApiCheckBegin(eventInfo.API);
-		output << "\t" << GenerateEventCallbackSignature(classInfo, eventInfo, interopClassName) << std::endl;
-		output << GenerateInternalEventCallbackBody(classInfo, eventInfo);
-		output << GenerateApiCheckEnd(eventInfo.API);
-
-		if ((I + 1) != classInfo.Events.end())
-			output << std::endl;
-	}
+	if(!isBase)
+		fnGenerateEventCallbacks(output, interopClassName);
 
 	// CLR hook method implementations
 	std::string interopClassThisPtrType;
