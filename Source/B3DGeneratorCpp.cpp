@@ -92,7 +92,7 @@ static std::string GetCppNativeQualifiedTypeName(const VariableTypeInformation& 
 	else if (typeInformation.TypeCategory == VariableTypeCategory::Array || typeInformation.TypeCategory == VariableTypeCategory::ComponentOrActor)
 		output << GetCppNativeQualifiedTypeName(typeInformation.AssertGetUnderlyingType(), typeMappingInformation, false);
 	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Resource)
-		output << "ResourceHandle<" + typeName + ">";
+		output << "TResourceHandle<" + typeName + ">";
 	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GameObject || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::SceneObject || typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Component)
 		output << "GameObjectHandle<" + typeName + ">";
 	else if (typeMappingInformation.IsClassType())
@@ -2184,7 +2184,7 @@ static std::string GenerateInternalMethodBody(const ClassInfo& classInfo, const 
 			}
 			else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Resource)
 			{
-				output << "\t\tResourceHandle<" << classInfo.NativeName << "> instance = " << fullMethodName << "(" << methodArgs.str() << ");" << std::endl;
+				output << "\t\tTResourceHandle<" << classInfo.NativeName << "> instance = " << fullMethodName << "(" << methodArgs.str() << ");" << std::endl;
 				output << "\t\tScriptResourceManager::Instance().CreateBuiltinScriptResource(instance, managedInstance);" << std::endl;
 				isValid = true;
 			}
