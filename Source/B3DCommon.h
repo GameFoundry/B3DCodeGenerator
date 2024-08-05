@@ -35,6 +35,7 @@ extern const char *const kBuiltinResourceType;
 extern const char *const kBuiltinModuleType;
 extern const char *const kBuiltinGUIElementType;
 extern const char *const kBuiltinReflectableType;
+extern const char* const kBuiltinIScriptExportableType;
 
 extern std::string sFrameworkCppNs;
 extern std::string sEditorCppNs;
@@ -230,11 +231,12 @@ struct GeneratedTypeInformation
 /** Flags that describe how is a class exported. */
 enum class ClassFlags
 {
-	IsBase = 1 << 0,			/**< Class represents a base class. */
-	IsModule = 1 << 1,			/**< Class is a module and only has a single instance. */
-	IsTemplateInst = 1 << 2,	/**< Class is an instance of a template. */
-	IsStruct = 1 << 3,			/**< Class is defined as a struct in native code. */
-	HideInInspector = 1 << 4	/**< Class members will be hidden in the inspector. */
+	IsBase = 1 << 0,						/**< Class represents a base class. */
+	IsModule = 1 << 1,						/**< Class is a module and only has a single instance. */
+	IsTemplateInst = 1 << 2,				/**< Class is an instance of a template. */
+	IsStruct = 1 << 3,						/**< Class is defined as a struct in native code. */
+	HideInInspector = 1 << 4,				/**< Class members will be hidden in the inspector. */
+	UsesIScriptExportableAPI = 1 << 5		/**< Class derives from IScriptExportable and uses the new script export code. */
 };
 
 /** Information about a generated class. */

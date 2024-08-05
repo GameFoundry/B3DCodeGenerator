@@ -1449,6 +1449,9 @@ bool BansheeCodeGeneratorASTVisitor::TryParseDeclarationAsClass(CXXRecordDecl* d
 	if(declaration->isStruct())
 		outClassInfo.ClassFlags |= (int)ClassFlags::IsStruct;
 
+	if(ParserUtility::HasIScriptExportableBaseClass(declaration))
+		outClassInfo.ClassFlags |= (int)ClassFlags::UsesIScriptExportableAPI;
+
 	::ExportedClassTypeCategory classType = DetermineExportedTypeCategory(declaration);
 
 	std::string declFile = astContext->getSourceManager().getFilename(declaration->getSourceRange().getBegin()).str();

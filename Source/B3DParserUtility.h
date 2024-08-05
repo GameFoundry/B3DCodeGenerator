@@ -19,6 +19,9 @@ public:
 	/** Returns true if the provided declaration is one of the builtin base types (e.g. component, resource, IReflectable). */
 	static bool IsBuiltinBaseType(const CXXRecordDecl* decl);
 
+	/** Checks if the provided type has IScriptExportable base class. */
+	static bool HasIScriptExportableBaseClass(const CXXRecordDecl* decl);
+
 	static bool MapBuiltinPrimitiveTypeToCppType(BuiltinType::Kind kind, std::string& output);
 	static ApiFlags ParseAPIFromExportFlags(int exportFlags);
 };

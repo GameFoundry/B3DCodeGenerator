@@ -15,6 +15,7 @@ const char *const kBuiltinResourceType = "Resource";
 const char *const kBuiltinModuleType = "Module";
 const char *const kBuiltinGUIElementType = "GUIInteractable";
 const char *const kBuiltinReflectableType = "IReflectable";
+const char *const kBuiltinIScriptExportableType = "IScriptExportable";
 
 std::string sFrameworkCppNs = "bs";
 std::string sEditorCppNs = "bs";

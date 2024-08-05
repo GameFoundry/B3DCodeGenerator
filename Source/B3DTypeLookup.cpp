@@ -943,20 +943,33 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 
 				fileInfo.second.ForwardDeclarations.insert(ForwardDeclarationInformation(classInfo.NativeNameWithoutTemplateArguments, classInfo.Namespace, classInfo.TemplateParameters, classInfo.IsFlagSet(ClassFlags::IsStruct)));
 
-				if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource)
-					fileInfo.second.ReferencedHeaderIncludes.push_back("Wrappers/BsScriptResource.h");
-				else if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::GameObject)
-					fileInfo.second.ReferencedHeaderIncludes.push_back("Wrappers/BsScriptGameObject.h");
-				else if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::Component)
-					fileInfo.second.ReferencedHeaderIncludes.push_back("Wrappers/BsScriptComponent.h");
-				else if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::SceneObject)
-					fileInfo.second.ReferencedHeaderIncludes.push_back("Wrappers/BsScriptSceneObject.h");
-				else if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
-					fileInfo.second.ReferencedHeaderIncludes.push_back("Wrappers/GUI/BsScriptGUIElement.h");
-				else if (typeInfo.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
-					fileInfo.second.ReferencedHeaderIncludes.push_back("Wrappers/BsScriptReflectable.h");
-				else // Class
-					fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptObject.h");
+				if((classInfo.ClassFlags & (int)ClassFlags::UsesIScriptExportableAPI) != 0)
+				{
+					if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::Class || typeInfo.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
+						fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptObjectWrapper.h");
+					else
+					{
+						// TODO - Other types unsupported at the moment
+						errs() << "Error: Unsupported type trying to use the IScriptExportable interface. Code generation for this type will be incorrect.";
+					}
+				}
+				else
+				{
+					if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource)
+						fileInfo.second.ReferencedHeaderIncludes.push_back("Wrappers/BsScriptResource.h");
+					else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::GameObject)
+						fileInfo.second.ReferencedHeaderIncludes.push_back("Wrappers/BsScriptGameObject.h");
+					else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::Component)
+						fileInfo.second.ReferencedHeaderIncludes.push_back("Wrappers/BsScriptComponent.h");
+					else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::SceneObject)
+						fileInfo.second.ReferencedHeaderIncludes.push_back("Wrappers/BsScriptSceneObject.h");
+					else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
+						fileInfo.second.ReferencedHeaderIncludes.push_back("Wrappers/GUI/BsScriptGUIElement.h");
+					else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
+						fileInfo.second.ReferencedHeaderIncludes.push_back("Wrappers/BsScriptReflectable.h");
+					else // Class
+						fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptObject.h");
+				}
 
 				if (!classInfo.BaseClassName.empty())
 				{

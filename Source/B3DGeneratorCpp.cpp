@@ -3510,7 +3510,7 @@ std::string GenerateStructDefinition(const StructInfo& structInfo)
  * @param engineOutputFolder	Output folder for the generated file, if generating for engine/framework.
  * @param editorOutputFolder	Output folder for the generated file, if generating for editor.
  */
-void GenerateLookupFileHead(const std::string& tableName, ExportedClassTypeCategory type, bool editor, const std::string& engineOutputFolder, const std::string& editorOutputFolder)
+void GenerateLookupFileHeader(const std::string& tableName, ExportedClassTypeCategory type, bool editor, const std::string& engineOutputFolder, const std::string& editorOutputFolder)
 {
 	StringRef cppOutputFolder = editor ? editorOutputFolder : engineOutputFolder;
 
@@ -3734,9 +3734,9 @@ void GenerateCpp(StringRef engineOutputFolder, StringRef editorOutputFolder, boo
 	}
 
 	// Generate builtin component lookup file
-	GenerateLookupFileHead("BuiltinComponent", ::ExportedClassTypeCategory::Component, false, engineOutputFolder.str(), editorOutputFolder.str());
+	GenerateLookupFileHeader("BuiltinComponent", ::ExportedClassTypeCategory::Component, false, engineOutputFolder.str(), editorOutputFolder.str());
 
 	// Generate C++ reflectable type lookup files
-	GenerateLookupFileHead("BuiltinReflectableTypes", ::ExportedClassTypeCategory::ReflectableClass, false, engineOutputFolder.str(), editorOutputFolder.str());
-	GenerateLookupFileHead("BuiltinReflectableTypes", ::ExportedClassTypeCategory::ReflectableClass, true, engineOutputFolder.str(), editorOutputFolder.str());
+	GenerateLookupFileHeader("BuiltinReflectableTypes", ::ExportedClassTypeCategory::ReflectableClass, false, engineOutputFolder.str(), editorOutputFolder.str());
+	GenerateLookupFileHeader("BuiltinReflectableTypes", ::ExportedClassTypeCategory::ReflectableClass, true, engineOutputFolder.str(), editorOutputFolder.str());
 }

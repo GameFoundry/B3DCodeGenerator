@@ -117,6 +117,37 @@ bool ParserUtility::CheckIsBuiltinModuleType(const CXXRecordDecl* decl)
 	return false;
 }
 
+bool ParserUtility::HasIScriptExportableBaseClass(const CXXRecordDecl* decl)
+{
+	if (!decl->hasDefinition())
+		return false;
+
+	std::stack<const CXXRecordDecl*> todo;
+	todo.push(decl);
+
+	while (!todo.empty())
+	{
+		const CXXRecordDecl* currentDeclaration = todo.top();
+		todo.pop();
+
+		auto it = currentDeclaration->bases_begin();
+		while (it != currentDeclaration->bases_end())
+		{
+			const CXXBaseSpecifier* baseSpecifier = it;
+			CXXRecordDecl* baseDeclaration = baseSpecifier->getType()->getAsCXXRecordDecl();
+
+			std::string baseClassName = baseDeclaration->getName().str();
+			if (baseClassName == kBuiltinIScriptExportableType)
+				return true;
+
+			todo.push(baseDeclaration);
+			it++;
+		}
+	}
+
+	return false;
+}
+
 bool ParserUtility::IsBuiltinBaseType(const CXXRecordDecl* decl)
 {
 	std::string className = decl->getName().str();
