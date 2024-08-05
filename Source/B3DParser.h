@@ -3,6 +3,7 @@
 #include "B3DCommon.h"
 #include "B3DCommentParser.h"
 
+struct ScriptExportInformation;
 struct FunctionTypeInfo;
 
 class BansheeCodeGeneratorASTVisitor : public RecursiveASTVisitor<BansheeCodeGeneratorASTVisitor>
@@ -11,7 +12,7 @@ public:
 	explicit BansheeCodeGeneratorASTVisitor(CompilerInstance* CI, CommentParser& commentParser);
 
 	bool VisitEnumDecl(EnumDecl* decl);
-	bool VisitCXXRecordDecl(CXXRecordDecl* decl);
+	bool VisitCXXRecordDecl(CXXRecordDecl* declaration);
 
 private:
 	/**
@@ -76,6 +77,26 @@ private:
 	 * @return									Template arguments surrounded by <>, separate by commas. e.g. <Vector3, 4>
 	 */
 	std::string ParseTemplateArguments(const std::string& className, const TemplateArgument* arguments, uint32_t argumentCount, SmallVector<TemplateParamInfo, 0>* outTemplateArgumentInformation);
+
+	/**
+	 * Tries to parse the provided declaration as a struct. If declaration has already been parsed, returns false.
+	 *
+	 * @param	declaration					C++ class/struct declaration to parse.
+	 * @param	scriptExportInformation		Information used for controlling the export, usually parsed from the export annotation attribute.
+	 * @param	outStructInfo				Parsed struct information. Only valid if the method returns true.
+	 * @return								True if the declaration was parsed. False if the declaration was already parsed previously.
+	 */
+	bool TryParseDeclarationAsStruct(CXXRecordDecl* declaration, const ScriptExportInformation& scriptExportInformation, StructInfo& outStructInfo);
+
+	/**
+	 * Tries to parse the provided declaration as a class. If declaration has already been parsed, returns false.
+	 *
+	 * @param	declaration					C++ class/struct declaration to parse.
+	 * @param	scriptExportInformation		Information used for controlling the export, usually parsed from the export annotation attribute.
+	 * @param	outClassInfo				Parsed class information. Only valid if the method returns true.
+	 * @return								True if the declaration was parsed. False if the declaration was already parsed previously.
+	 */
+	bool TryParseDeclarationAsClass(CXXRecordDecl* declaration, const ScriptExportInformation& scriptExportInformation, ClassInfo& outClassInfo);
 
 	ASTContext* astContext;
 	Preprocessor& preprocessor;

@@ -976,6 +976,878 @@ std::string BansheeCodeGeneratorASTVisitor::ParseTemplateArguments(const std::st
 	return tmplArgsStream.str();
 }
 
+bool BansheeCodeGeneratorASTVisitor::TryParseDeclarationAsStruct(CXXRecordDecl* declaration, const ScriptExportInformation& scriptExportInformation, StructInfo& outStructInfo)
+{
+	StringRef declarationName = declaration->getName();
+	std::string sourceClassName = declarationName.str();
+
+	// If a template specialization append template params to its name
+	ClassTemplateSpecializationDecl* specializationDeclaration = dyn_cast<ClassTemplateSpecializationDecl>(declaration);
+	CXXRecordDecl* templatedDeclaration = declaration;
+	SmallVector<TemplateParamInfo, 0> templateParameters;
+	if(specializationDeclaration != nullptr)
+	{
+		auto& templateInstantiationArguments = specializationDeclaration->getTemplateInstantiationArgs();
+		sourceClassName += ParseTemplateArguments(sourceClassName, templateInstantiationArguments.data(), templateInstantiationArguments.size(), &templateParameters);
+		templatedDeclaration = specializationDeclaration->getSpecializedTemplate()->getTemplatedDecl();
+	}
+
+	if (TypeLookup::FindStructInformationInFile(scriptExportInformation.ExportedFileName, sourceClassName) != nullptr)
+		return false; // Already parsed
+
+	outStructInfo.NativeName = sourceClassName;
+	outStructInfo.NativeNameWithoutTemplateArguments = declarationName.str();
+	outStructInfo.BaseClassName = ScriptExportAttributeParser::FindExportableBasePlainClassName(declaration);
+	outStructInfo.Visibility = scriptExportInformation.Visibility;
+	outStructInfo.RequiresInteropType = declaration->isPolymorphic();
+	outStructInfo.DocumentationGroup = scriptExportInformation.DocumentationGroup;
+	outStructInfo.IsTemplateInstatiation = specializationDeclaration != nullptr;
+	outStructInfo.TemplateParameters = templateParameters;
+	outStructInfo.API = ParserUtility::ParseAPIFromExportFlags(scriptExportInformation.ExportFlags);
+
+	mCommentParser.ParseComments(templatedDeclaration, outStructInfo.Documentation);
+	ParseNamespace(declaration, outStructInfo.Namespace);
+	CommentParser::ClearParameterReferenceComments(outStructInfo.Documentation);
+
+	std::unordered_map<FieldDecl*, std::pair<std::string, std::string>> defaultFieldValues;
+
+	// Parses assignment operations in the provided method body and outputs it to @p outAssignments map
+	auto fnParseAssignmentsInBody = [&sourceClassName](const CXXMethodDecl& methodDecl, std::unordered_map<FieldDecl*, ParmVarDecl*> outAssignments)
+	{
+		// Parse any assignments in the function body
+		// Note: Searching for trivially simple assignments only, ignoring anything else
+		if(!methodDecl.hasBody())
+			return;
+
+		CompoundStmt* functionBody = dyn_cast<CompoundStmt>(methodDecl.getBody()); // Note: Not handling inner blocks
+		assert(functionBody != nullptr);
+
+		for(auto I = functionBody->child_begin(); I != functionBody->child_end(); ++I)
+		{
+			Stmt* stmt = *I;
+
+			BinaryOperator* binaryOp = dyn_cast<BinaryOperator>(stmt);
+			if(binaryOp == nullptr)
+				continue;
+
+			if(binaryOp->getOpcode() != BO_Assign)
+				continue;
+
+			Expr* lhsExpr = binaryOp->getLHS()->IgnoreParenCasts(); // Note: Ignoring even explicit casts
+			Decl* lhsDecl;
+
+			if(DeclRefExpr* varExpr = dyn_cast<DeclRefExpr>(lhsExpr))
+				lhsDecl = varExpr->getDecl();
+			else if(MemberExpr* memberExpr = dyn_cast<MemberExpr>(lhsExpr))
+				lhsDecl = memberExpr->getMemberDecl();
+			else
+				continue;
+
+			FieldDecl* fieldDecl = dyn_cast<FieldDecl>(lhsDecl);
+			if(fieldDecl == nullptr)
+				continue;
+
+			Expr* rhsExpr = binaryOp->getRHS()->IgnoreParenCasts();
+			Decl* rhsDecl = nullptr;
+
+			if(DeclRefExpr* varExpr = dyn_cast<DeclRefExpr>(rhsExpr))
+				rhsDecl = varExpr->getDecl();
+			else if(MemberExpr* memberExpr = dyn_cast<MemberExpr>(rhsExpr))
+				rhsDecl = memberExpr->getMemberDecl();
+
+			ParmVarDecl* parmVarDecl = nullptr;
+			if(rhsDecl != nullptr)
+				parmVarDecl = dyn_cast<ParmVarDecl>(rhsDecl);
+
+			if(parmVarDecl == nullptr)
+			{
+				outs() << "Warning: Found a non-trivial field assignment for field \"" << fieldDecl->getName() << "\" in"
+					<< " constructor of \"" << sourceClassName << "\". Ignoring assignment.\n";
+				continue;
+			}
+
+			outAssignments[fieldDecl] = parmVarDecl;
+		}
+	};
+
+	// Parses information about every parameter in the method, and outputs information about parameters in @p outParameters.
+	auto fnParseMethodParameters = [this](const CXXMethodDecl& methodDecl, std::vector<VariableInformation>& outParameters) {
+		bool skippedDefaultArgument = false;
+		for (auto I = methodDecl.param_begin(); I != methodDecl.param_end(); ++I)
+		{
+			ParmVarDecl* paramDecl = *I;
+
+			VariableInformation paramInfo;
+			paramInfo.Name = paramDecl->getName().str();
+
+			std::string typeName;
+			unsigned arraySize;
+			if (!ParseTypeInformation(paramDecl->getType(), paramInfo.TypeInformation))
+			{
+				outs() << "Error: Unable to detect type for constructor parameter \"" << paramDecl->getName().str()
+					<< "\". Skipping.\n";
+				continue;
+			}
+
+			if (paramDecl->hasDefaultArg() && !skippedDefaultArgument)
+			{
+				if (!TryEvaluateExpression(paramDecl->getDefaultArg(), paramInfo.DefaultValue, paramInfo.DefaultValueType))
+				{
+					outs() << "Error: Constructor parameter \"" << paramDecl->getName().str() << "\" has a default "
+						<< "argument that cannot be constantly evaluated, ignoring it.\n";
+					skippedDefaultArgument = true;
+				}
+			}
+
+			ParseParameterOrFieldAttribute(paramDecl, false, paramInfo.TypeInformation);
+			outParameters.push_back(paramInfo);
+		}
+	};
+
+	// Parse non-default constructors & determine default values for fields
+	if (declaration->hasUserDeclaredConstructor())
+	{
+		auto ctorIter = declaration->ctor_begin();
+		while (ctorIter != declaration->ctor_end())
+		{
+			StructConstructorInfo ctorInfo;
+			CXXConstructorDecl* ctorDecl = *ctorIter;
+
+			if (ctorDecl->isImplicit())
+			{
+				++ctorIter;
+				continue;
+			}
+
+			AnnotateAttr* ctorAttr = ctorDecl->getAttr<AnnotateAttr>();
+			if (ctorAttr != nullptr)
+			{
+				ScriptExportInformation parsedCtorInfo;
+				ScriptExportAttributeParser::ParseExportAttribute(ctorAttr, sourceClassName, parsedCtorInfo);
+
+				if ((parsedCtorInfo.ExportFlags & (int)ExportFlags::Exclude) != 0)
+				{
+					++ctorIter;
+					continue;
+				}
+			}
+
+			mCommentParser.ParseComments(ctorDecl, ctorInfo.Documentation);
+
+			fnParseMethodParameters(*ctorDecl, ctorInfo.Parameters);
+			std::unordered_map<FieldDecl*, ParmVarDecl*> assignments;
+
+			// Parse initializers for assignments & default values
+			for (auto I = ctorDecl->init_begin(); I != ctorDecl->init_end(); ++I)
+			{
+				CXXCtorInitializer* init = *I;
+
+				if (init->isMemberInitializer())
+				{
+					FieldDecl* field = init->getMember();
+					Expr* initExpr = init->getInit();
+
+					bool isValid = true;
+					while(CXXConstructExpr* constructExpr = dyn_cast<CXXConstructExpr>(initExpr))
+					{
+						isValid = false;
+						if(constructExpr->getNumArgs() == 0)
+						{
+							// Don't care about default constructors
+							break;
+						}
+						else if (constructExpr->getNumArgs() == 1)
+						{
+							initExpr = constructExpr->getArg(0);
+							isValid = true;
+						}
+						else
+						{
+							outs() << "Error: Invalid number of parameters in constructor initializer. Only one parameter "
+								"constructors are supported. In struct \"" + sourceClassName + "\".\n";
+							break;
+						}
+					}
+
+					// Let the member initializer code handle the default value
+					if (dyn_cast<CXXDefaultInitExpr>(initExpr))
+						isValid = false;
+						
+					if (isValid)
+					{
+						// Check for constant value first
+						std::string evalValue, evalTypeValue;
+						if (TryEvaluateExpression(initExpr, evalValue, evalTypeValue))
+							defaultFieldValues[field] = std::make_pair(evalValue, evalTypeValue);
+						else // Check for initializers referencing parameters
+						{
+							Decl* varDecl = nullptr;
+
+							// Check for std::move
+							if (CallExpr* callExpr = dyn_cast<CallExpr>(initExpr))
+							{
+								if(FunctionDecl* funcDecl = dyn_cast<FunctionDecl>(callExpr->getCalleeDecl()))
+								{
+									if(funcDecl->getName() == "move" && funcDecl->isInStdNamespace())
+									{
+										if(callExpr->getNumArgs() == 1)
+										{
+											if (Expr* argExpr = callExpr->getArg(0))
+												varDecl = argExpr->getReferencedDeclOfCallee();
+										}
+									}
+										
+								}
+							}
+							else
+							{
+								varDecl = initExpr->getReferencedDeclOfCallee();
+							}
+
+							if (varDecl != nullptr)
+							{
+								ParmVarDecl* parmVarDecl = dyn_cast<ParmVarDecl>(varDecl);
+								if (parmVarDecl != nullptr)
+									assignments[field] = parmVarDecl;
+							}
+							else
+							{
+								std::string fieldName;
+
+								if (field)
+									fieldName = field->getName().str();
+
+								outs() << "Error: Unrecognized initializer format in struct \"" << sourceClassName << "\" for field \"" << fieldName << "\".\n";
+							}
+						}
+					}
+				}
+			}
+
+			fnParseAssignmentsInBody(*ctorDecl, assignments);
+
+			for (auto I = declaration->field_begin(); I != declaration->field_end(); ++I)
+			{
+				auto iterFind = assignments.find(*I);
+				if (iterFind == assignments.end())
+					continue;
+
+				std::string fieldName = iterFind->first->getName().str();
+				std::string paramName = iterFind->second->getName().str();
+
+				ctorInfo.FieldAssignments[fieldName] = paramName;
+			}
+
+			CommentParser::EnsureValidParameterReferenceComments(ctorInfo.Parameters, ctorInfo.Documentation);
+
+			outStructInfo.Constructors.push_back(ctorInfo);
+			++ctorIter;
+		}
+	}
+
+	// Look for external constructors
+	// Note: This is not fully implemented. We're not parsing obj.field = param assignments, just field = param.
+	for (auto I = declaration->method_begin(); I != declaration->method_end(); ++I)
+	{
+		CXXMethodDecl* methodDecl = *I;
+
+		CXXConstructorDecl* ctorDecl = dyn_cast<CXXConstructorDecl>(methodDecl);
+		if (ctorDecl != nullptr)
+			continue;
+
+		if (!methodDecl->isUserProvided() || methodDecl->isImplicit())
+			continue;
+
+		AnnotateAttr* methodAttr = methodDecl->getAttr<AnnotateAttr>();
+		if (methodAttr == nullptr)
+			continue;
+
+		StringRef sourceMethodName = methodDecl->getName();
+
+		ScriptExportInformation parsedMethodInfo;
+		if (!ScriptExportAttributeParser::ParseExportAttribute(methodDecl, sourceMethodName, parsedMethodInfo))
+			continue;
+
+		if((parsedMethodInfo.ExportFlags & (int)ExportFlags::ExternalConstructor) == 0)
+			continue;
+
+		if (methodDecl->getAccess() != AS_public)
+			outs() << "Error: Exported method \"" + sourceMethodName + "\" isn't public. This will likely result in invalid code generation.";
+
+		StructConstructorInfo ctorInfo;
+
+		mCommentParser.ParseComments(ctorDecl, ctorInfo.Documentation);
+
+		fnParseMethodParameters(*ctorDecl, ctorInfo.Parameters);
+
+		std::unordered_map<FieldDecl*, ParmVarDecl*> assignments;
+		fnParseAssignmentsInBody(*ctorDecl, assignments);
+
+		for (auto I = declaration->field_begin(); I != declaration->field_end(); ++I)
+		{
+			auto iterFind = assignments.find(*I);
+			if (iterFind == assignments.end())
+				continue;
+
+			std::string fieldName = iterFind->first->getName().str();
+			std::string paramName = iterFind->second->getName().str();
+
+			ctorInfo.FieldAssignments[fieldName] = paramName;
+		}
+
+		CommentParser::EnsureValidParameterReferenceComments(ctorInfo.Parameters, ctorInfo.Documentation);
+
+		ctorInfo.StaticMethodName = sourceMethodName.str();
+		outStructInfo.Constructors.push_back(ctorInfo);
+	}
+
+	std::stack<const CXXRecordDecl*> todo;
+	todo.push(declaration);
+
+	bool hasDefaultValue = false;
+	while (!todo.empty())
+	{
+		const CXXRecordDecl* curDecl = todo.top();
+		todo.pop();
+
+		for (auto I = curDecl->field_begin(); I != curDecl->field_end(); ++I)
+		{
+			FieldDecl* fieldDecl = *I;
+			FieldInfo fieldInfo;
+			fieldInfo.Name = fieldDecl->getName().str();
+
+			ScriptExportInformation parsedFieldInfo;
+			if (ScriptExportAttributeParser::ParseExportAttribute(fieldDecl, sourceClassName, parsedFieldInfo))
+			{
+				if ((parsedFieldInfo.ExportFlags & (int)ExportFlags::Exclude) != 0)
+				{
+					outStructInfo.RequiresInteropType = true;
+					continue;
+				}
+
+				fieldInfo.MetaData = parsedFieldInfo.MetaData;
+			}
+
+			auto iterFind = defaultFieldValues.find(fieldDecl);
+			if (iterFind != defaultFieldValues.end())
+			{
+				fieldInfo.DefaultValue = iterFind->second.first;
+				fieldInfo.DefaultValueType = iterFind->second.second;
+			}
+
+			if (fieldDecl->hasInClassInitializer())
+			{
+				Expr* initExpr = fieldDecl->getInClassInitializer();
+
+				if (initExpr != nullptr)
+				{
+					TryEvaluateExpression(initExpr, fieldInfo.DefaultValue, fieldInfo.DefaultValueType);
+				}
+			}
+
+			std::string typeName;
+			if (!ParseTypeInformation(fieldDecl->getType(), fieldInfo.TypeInformation))
+			{
+				outs() << "Error: Unable to detect type for field \"" << fieldDecl->getName().str() << "\" in \""
+					<< sourceClassName << "\". Skipping field.\n";
+				continue;
+			}
+
+			ParseParameterOrFieldAttribute(fieldDecl, true, fieldInfo.TypeInformation);
+
+			// Remove the pass-as-resource-ref flag to all parameters initializing the field
+			if(!fieldInfo.TypeInformation.IsParameterFlagSet(ParameterFlags::AsResourceRef))
+			{
+				for(auto& ctorInfo : outStructInfo.Constructors)
+				{
+					auto iterFindField = ctorInfo.FieldAssignments.find(fieldInfo.Name);
+					if (iterFindField != ctorInfo.FieldAssignments.end())
+					{
+						auto iterFindParam = std::find_if(ctorInfo.Parameters.begin(), ctorInfo.Parameters.end(), 
+							[name = iterFindField->second](const VariableInformation& varInfo)
+							{
+								return varInfo.Name == name;
+							});
+
+						if (iterFindParam != ctorInfo.Parameters.end())
+						{
+							iterFindParam->TypeInformation.UnsetParameterFlag(ParameterFlags::AsResourceRef, true);
+						}
+					}
+				}
+			}
+
+			if (!fieldInfo.DefaultValue.empty())
+				hasDefaultValue = true;
+
+			mCommentParser.ParseComments(fieldDecl, fieldInfo.Documentation);
+			CommentParser::ClearParameterReferenceComments(fieldInfo.Documentation);
+
+			outStructInfo.Fields.push_back(fieldInfo);
+		}
+
+		auto iter = curDecl->bases_begin();
+		while (iter != curDecl->bases_end())
+		{
+			const CXXBaseSpecifier* baseSpec = iter;
+			CXXRecordDecl* baseDecl = baseSpec->getType()->getAsCXXRecordDecl();
+
+			todo.push(baseDecl);
+			iter++;
+		}
+	}
+
+	// If struct has in-class default values assigned, but no explicit constructors, add a parameterless constructor
+	if (outStructInfo.Constructors.empty() && hasDefaultValue)
+		outStructInfo.Constructors.push_back(StructConstructorInfo());
+
+	return true;
+}
+
+bool BansheeCodeGeneratorASTVisitor::TryParseDeclarationAsClass(CXXRecordDecl* declaration, const ScriptExportInformation& scriptExportInformation, ClassInfo& outClassInfo)
+{
+	StringRef declarationName = declaration->getName();
+	std::string sourceClassName = declarationName.str();
+
+	// If a template specialization append template params to its name
+	ClassTemplateSpecializationDecl* specializationDeclaration = dyn_cast<ClassTemplateSpecializationDecl>(declaration);
+	CXXRecordDecl* templatedDeclaration = declaration;
+	SmallVector<TemplateParamInfo, 0> templateParameters;
+	if(specializationDeclaration != nullptr)
+	{
+		auto& templateInstantiationArguments = specializationDeclaration->getTemplateInstantiationArgs();
+		sourceClassName += ParseTemplateArguments(sourceClassName, templateInstantiationArguments.data(), templateInstantiationArguments.size(), &templateParameters);
+		templatedDeclaration = specializationDeclaration->getSpecializedTemplate()->getTemplatedDecl();
+	}
+
+	if(TypeLookup::FindClassInformationInFile(scriptExportInformation.ExportedFileName, sourceClassName) != nullptr)
+		return false; // Already parsed
+
+	outClassInfo.NativeName = sourceClassName;
+	outClassInfo.NativeNameWithoutTemplateArguments = declarationName.str();
+	outClassInfo.Visibility = scriptExportInformation.Visibility;
+	outClassInfo.API = ParserUtility::ParseAPIFromExportFlags(scriptExportInformation.ExportFlags);
+	outClassInfo.ClassFlags = 0;
+	outClassInfo.BaseClassName = ScriptExportAttributeParser::FindExportableBaseClassName(declaration);
+	outClassInfo.DocumentationGroup = scriptExportInformation.DocumentationGroup;
+	outClassInfo.TemplateParameters = templateParameters;
+	mCommentParser.ParseComments(templatedDeclaration, outClassInfo.Documentation);
+	CommentParser::ClearParameterReferenceComments(outClassInfo.Documentation);
+
+	ParseNamespace(declaration, outClassInfo.Namespace);
+
+	if((scriptExportInformation.MetaData.Flags & (int)MetaDataFlags::ForceHideInInspector) != 0)
+		outClassInfo.ClassFlags |= (int)ClassFlags::HideInInspector;
+
+	if(specializationDeclaration != nullptr)
+		outClassInfo.ClassFlags |= (int)ClassFlags::IsTemplateInst;
+
+	const bool typeIsBuiltinModuleType = ParserUtility::CheckIsBuiltinModuleType(declaration);
+	if(typeIsBuiltinModuleType)
+		outClassInfo.ClassFlags |= (int)ClassFlags::IsModule;
+
+	if(declaration->isStruct())
+		outClassInfo.ClassFlags |= (int)ClassFlags::IsStruct;
+
+	::ExportedClassTypeCategory classType = DetermineExportedTypeCategory(declaration);
+
+	std::string declFile = astContext->getSourceManager().getFilename(declaration->getSourceRange().getBegin()).str();
+	TypeLookup::RegisterNativeToScriptTypeMapping(outClassInfo.Namespace, sourceClassName, declFile, scriptExportInformation.ExportedTypeName, scriptExportInformation.ExportedFileName, outClassInfo.API, classType);
+
+	std::stack<const CXXRecordDecl*> todo;
+	todo.push(declaration);
+
+	while(!todo.empty())
+	{
+		const CXXRecordDecl* curDecl = todo.top();
+		todo.pop();
+
+		// Parse constructors for non-module (singleton) classes
+		if(!typeIsBuiltinModuleType)
+		{
+			for(auto I = curDecl->ctor_begin(); I != curDecl->ctor_end(); ++I)
+			{
+				CXXConstructorDecl* ctorDecl = *I;
+
+				AnnotateAttr* methodAttr = ctorDecl->getAttr<AnnotateAttr>();
+				if(methodAttr == nullptr)
+					continue;
+
+				StringRef dummy;
+				ScriptExportInformation parsedMethodInfo;
+				if(!ScriptExportAttributeParser::ParseExportAttribute(methodAttr, dummy, parsedMethodInfo))
+					continue;
+
+				MethodInfo methodInfo;
+				methodInfo.NativeName = declarationName.str();
+				methodInfo.ScriptName = scriptExportInformation.ExportedTypeName;
+				methodInfo.MethodFlags = (int)MethodFlags::Constructor;
+				methodInfo.Visibility = parsedMethodInfo.Visibility;
+				methodInfo.API = ParserUtility::ParseAPIFromExportFlags(parsedMethodInfo.ExportFlags);
+				mCommentParser.ParseComments(ctorDecl, methodInfo.Documentation);
+
+				if((parsedMethodInfo.ExportFlags & (int)ExportFlags::InteropOnly))
+					methodInfo.MethodFlags |= (int)MethodFlags::InteropOnly;
+
+				bool invalidParam = false;
+				bool skippedDefaultArg = false;
+				for(auto J = ctorDecl->param_begin(); J != ctorDecl->param_end(); ++J)
+				{
+					ParmVarDecl* paramDecl = *J;
+					QualType paramType = paramDecl->getType();
+
+					VariableInformation paramInfo;
+					paramInfo.Name = paramDecl->getName().str();
+
+					if(!ParseTypeInformation(paramType, paramInfo.TypeInformation))
+					{
+						outs() << "Error: Unable to parse parameter \"" << paramInfo.Name << "\" type in \"" << sourceClassName << "\"'s constructor.\n";
+						invalidParam = true;
+						continue;
+					}
+
+					if(paramDecl->hasDefaultArg() && !skippedDefaultArg)
+					{
+						if(!TryEvaluateExpression(paramDecl->getDefaultArg(), paramInfo.DefaultValue, paramInfo.DefaultValueType))
+						{
+							outs() << "Error: Constructor parameter \"" << paramDecl->getName().str() << "\" has a default "
+								   << "argument that cannot be constantly evaluated, ignoring it.\n";
+							skippedDefaultArg = true;
+						}
+					}
+
+					ParseParameterOrFieldAttribute(paramDecl, false, paramInfo.TypeInformation);
+					methodInfo.Parameters.push_back(paramInfo);
+				}
+
+				if(invalidParam)
+					continue;
+
+				CommentParser::EnsureValidParameterReferenceComments(methodInfo.Parameters, methodInfo.Documentation);
+				outClassInfo.Constructors.push_back(methodInfo);
+			}
+		}
+
+		for(auto I = curDecl->method_begin(); I != curDecl->method_end(); ++I)
+		{
+			CXXMethodDecl* methodDecl = *I;
+
+			CXXConstructorDecl* ctorDecl = dyn_cast<CXXConstructorDecl>(methodDecl);
+			if(ctorDecl != nullptr)
+				continue;
+
+			if(!methodDecl->isUserProvided() || methodDecl->isImplicit())
+				continue;
+
+			AnnotateAttr* methodAttr = methodDecl->getAttr<AnnotateAttr>();
+			if(methodAttr == nullptr)
+				continue;
+
+			StringRef sourceMethodName = methodDecl->getName();
+
+			ScriptExportInformation parsedMethodInfo;
+			if(!ScriptExportAttributeParser::ParseExportAttribute(methodDecl, sourceMethodName, parsedMethodInfo))
+				continue;
+
+			if(methodDecl->getAccess() != AS_public)
+				outs() << "Error: Exported method \"" + sourceMethodName + "\" isn't public. This will likely result in invalid code generation.";
+
+			int methodFlags = 0;
+
+			bool isExternal = false;
+			if((parsedMethodInfo.ExportFlags & (int)ExportFlags::ExternalMethod) != 0)
+			{
+				methodFlags |= (int)MethodFlags::External;
+				isExternal = true;
+			}
+
+			if((parsedMethodInfo.ExportFlags & (int)ExportFlags::ExternalConstructor) != 0)
+			{
+				methodFlags |= (int)MethodFlags::External;
+				methodFlags |= (int)MethodFlags::Constructor;
+
+				isExternal = true;
+			}
+
+			if((parsedMethodInfo.ExportFlags & (int)ExportFlags::InteropOnly))
+				methodFlags |= (int)MethodFlags::InteropOnly;
+
+			bool isStatic = false;
+			if(methodDecl->isStatic() && !isExternal) // Note: Perhaps add a way to mark external methods as static
+			{
+				methodFlags |= (int)MethodFlags::Static;
+				isStatic = true;
+			}
+
+			if((parsedMethodInfo.ExportFlags & (int)ExportFlags::PropertyGetter) != 0)
+				methodFlags |= (int)MethodFlags::PropertyGetter;
+			else if((parsedMethodInfo.ExportFlags & (int)ExportFlags::PropertySetter) != 0)
+				methodFlags |= (int)MethodFlags::PropertySetter;
+
+			MethodInfo methodInfo;
+			methodInfo.NativeName = sourceMethodName.str();
+			methodInfo.ScriptName = parsedMethodInfo.ExportedTypeName;
+			methodInfo.MethodFlags = methodFlags;
+			methodInfo.ExternalClass = sourceClassName;
+			methodInfo.Visibility = parsedMethodInfo.Visibility;
+			methodInfo.API = ParserUtility::ParseAPIFromExportFlags(parsedMethodInfo.ExportFlags);
+			methodInfo.MetaData = parsedMethodInfo.MetaData;
+			mCommentParser.ParseComments(methodDecl, methodInfo.Documentation);
+
+			bool isProperty = (parsedMethodInfo.ExportFlags & ((int)ExportFlags::PropertyGetter | (int)ExportFlags::PropertySetter));
+
+			if(!isProperty)
+			{
+				QualType returnType = methodDecl->getReturnType();
+				if(!returnType->isVoidType())
+				{
+					ReturnInfo returnInfo;
+					if(!ParseTypeInformation(returnType, returnInfo.TypeInformation))
+					{
+						outs() << "Error: Unable to parse return type for method \"" << sourceMethodName << "\". Skipping method.\n";
+						continue;
+					}
+
+					ParseParameterOrFieldAttribute(methodDecl, false, returnInfo.TypeInformation);
+					methodInfo.ReturnValue = returnInfo;
+				}
+			}
+			else
+			{
+				if((parsedMethodInfo.ExportFlags & (int)ExportFlags::PropertyGetter) != 0)
+				{
+					QualType returnType = methodDecl->getReturnType();
+					if(returnType->isVoidType())
+					{
+						outs() << "Error: Unable to create a getter for property because method \"" << sourceMethodName
+							   << "\" has no return value.\n";
+						continue;
+					}
+
+					// Note: I can potentially allow an output parameter instead of a return value
+					if(methodDecl->param_size() > 1 || ((!isExternal || isStatic) && methodDecl->param_size() > 0))
+					{
+						outs() << "Error: Unable to create a getter for property because method \"" << sourceMethodName
+							   << "\" has parameters.\n";
+						continue;
+					}
+
+					if(!ParseTypeInformation(returnType, methodInfo.ReturnValue.TypeInformation))
+					{
+						outs() << "Error: Unable to parse property type for method \"" << sourceMethodName << "\". Skipping property.\n";
+						continue;
+					}
+
+					ParseParameterOrFieldAttribute(methodDecl, false, methodInfo.ReturnValue.TypeInformation);
+				}
+				else // Must be setter
+				{
+					QualType returnType = methodDecl->getReturnType();
+					if(!returnType->isVoidType())
+					{
+						outs() << "Error: Unable to create a setter for property because method \"" << sourceMethodName
+							   << "\" has a return value.\n";
+						continue;
+					}
+
+					if(methodDecl->param_size() == 0 || methodDecl->param_size() > 2 || ((!isExternal || isStatic) && methodDecl->param_size() != 1))
+					{
+						outs() << "Error: Unable to create a setter for property because method \"" << sourceMethodName
+							   << "\" has more or less than one parameter.\n";
+						continue;
+					}
+
+					ParmVarDecl* paramDecl = methodDecl->getParamDecl(isExternal ? 1 : 0);
+
+					VariableInformation paramInfo;
+					paramInfo.Name = paramDecl->getName().str();
+
+					if(!ParseTypeInformation(paramDecl->getType(), paramInfo.TypeInformation))
+					{
+						outs() << "Error: Unable to parse property type for method \"" << sourceMethodName << "\". Skipping property.\n";
+						continue;
+					}
+				}
+			}
+
+			bool invalidParam = false;
+			bool skippedDefaultArg = false;
+			for(auto J = methodDecl->param_begin(); J != methodDecl->param_end(); ++J)
+			{
+				ParmVarDecl* paramDecl = *J;
+				QualType paramType = paramDecl->getType();
+
+				VariableInformation parameterInformation;
+				parameterInformation.Name = paramDecl->getName().str();
+
+				if(!ParseTypeInformation(paramType, parameterInformation.TypeInformation))
+				{
+					outs() << "Error: Unable to parse return type for method \"" << sourceMethodName << "\". Skipping method.\n";
+					invalidParam = true;
+					continue;
+				}
+
+				if(paramDecl->hasDefaultArg() && !skippedDefaultArg)
+				{
+					Expr* defaultArg;
+					if(paramDecl->hasUninstantiatedDefaultArg())
+						defaultArg = paramDecl->getUninstantiatedDefaultArg();
+					else
+						defaultArg = paramDecl->getDefaultArg();
+
+					if(!TryEvaluateExpression(defaultArg, parameterInformation.DefaultValue, parameterInformation.DefaultValueType))
+					{
+						outs() << "Error: Method parameter \"" << paramDecl->getName().str() << "\" has a default "
+							   << "argument that cannot be constantly evaluated, ignoring it.\n";
+						skippedDefaultArg = true;
+					}
+				}
+
+				ParseParameterOrFieldAttribute(paramDecl, false, parameterInformation.TypeInformation);
+				methodInfo.Parameters.push_back(parameterInformation);
+			}
+
+			if(invalidParam)
+				continue;
+
+			CommentParser::EnsureValidParameterReferenceComments(methodInfo.Parameters, methodInfo.Documentation);
+
+			if(isExternal)
+			{
+				if(parsedMethodInfo.ExtensionOfType == "T")
+					parsedMethodInfo.ExtensionOfType = sourceClassName;
+
+				TypeLookup::RegisterExternalMethod(parsedMethodInfo.ExtensionOfType, methodInfo);
+			}
+			else
+				outClassInfo.Methods.push_back(methodInfo);
+		}
+
+		// Look for exported fields & events
+		for(auto I = curDecl->field_begin(); I != curDecl->field_end(); ++I)
+		{
+			FieldDecl* fieldDecl = *I;
+
+			MethodInfo eventInfo;
+			if(TryParseEvent(fieldDecl, sourceClassName, eventInfo))
+				outClassInfo.Events.push_back(eventInfo);
+			else
+			{
+				FieldInfo fieldInfo;
+				fieldInfo.Name = fieldDecl->getName().str();
+
+				ScriptExportInformation parsedFieldInfo;
+				bool foundExportAttrib = false;
+				for(const auto& entry : fieldDecl->specific_attrs<AnnotateAttr>())
+				{
+					if(ScriptExportAttributeParser::IsExportAttribute(entry))
+					{
+						if(ScriptExportAttributeParser::ParseExportAttribute(entry, fieldInfo.Name, parsedFieldInfo))
+							foundExportAttrib = true;
+
+						break;
+					}
+				}
+
+				if(!foundExportAttrib)
+					continue;
+
+				std::string typeName;
+				if(!ParseTypeInformation(fieldDecl->getType(), fieldInfo.TypeInformation))
+				{
+					outs() << "Error: Unable to detect type for field \"" << fieldDecl->getName().str() << "\" in \""
+						   << sourceClassName << "\". Skipping field.\n";
+					continue;
+				}
+
+				if(fieldDecl->getAccess() != AS_public)
+					outs() << "Error: Exported field \"" + fieldInfo.Name + "\" isn't public. This will likely result in invalid code generation.";
+
+				fieldInfo.MetaData = parsedFieldInfo.MetaData;
+
+				mCommentParser.ParseComments(fieldDecl, fieldInfo.Documentation);
+				CommentParser::ClearParameterReferenceComments(fieldInfo.Documentation);
+
+				outClassInfo.Fields.push_back(fieldInfo);
+
+				// Register wrapper methods, this way we can re-use much of the same logic for method/property generation
+				MethodInfo getterInfo;
+				getterInfo.NativeName = "Get" + fieldInfo.Name;
+				getterInfo.ScriptName = parsedFieldInfo.ExportedTypeName;
+				getterInfo.Visibility = parsedFieldInfo.Visibility;
+				getterInfo.API = ParserUtility::ParseAPIFromExportFlags(parsedFieldInfo.ExportFlags);
+				getterInfo.MethodFlags = (int)MethodFlags::PropertyGetter | (int)MethodFlags::FieldWrapper;
+				getterInfo.MetaData = fieldInfo.MetaData;
+
+				getterInfo.ReturnValue.TypeInformation = fieldInfo.TypeInformation;
+				ParseParameterOrFieldAttribute(fieldDecl, true, getterInfo.ReturnValue.TypeInformation);
+
+				if((parsedFieldInfo.ExportFlags & (int)ExportFlags::InteropOnly) != 0)
+					getterInfo.MethodFlags |= (int)MethodFlags::InteropOnly;
+
+				VariableInformation paramInfo;
+				paramInfo.TypeInformation = fieldInfo.TypeInformation;
+				paramInfo.Name = "value";
+
+				ParseParameterOrFieldAttribute(fieldDecl, true, paramInfo.TypeInformation);
+
+				MethodInfo setterInfo;
+				setterInfo.NativeName = "Set" + fieldInfo.Name;
+				setterInfo.ScriptName = parsedFieldInfo.ExportedTypeName;
+				setterInfo.Documentation = fieldInfo.Documentation;
+				setterInfo.Parameters.push_back(paramInfo);
+				setterInfo.Visibility = parsedFieldInfo.Visibility;
+				setterInfo.API = ParserUtility::ParseAPIFromExportFlags(parsedFieldInfo.ExportFlags);
+				setterInfo.MethodFlags = (int)MethodFlags::PropertySetter | (int)MethodFlags::FieldWrapper;
+				setterInfo.MetaData = fieldInfo.MetaData;
+
+				if((parsedFieldInfo.ExportFlags & (int)ExportFlags::InteropOnly) != 0)
+					setterInfo.MethodFlags |= (int)MethodFlags::InteropOnly;
+
+				outClassInfo.Methods.push_back(getterInfo);
+				outClassInfo.Methods.push_back(setterInfo);
+			}
+		}
+
+		// Find static data events
+		const DeclContext* context = dyn_cast<DeclContext>(curDecl);
+		for(auto I = context->decls_begin(); I != context->decls_end(); ++I)
+		{
+			if(VarDecl* varDecl = dyn_cast<VarDecl>(*I))
+			{
+				if(!varDecl->isStaticDataMember())
+					continue;
+
+				MethodInfo eventInfo;
+				if(!TryParseEvent(varDecl, sourceClassName, eventInfo))
+					continue;
+
+				eventInfo.MethodFlags |= (int)MethodFlags::Static;
+				outClassInfo.Events.push_back(eventInfo);
+			}
+		}
+
+		auto iter = curDecl->bases_begin();
+		while(iter != curDecl->bases_end())
+		{
+			const CXXBaseSpecifier* baseSpec = iter;
+			CXXRecordDecl* baseDecl = baseSpec->getType()->getAsCXXRecordDecl();
+
+			// Base classes never need to be exported. Exportable classes will handle their own methods/fields.
+			if(ParserUtility::IsBuiltinBaseType(baseDecl) || ScriptExportAttributeParser::IsExportable(baseDecl))
+			{
+				iter++;
+				continue;
+			}
+
+			todo.push(baseDecl);
+			iter++;
+		}
+	}
+
+	return true;
+}
+
 bool BansheeCodeGeneratorASTVisitor::VisitEnumDecl(EnumDecl* decl)
 {
 	mCommentParser.ParseAndRegisterAllComments(decl);
@@ -1065,883 +1937,42 @@ bool BansheeCodeGeneratorASTVisitor::VisitEnumDecl(EnumDecl* decl)
 	return true;
 }
 
-bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* decl)
+bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* declaration)
 {
-	mCommentParser.ParseAndRegisterAllComments(decl);
+	mCommentParser.ParseAndRegisterAllComments(declaration);
 
-	AnnotateAttr* attr = decl->getAttr<AnnotateAttr>();
-	if (attr == nullptr)
+	AnnotateAttr* annotateAttribute = declaration->getAttr<AnnotateAttr>();
+	if (annotateAttribute == nullptr)
 		return true;
 
-	StringRef declName = decl->getName();
+	StringRef declarationName = declaration->getName();
 
-	ScriptExportInformation parsedClassInfo;
-	parsedClassInfo.ExportedTypeName = declName.str();
+	ScriptExportInformation scriptExportInformation;
+	scriptExportInformation.ExportedTypeName = declarationName.str();
 
-	if (!ScriptExportAttributeParser::ParseExportAttribute(attr, declName, parsedClassInfo))
+	if (!ScriptExportAttributeParser::ParseExportAttribute(annotateAttribute, declarationName, scriptExportInformation))
 		return true;
 
-	std::string srcClassName = declName.str();
-
-	// If a template specialization append template params to its name
-	ClassTemplateSpecializationDecl* specDecl = dyn_cast<ClassTemplateSpecializationDecl>(decl);
-	CXXRecordDecl* templatedDecl = decl;
-	SmallVector<TemplateParamInfo, 0> templParams;
-	if(specDecl != nullptr)
+	if ((scriptExportInformation.ExportFlags & (int)ExportFlags::ExportAsStruct) != 0)
 	{
-		auto& tmplArgs = specDecl->getTemplateInstantiationArgs();
-		srcClassName += ParseTemplateArguments(srcClassName, tmplArgs.data(), tmplArgs.size(), &templParams);
-		templatedDecl = specDecl->getSpecializedTemplate()->getTemplatedDecl();
-	}
-
-	if ((parsedClassInfo.ExportFlags & (int)ExportFlags::ExportAsStruct) != 0)
-	{
-		if (TypeLookup::FindStructInformationInFile(parsedClassInfo.ExportedFileName, srcClassName) != nullptr)
+		StructInfo structInfo;
+		if(!TryParseDeclarationAsStruct(declaration, scriptExportInformation, structInfo))
 			return true; // Already parsed
 
-		StructInfo structInfo;
-		structInfo.NativeName = srcClassName;
-		structInfo.NativeNameWithoutTemplateArguments = declName.str();
-		structInfo.BaseClassName = ScriptExportAttributeParser::FindExportableBasePlainClassName(decl);
-		structInfo.Visibility = parsedClassInfo.Visibility;
-		structInfo.RequiresInteropType = decl->isPolymorphic();
-		structInfo.DocumentationGroup = parsedClassInfo.DocumentationGroup;
-		structInfo.IsTemplateInstatiation = specDecl != nullptr;
-		structInfo.TemplateParameters = templParams;
-		structInfo.API = ParserUtility::ParseAPIFromExportFlags(parsedClassInfo.ExportFlags);
-
-		mCommentParser.ParseComments(templatedDecl, structInfo.Documentation);
-		ParseNamespace(decl, structInfo.Namespace);
-		CommentParser::ClearParameterReferenceComments(structInfo.Documentation);
-
-		std::unordered_map<FieldDecl*, std::pair<std::string, std::string>> defaultFieldValues;
-
-		// Parses assignment operations in the provided method body and outputs it to @p outAssignments map
-		auto fnParseAssignmentsInBody = [&srcClassName](const CXXMethodDecl& methodDecl, std::unordered_map<FieldDecl*, ParmVarDecl*> outAssignments)
-		{
-			// Parse any assignments in the function body
-			// Note: Searching for trivially simple assignments only, ignoring anything else
-			if(!methodDecl.hasBody())
-				return;
-
-			CompoundStmt* functionBody = dyn_cast<CompoundStmt>(methodDecl.getBody()); // Note: Not handling inner blocks
-			assert(functionBody != nullptr);
-
-			for(auto I = functionBody->child_begin(); I != functionBody->child_end(); ++I)
-			{
-				Stmt* stmt = *I;
-
-				BinaryOperator* binaryOp = dyn_cast<BinaryOperator>(stmt);
-				if(binaryOp == nullptr)
-					continue;
-
-				if(binaryOp->getOpcode() != BO_Assign)
-					continue;
-
-				Expr* lhsExpr = binaryOp->getLHS()->IgnoreParenCasts(); // Note: Ignoring even explicit casts
-				Decl* lhsDecl;
-
-				if(DeclRefExpr* varExpr = dyn_cast<DeclRefExpr>(lhsExpr))
-					lhsDecl = varExpr->getDecl();
-				else if(MemberExpr* memberExpr = dyn_cast<MemberExpr>(lhsExpr))
-					lhsDecl = memberExpr->getMemberDecl();
-				else
-					continue;
-
-				FieldDecl* fieldDecl = dyn_cast<FieldDecl>(lhsDecl);
-				if(fieldDecl == nullptr)
-					continue;
-
-				Expr* rhsExpr = binaryOp->getRHS()->IgnoreParenCasts();
-				Decl* rhsDecl = nullptr;
-
-				if(DeclRefExpr* varExpr = dyn_cast<DeclRefExpr>(rhsExpr))
-					rhsDecl = varExpr->getDecl();
-				else if(MemberExpr* memberExpr = dyn_cast<MemberExpr>(rhsExpr))
-					rhsDecl = memberExpr->getMemberDecl();
-
-				ParmVarDecl* parmVarDecl = nullptr;
-				if(rhsDecl != nullptr)
-					parmVarDecl = dyn_cast<ParmVarDecl>(rhsDecl);
-
-				if(parmVarDecl == nullptr)
-				{
-					outs() << "Warning: Found a non-trivial field assignment for field \"" << fieldDecl->getName() << "\" in"
-						   << " constructor of \"" << srcClassName << "\". Ignoring assignment.\n";
-					continue;
-				}
-
-				outAssignments[fieldDecl] = parmVarDecl;
-			}
-		};
-
-		// Parses information about every parameter in the method, and outputs information about parameters in @p outParameters.
-		auto fnParseMethodParameters = [this](const CXXMethodDecl& methodDecl, std::vector<VariableInformation>& outParameters) {
-			bool skippedDefaultArgument = false;
-			for (auto I = methodDecl.param_begin(); I != methodDecl.param_end(); ++I)
-			{
-				ParmVarDecl* paramDecl = *I;
-
-				VariableInformation paramInfo;
-				paramInfo.Name = paramDecl->getName().str();
-
-				std::string typeName;
-				unsigned arraySize;
-				if (!ParseTypeInformation(paramDecl->getType(), paramInfo.TypeInformation))
-				{
-					outs() << "Error: Unable to detect type for constructor parameter \"" << paramDecl->getName().str()
-						<< "\". Skipping.\n";
-					continue;
-				}
-
-				if (paramDecl->hasDefaultArg() && !skippedDefaultArgument)
-				{
-					if (!TryEvaluateExpression(paramDecl->getDefaultArg(), paramInfo.DefaultValue, paramInfo.DefaultValueType))
-					{
-						outs() << "Error: Constructor parameter \"" << paramDecl->getName().str() << "\" has a default "
-							<< "argument that cannot be constantly evaluated, ignoring it.\n";
-						skippedDefaultArgument = true;
-					}
-				}
-
-				ParseParameterOrFieldAttribute(paramDecl, false, paramInfo.TypeInformation);
-				outParameters.push_back(paramInfo);
-			}
-		};
-
-		// Parse non-default constructors & determine default values for fields
-		if (decl->hasUserDeclaredConstructor())
-		{
-			auto ctorIter = decl->ctor_begin();
-			while (ctorIter != decl->ctor_end())
-			{
-				StructConstructorInfo ctorInfo;
-				CXXConstructorDecl* ctorDecl = *ctorIter;
-
-				if (ctorDecl->isImplicit())
-				{
-					++ctorIter;
-					continue;
-				}
-
-				AnnotateAttr* ctorAttr = ctorDecl->getAttr<AnnotateAttr>();
-				if (ctorAttr != nullptr)
-				{
-					ScriptExportInformation parsedCtorInfo;
-					ScriptExportAttributeParser::ParseExportAttribute(ctorAttr, srcClassName, parsedCtorInfo);
-
-					if ((parsedCtorInfo.ExportFlags & (int)ExportFlags::Exclude) != 0)
-					{
-						++ctorIter;
-						continue;
-					}
-				}
-
-				mCommentParser.ParseComments(ctorDecl, ctorInfo.Documentation);
-
-				fnParseMethodParameters(*ctorDecl, ctorInfo.Parameters);
-				std::unordered_map<FieldDecl*, ParmVarDecl*> assignments;
-
-				// Parse initializers for assignments & default values
-				for (auto I = ctorDecl->init_begin(); I != ctorDecl->init_end(); ++I)
-				{
-					CXXCtorInitializer* init = *I;
-
-					if (init->isMemberInitializer())
-					{
-						FieldDecl* field = init->getMember();
-						Expr* initExpr = init->getInit();
-
-						bool isValid = true;
-						while(CXXConstructExpr* constructExpr = dyn_cast<CXXConstructExpr>(initExpr))
-						{
-							isValid = false;
-							if(constructExpr->getNumArgs() == 0)
-							{
-								// Don't care about default constructors
-								break;
-							}
-							else if (constructExpr->getNumArgs() == 1)
-							{
-								initExpr = constructExpr->getArg(0);
-								isValid = true;
-							}
-							else
-							{
-								outs() << "Error: Invalid number of parameters in constructor initializer. Only one parameter "
-									"constructors are supported. In struct \"" + srcClassName + "\".\n";
-								break;
-							}
-						}
-
-						// Let the member initializer code handle the default value
-						if (dyn_cast<CXXDefaultInitExpr>(initExpr))
-							isValid = false;
-						
-						if (isValid)
-						{
-							// Check for constant value first
-							std::string evalValue, evalTypeValue;
-							if (TryEvaluateExpression(initExpr, evalValue, evalTypeValue))
-								defaultFieldValues[field] = std::make_pair(evalValue, evalTypeValue);
-							else // Check for initializers referencing parameters
-							{
-								Decl* varDecl = nullptr;
-
-								// Check for std::move
-								if (CallExpr* callExpr = dyn_cast<CallExpr>(initExpr))
-								{
-									if(FunctionDecl* funcDecl = dyn_cast<FunctionDecl>(callExpr->getCalleeDecl()))
-									{
-										if(funcDecl->getName() == "move" && funcDecl->isInStdNamespace())
-										{
-											if(callExpr->getNumArgs() == 1)
-											{
-												if (Expr* argExpr = callExpr->getArg(0))
-													varDecl = argExpr->getReferencedDeclOfCallee();
-											}
-										}
-										
-									}
-								}
-								else
-								{
-									varDecl = initExpr->getReferencedDeclOfCallee();
-								}
-
-								if (varDecl != nullptr)
-								{
-									ParmVarDecl* parmVarDecl = dyn_cast<ParmVarDecl>(varDecl);
-									if (parmVarDecl != nullptr)
-										assignments[field] = parmVarDecl;
-								}
-								else
-								{
-									std::string fieldName;
-
-									if (field)
-										fieldName = field->getName().str();
-
-									outs() << "Error: Unrecognized initializer format in struct \"" << srcClassName << "\" for field \"" << fieldName << "\".\n";
-								}
-							}
-						}
-					}
-				}
-
-				fnParseAssignmentsInBody(*ctorDecl, assignments);
-
-				for (auto I = decl->field_begin(); I != decl->field_end(); ++I)
-				{
-					auto iterFind = assignments.find(*I);
-					if (iterFind == assignments.end())
-						continue;
-
-					std::string fieldName = iterFind->first->getName().str();
-					std::string paramName = iterFind->second->getName().str();
-
-					ctorInfo.FieldAssignments[fieldName] = paramName;
-				}
-
-				CommentParser::EnsureValidParameterReferenceComments(ctorInfo.Parameters, ctorInfo.Documentation);
-
-				structInfo.Constructors.push_back(ctorInfo);
-				++ctorIter;
-			}
-		}
-
-		// Look for external constructors
-		// Note: This is not fully implemented. We're not parsing obj.field = param assignments, just field = param.
-		for (auto I = decl->method_begin(); I != decl->method_end(); ++I)
-		{
-			CXXMethodDecl* methodDecl = *I;
-
-			CXXConstructorDecl* ctorDecl = dyn_cast<CXXConstructorDecl>(methodDecl);
-			if (ctorDecl != nullptr)
-				continue;
-
-			if (!methodDecl->isUserProvided() || methodDecl->isImplicit())
-				continue;
-
-			AnnotateAttr* methodAttr = methodDecl->getAttr<AnnotateAttr>();
-			if (methodAttr == nullptr)
-				continue;
-
-			StringRef sourceMethodName = methodDecl->getName();
-
-			ScriptExportInformation parsedMethodInfo;
-			if (!ScriptExportAttributeParser::ParseExportAttribute(methodDecl, sourceMethodName, parsedMethodInfo))
-				continue;
-
-			if((parsedMethodInfo.ExportFlags & (int)ExportFlags::ExternalConstructor) == 0)
-				continue;
-
-			if (methodDecl->getAccess() != AS_public)
-				outs() << "Error: Exported method \"" + sourceMethodName + "\" isn't public. This will likely result in invalid code generation.";
-
-			StructConstructorInfo ctorInfo;
-
-			mCommentParser.ParseComments(ctorDecl, ctorInfo.Documentation);
-
-			fnParseMethodParameters(*ctorDecl, ctorInfo.Parameters);
-
-			std::unordered_map<FieldDecl*, ParmVarDecl*> assignments;
-			fnParseAssignmentsInBody(*ctorDecl, assignments);
-
-			for (auto I = decl->field_begin(); I != decl->field_end(); ++I)
-			{
-				auto iterFind = assignments.find(*I);
-				if (iterFind == assignments.end())
-					continue;
-
-				std::string fieldName = iterFind->first->getName().str();
-				std::string paramName = iterFind->second->getName().str();
-
-				ctorInfo.FieldAssignments[fieldName] = paramName;
-			}
-
-			CommentParser::EnsureValidParameterReferenceComments(ctorInfo.Parameters, ctorInfo.Documentation);
-
-			ctorInfo.StaticMethodName = sourceMethodName.str();
-			structInfo.Constructors.push_back(ctorInfo);
-		}
-
-		std::stack<const CXXRecordDecl*> todo;
-		todo.push(decl);
-
-		bool hasDefaultValue = false;
-		while (!todo.empty())
-		{
-			const CXXRecordDecl* curDecl = todo.top();
-			todo.pop();
-
-			for (auto I = curDecl->field_begin(); I != curDecl->field_end(); ++I)
-			{
-				FieldDecl* fieldDecl = *I;
-				FieldInfo fieldInfo;
-				fieldInfo.Name = fieldDecl->getName().str();
-
-				ScriptExportInformation parsedFieldInfo;
-				if (ScriptExportAttributeParser::ParseExportAttribute(fieldDecl, srcClassName, parsedFieldInfo))
-				{
-					if ((parsedFieldInfo.ExportFlags & (int)ExportFlags::Exclude) != 0)
-					{
-						structInfo.RequiresInteropType = true;
-						continue;
-					}
-
-					fieldInfo.MetaData = parsedFieldInfo.MetaData;
-				}
-
-				auto iterFind = defaultFieldValues.find(fieldDecl);
-				if (iterFind != defaultFieldValues.end())
-				{
-					fieldInfo.DefaultValue = iterFind->second.first;
-					fieldInfo.DefaultValueType = iterFind->second.second;
-				}
-
-				if (fieldDecl->hasInClassInitializer())
-				{
-					Expr* initExpr = fieldDecl->getInClassInitializer();
-
-					if (initExpr != nullptr)
-					{
-						TryEvaluateExpression(initExpr, fieldInfo.DefaultValue, fieldInfo.DefaultValueType);
-					}
-				}
-
-				std::string typeName;
-				if (!ParseTypeInformation(fieldDecl->getType(), fieldInfo.TypeInformation))
-				{
-					outs() << "Error: Unable to detect type for field \"" << fieldDecl->getName().str() << "\" in \""
-						<< srcClassName << "\". Skipping field.\n";
-					continue;
-				}
-
-				ParseParameterOrFieldAttribute(fieldDecl, true, fieldInfo.TypeInformation);
-
-				// Remove the pass-as-resource-ref flag to all parameters initializing the field
-				if(!fieldInfo.TypeInformation.IsParameterFlagSet(ParameterFlags::AsResourceRef))
-				{
-					for(auto& ctorInfo : structInfo.Constructors)
-					{
-						auto iterFindField = ctorInfo.FieldAssignments.find(fieldInfo.Name);
-						if (iterFindField != ctorInfo.FieldAssignments.end())
-						{
-							auto iterFindParam = std::find_if(ctorInfo.Parameters.begin(), ctorInfo.Parameters.end(), 
-								[name = iterFindField->second](const VariableInformation& varInfo)
-							{
-								return varInfo.Name == name;
-							});
-
-							if (iterFindParam != ctorInfo.Parameters.end())
-							{
-								iterFindParam->TypeInformation.UnsetParameterFlag(ParameterFlags::AsResourceRef, true);
-							}
-						}
-					}
-				}
-
-				if (!fieldInfo.DefaultValue.empty())
-					hasDefaultValue = true;
-
-				mCommentParser.ParseComments(fieldDecl, fieldInfo.Documentation);
-				CommentParser::ClearParameterReferenceComments(fieldInfo.Documentation);
-
-				structInfo.Fields.push_back(fieldInfo);
-			}
-
-			auto iter = curDecl->bases_begin();
-			while (iter != curDecl->bases_end())
-			{
-				const CXXBaseSpecifier* baseSpec = iter;
-				CXXRecordDecl* baseDecl = baseSpec->getType()->getAsCXXRecordDecl();
-
-				todo.push(baseDecl);
-				iter++;
-			}
-		}
-
-		// If struct has in-class default values assigned, but no explicit constructors, add a parameterless constructor
-		if (structInfo.Constructors.empty() && hasDefaultValue)
-			structInfo.Constructors.push_back(StructConstructorInfo());
-
-		std::string declFile = astContext->getSourceManager().getFilename(decl->getSourceRange().getBegin()).str();
-		TypeLookup::RegisterNativeToScriptTypeMapping(structInfo.Namespace, srcClassName, declFile, parsedClassInfo.ExportedTypeName, parsedClassInfo.ExportedFileName, structInfo.API, ExportedClassTypeCategory::Struct);
-		TypeLookup::RegisterEntryToGenerate(parsedClassInfo.ExportedFileName, structInfo);
+		std::string declarationFile = astContext->getSourceManager().getFilename(declaration->getSourceRange().getBegin()).str();
+		TypeLookup::RegisterNativeToScriptTypeMapping(structInfo.Namespace, structInfo.NativeName, declarationFile, scriptExportInformation.ExportedTypeName, scriptExportInformation.ExportedFileName, structInfo.API, ExportedClassTypeCategory::Struct);
+		TypeLookup::RegisterEntryToGenerate(scriptExportInformation.ExportedFileName, structInfo);
 	}
 	else
 	{
-		if (TypeLookup::FindClassInformationInFile(parsedClassInfo.ExportedFileName, srcClassName) != nullptr)
+		ClassInfo classInfo;
+		if(!TryParseDeclarationAsClass(declaration, scriptExportInformation, classInfo))
 			return true; // Already parsed
 
-		ClassInfo classInfo;
-		classInfo.NativeName = srcClassName;
-		classInfo.NativeNameWithoutTemplateArguments = declName.str();
-		classInfo.Visibility = parsedClassInfo.Visibility;
-		classInfo.API = ParserUtility::ParseAPIFromExportFlags(parsedClassInfo.ExportFlags);
-		classInfo.ClassFlags = 0;
-		classInfo.BaseClassName = ScriptExportAttributeParser::FindExportableBaseClassName(decl);
-		classInfo.DocumentationGroup = parsedClassInfo.DocumentationGroup;
-		classInfo.TemplateParameters = templParams;
-		mCommentParser.ParseComments(templatedDecl, classInfo.Documentation);
-		CommentParser::ClearParameterReferenceComments(classInfo.Documentation);
-
-		ParseNamespace(decl, classInfo.Namespace);
-
-		if ((parsedClassInfo.MetaData.Flags & (int)MetaDataFlags::ForceHideInInspector) != 0)
-			classInfo.ClassFlags |= (int)ClassFlags::HideInInspector;
-
-		if (specDecl != nullptr)
-			classInfo.ClassFlags |= (int)ClassFlags::IsTemplateInst;
-
-		const bool typeIsBuiltinModuleType = ParserUtility::CheckIsBuiltinModuleType(decl);
-		if (typeIsBuiltinModuleType)
-			classInfo.ClassFlags |= (int)ClassFlags::IsModule;
-
-		if (decl->isStruct())
-			classInfo.ClassFlags |= (int)ClassFlags::IsStruct;
-
-		::ExportedClassTypeCategory classType = DetermineExportedTypeCategory(decl);
-
-		std::string declFile = astContext->getSourceManager().getFilename(decl->getSourceRange().getBegin()).str();
-		TypeLookup::RegisterNativeToScriptTypeMapping(classInfo.Namespace, srcClassName, declFile, parsedClassInfo.ExportedTypeName, parsedClassInfo.ExportedFileName, classInfo.API, classType);
-
-		std::stack<const CXXRecordDecl*> todo;
-		todo.push(decl);
-
-		while (!todo.empty())
-		{
-			const CXXRecordDecl* curDecl = todo.top();
-			todo.pop();
-
-			// Parse constructors for non-module (singleton) classes
-			if (!typeIsBuiltinModuleType)
-			{
-				for (auto I = curDecl->ctor_begin(); I != curDecl->ctor_end(); ++I)
-				{
-					CXXConstructorDecl* ctorDecl = *I;
-
-					AnnotateAttr* methodAttr = ctorDecl->getAttr<AnnotateAttr>();
-					if (methodAttr == nullptr)
-						continue;
-
-					StringRef dummy;
-					ScriptExportInformation parsedMethodInfo;
-					if (!ScriptExportAttributeParser::ParseExportAttribute(methodAttr, dummy, parsedMethodInfo))
-						continue;
-
-					MethodInfo methodInfo;
-					methodInfo.NativeName = declName.str();
-					methodInfo.ScriptName = parsedClassInfo.ExportedTypeName;
-					methodInfo.MethodFlags = (int)MethodFlags::Constructor;
-					methodInfo.Visibility = parsedMethodInfo.Visibility;
-					methodInfo.API = ParserUtility::ParseAPIFromExportFlags(parsedMethodInfo.ExportFlags);
-					mCommentParser.ParseComments(ctorDecl, methodInfo.Documentation);
-
-					if ((parsedMethodInfo.ExportFlags & (int)ExportFlags::InteropOnly))
-						methodInfo.MethodFlags |= (int)MethodFlags::InteropOnly;
-
-					bool invalidParam = false;
-					bool skippedDefaultArg = false;
-					for (auto J = ctorDecl->param_begin(); J != ctorDecl->param_end(); ++J)
-					{
-						ParmVarDecl* paramDecl = *J;
-						QualType paramType = paramDecl->getType();
-
-						VariableInformation paramInfo;
-						paramInfo.Name = paramDecl->getName().str();
-
-						if (!ParseTypeInformation(paramType, paramInfo.TypeInformation))
-						{
-							outs() << "Error: Unable to parse parameter \"" << paramInfo.Name << "\" type in \"" << srcClassName << "\"'s constructor.\n";
-							invalidParam = true;
-							continue;
-						}
-
-						if (paramDecl->hasDefaultArg() && !skippedDefaultArg)
-						{
-							if (!TryEvaluateExpression(paramDecl->getDefaultArg(), paramInfo.DefaultValue, paramInfo.DefaultValueType))
-							{
-								outs() << "Error: Constructor parameter \"" << paramDecl->getName().str() << "\" has a default "
-									<< "argument that cannot be constantly evaluated, ignoring it.\n";
-								skippedDefaultArg = true;
-							}
-						}
-
-						ParseParameterOrFieldAttribute(paramDecl, false, paramInfo.TypeInformation);
-						methodInfo.Parameters.push_back(paramInfo);
-					}
-
-					if (invalidParam)
-						continue;
-
-					CommentParser::EnsureValidParameterReferenceComments(methodInfo.Parameters, methodInfo.Documentation);
-					classInfo.Constructors.push_back(methodInfo);
-				}
-			}
-
-			for (auto I = curDecl->method_begin(); I != curDecl->method_end(); ++I)
-			{
-				CXXMethodDecl* methodDecl = *I;
-
-				CXXConstructorDecl* ctorDecl = dyn_cast<CXXConstructorDecl>(methodDecl);
-				if (ctorDecl != nullptr)
-					continue;
-
-				if (!methodDecl->isUserProvided() || methodDecl->isImplicit())
-					continue;
-
-				AnnotateAttr* methodAttr = methodDecl->getAttr<AnnotateAttr>();
-				if (methodAttr == nullptr)
-					continue;
-
-				StringRef sourceMethodName = methodDecl->getName();
-
-				ScriptExportInformation parsedMethodInfo;
-				if (!ScriptExportAttributeParser::ParseExportAttribute(methodDecl, sourceMethodName, parsedMethodInfo))
-					continue;
-
-				if (methodDecl->getAccess() != AS_public)
-					outs() << "Error: Exported method \"" + sourceMethodName + "\" isn't public. This will likely result in invalid code generation.";
-
-				int methodFlags = 0;
-
-				bool isExternal = false;
-				if ((parsedMethodInfo.ExportFlags & (int)ExportFlags::ExternalMethod) != 0)
-				{
-					methodFlags |= (int)MethodFlags::External;
-					isExternal = true;
-				}
-
-				if ((parsedMethodInfo.ExportFlags & (int)ExportFlags::ExternalConstructor) != 0)
-				{
-					methodFlags |= (int)MethodFlags::External;
-					methodFlags |= (int)MethodFlags::Constructor;
-
-					isExternal = true;
-				}
-
-				if ((parsedMethodInfo.ExportFlags & (int)ExportFlags::InteropOnly))
-					methodFlags |= (int)MethodFlags::InteropOnly;
-
-				bool isStatic = false;
-				if (methodDecl->isStatic() && !isExternal) // Note: Perhaps add a way to mark external methods as static
-				{
-					methodFlags |= (int)MethodFlags::Static;
-					isStatic = true;
-				}
-
-				if ((parsedMethodInfo.ExportFlags & (int)ExportFlags::PropertyGetter) != 0)
-					methodFlags |= (int)MethodFlags::PropertyGetter;
-				else if ((parsedMethodInfo.ExportFlags & (int)ExportFlags::PropertySetter) != 0)
-					methodFlags |= (int)MethodFlags::PropertySetter;
-
-				MethodInfo methodInfo;
-				methodInfo.NativeName = sourceMethodName.str();
-				methodInfo.ScriptName = parsedMethodInfo.ExportedTypeName;
-				methodInfo.MethodFlags = methodFlags;
-				methodInfo.ExternalClass = srcClassName;
-				methodInfo.Visibility = parsedMethodInfo.Visibility;
-				methodInfo.API = ParserUtility::ParseAPIFromExportFlags(parsedMethodInfo.ExportFlags);
-				methodInfo.MetaData = parsedMethodInfo.MetaData;
-				mCommentParser.ParseComments(methodDecl, methodInfo.Documentation);
-
-				bool isProperty = (parsedMethodInfo.ExportFlags & ((int)ExportFlags::PropertyGetter | (int)ExportFlags::PropertySetter));
-
-				if (!isProperty)
-				{
-					QualType returnType = methodDecl->getReturnType();
-					if (!returnType->isVoidType())
-					{
-						ReturnInfo returnInfo;
-						if (!ParseTypeInformation(returnType, returnInfo.TypeInformation))
-						{
-							outs() << "Error: Unable to parse return type for method \"" << sourceMethodName << "\". Skipping method.\n";
-							continue;
-						}
-
-						ParseParameterOrFieldAttribute(methodDecl, false, returnInfo.TypeInformation);
-						methodInfo.ReturnValue = returnInfo;
-					}
-				}
-				else
-				{
-					if ((parsedMethodInfo.ExportFlags & (int)ExportFlags::PropertyGetter) != 0)
-					{
-						QualType returnType = methodDecl->getReturnType();
-						if (returnType->isVoidType())
-						{
-							outs() << "Error: Unable to create a getter for property because method \"" << sourceMethodName
-								<< "\" has no return value.\n";
-							continue;
-						}
-
-						// Note: I can potentially allow an output parameter instead of a return value
-						if (methodDecl->param_size() > 1 || ((!isExternal || isStatic) && methodDecl->param_size() > 0))
-						{
-							outs() << "Error: Unable to create a getter for property because method \"" << sourceMethodName
-								<< "\" has parameters.\n";
-							continue;
-						}
-
-						if (!ParseTypeInformation(returnType, methodInfo.ReturnValue.TypeInformation))
-						{
-							outs() << "Error: Unable to parse property type for method \"" << sourceMethodName << "\". Skipping property.\n";
-							continue;
-						}
-
-						ParseParameterOrFieldAttribute(methodDecl, false, methodInfo.ReturnValue.TypeInformation);
-					}
-					else // Must be setter
-					{
-						QualType returnType = methodDecl->getReturnType();
-						if (!returnType->isVoidType())
-						{
-							outs() << "Error: Unable to create a setter for property because method \"" << sourceMethodName
-								<< "\" has a return value.\n";
-							continue;
-						}
-
-						if (methodDecl->param_size() == 0 || methodDecl->param_size() > 2 || ((!isExternal || isStatic) && methodDecl->param_size() != 1))
-						{
-							outs() << "Error: Unable to create a setter for property because method \"" << sourceMethodName
-								<< "\" has more or less than one parameter.\n";
-							continue;
-						}
-
-						ParmVarDecl* paramDecl = methodDecl->getParamDecl(isExternal ? 1 : 0);
-
-						VariableInformation paramInfo;
-						paramInfo.Name = paramDecl->getName().str();
-
-						if (!ParseTypeInformation(paramDecl->getType(), paramInfo.TypeInformation))
-						{
-							outs() << "Error: Unable to parse property type for method \"" << sourceMethodName << "\". Skipping property.\n";
-							continue;
-						}
-					}
-				}
-
-				bool invalidParam = false;
-				bool skippedDefaultArg = false;
-				for (auto J = methodDecl->param_begin(); J != methodDecl->param_end(); ++J)
-				{
-					ParmVarDecl* paramDecl = *J;
-					QualType paramType = paramDecl->getType();
-
-					VariableInformation parameterInformation;
-					parameterInformation.Name = paramDecl->getName().str();
-
-					if (!ParseTypeInformation(paramType, parameterInformation.TypeInformation))
-					{
-						outs() << "Error: Unable to parse return type for method \"" << sourceMethodName << "\". Skipping method.\n";
-						invalidParam = true;
-						continue;
-					}
-
-					if (paramDecl->hasDefaultArg() && !skippedDefaultArg)
-					{
-						Expr* defaultArg;
-						if (paramDecl->hasUninstantiatedDefaultArg())
-							defaultArg = paramDecl->getUninstantiatedDefaultArg();
-						else
-							defaultArg = paramDecl->getDefaultArg();
-
-						if (!TryEvaluateExpression(defaultArg, parameterInformation.DefaultValue, parameterInformation.DefaultValueType))
-						{
-							outs() << "Error: Method parameter \"" << paramDecl->getName().str() << "\" has a default "
-								<< "argument that cannot be constantly evaluated, ignoring it.\n";
-							skippedDefaultArg = true;
-						}
-					}
-
-					ParseParameterOrFieldAttribute(paramDecl, false, parameterInformation.TypeInformation);
-					methodInfo.Parameters.push_back(parameterInformation);
-				}
-
-				if (invalidParam)
-					continue;
-
-				CommentParser::EnsureValidParameterReferenceComments(methodInfo.Parameters, methodInfo.Documentation);
-
-				if (isExternal)
-				{
-					if (parsedMethodInfo.ExtensionOfType == "T")
-						parsedMethodInfo.ExtensionOfType = srcClassName;
-
-					TypeLookup::RegisterExternalMethod(parsedMethodInfo.ExtensionOfType, methodInfo);
-				}
-				else
-					classInfo.Methods.push_back(methodInfo);
-			}
-
-			// Look for exported fields & events
-			for (auto I = curDecl->field_begin(); I != curDecl->field_end(); ++I)
-			{
-				FieldDecl* fieldDecl = *I;
-
-				MethodInfo eventInfo;
-				if (TryParseEvent(fieldDecl, srcClassName, eventInfo))
-					classInfo.Events.push_back(eventInfo);
-				else
-				{
-					FieldInfo fieldInfo;
-					fieldInfo.Name = fieldDecl->getName().str();
-
-					ScriptExportInformation parsedFieldInfo;
-					bool foundExportAttrib = false;
-					for(const auto& entry : fieldDecl->specific_attrs<AnnotateAttr>())
-					{
-						if(ScriptExportAttributeParser::IsExportAttribute(entry))
-						{
-							if (ScriptExportAttributeParser::ParseExportAttribute(entry, fieldInfo.Name, parsedFieldInfo))
-								foundExportAttrib = true;
-
-							break;
-						}
-					}
-
-					if(!foundExportAttrib)
-						continue;
-
-					std::string typeName;
-					if (!ParseTypeInformation(fieldDecl->getType(), fieldInfo.TypeInformation))
-					{
-						outs() << "Error: Unable to detect type for field \"" << fieldDecl->getName().str() << "\" in \""
-							<< srcClassName << "\". Skipping field.\n";
-						continue;
-					}
-
-					if (fieldDecl->getAccess() != AS_public)
-						outs() << "Error: Exported field \"" + fieldInfo.Name + "\" isn't public. This will likely result in invalid code generation.";
-
-					fieldInfo.MetaData = parsedFieldInfo.MetaData;
-
-					mCommentParser.ParseComments(fieldDecl, fieldInfo.Documentation);
-					CommentParser::ClearParameterReferenceComments(fieldInfo.Documentation);
-
-					classInfo.Fields.push_back(fieldInfo);
-
-					// Register wrapper methods, this way we can re-use much of the same logic for method/property generation
-					MethodInfo getterInfo;
-					getterInfo.NativeName = "Get" + fieldInfo.Name;
-					getterInfo.ScriptName = parsedFieldInfo.ExportedTypeName;
-					getterInfo.Visibility = parsedFieldInfo.Visibility;
-					getterInfo.API = ParserUtility::ParseAPIFromExportFlags(parsedFieldInfo.ExportFlags);
-					getterInfo.MethodFlags = (int)MethodFlags::PropertyGetter | (int)MethodFlags::FieldWrapper;
-					getterInfo.MetaData = fieldInfo.MetaData;
-
-					getterInfo.ReturnValue.TypeInformation = fieldInfo.TypeInformation;
-					ParseParameterOrFieldAttribute(fieldDecl, true, getterInfo.ReturnValue.TypeInformation);
-
-					if ((parsedFieldInfo.ExportFlags & (int)ExportFlags::InteropOnly) != 0)
-						getterInfo.MethodFlags |= (int)MethodFlags::InteropOnly;
-
-					VariableInformation paramInfo;
-					paramInfo.TypeInformation = fieldInfo.TypeInformation;
-					paramInfo.Name = "value";
-
-					ParseParameterOrFieldAttribute(fieldDecl, true, paramInfo.TypeInformation);
-
-					MethodInfo setterInfo;
-					setterInfo.NativeName = "Set" + fieldInfo.Name;
-					setterInfo.ScriptName = parsedFieldInfo.ExportedTypeName;
-					setterInfo.Documentation = fieldInfo.Documentation;
-					setterInfo.Parameters.push_back(paramInfo);
-					setterInfo.Visibility = parsedFieldInfo.Visibility;
-					setterInfo.API = ParserUtility::ParseAPIFromExportFlags(parsedFieldInfo.ExportFlags);
-					setterInfo.MethodFlags = (int)MethodFlags::PropertySetter | (int)MethodFlags::FieldWrapper;
-					setterInfo.MetaData = fieldInfo.MetaData;
-
-					if ((parsedFieldInfo.ExportFlags & (int)ExportFlags::InteropOnly) != 0)
-						setterInfo.MethodFlags |= (int)MethodFlags::InteropOnly;
-
-					classInfo.Methods.push_back(getterInfo);
-					classInfo.Methods.push_back(setterInfo);
-				}
-			}
-
-			// Find static data events
-			const DeclContext* context = dyn_cast<DeclContext>(curDecl);
-			for (auto I = context->decls_begin(); I != context->decls_end(); ++I)
-			{
-				if (VarDecl* varDecl = dyn_cast<VarDecl>(*I))
-				{
-					if (!varDecl->isStaticDataMember())
-						continue;
-
-					MethodInfo eventInfo;
-					if (!TryParseEvent(varDecl, srcClassName, eventInfo))
-						continue;
-
-					eventInfo.MethodFlags |= (int)MethodFlags::Static;
-					classInfo.Events.push_back(eventInfo);
-				}
-			}
-
-			auto iter = curDecl->bases_begin();
-			while (iter != curDecl->bases_end())
-			{
-				const CXXBaseSpecifier* baseSpec = iter;
-				CXXRecordDecl* baseDecl = baseSpec->getType()->getAsCXXRecordDecl();
-
-				// Base classes never need to be exported. Exportable classes will handle their own methods/fields.
-				if (ParserUtility::IsBuiltinBaseType(baseDecl) || ScriptExportAttributeParser::IsExportable(baseDecl))
-				{
-					iter++;
-					continue;
-				}
-
-				todo.push(baseDecl);
-				iter++;
-			}
-		}
-
 		// External classes are just containers for external methods, we don't need to process them directly
-		if ((parsedClassInfo.ExportFlags & (int)ExportFlags::ExternalMethod) == 0)
+		if ((scriptExportInformation.ExportFlags & (int)ExportFlags::ExternalMethod) == 0)
 		{
-			TypeLookup::RegisterEntryToGenerate(parsedClassInfo.ExportedFileName, classInfo);
+			TypeLookup::RegisterEntryToGenerate(scriptExportInformation.ExportedFileName, classInfo);
 		}
 	}
 
