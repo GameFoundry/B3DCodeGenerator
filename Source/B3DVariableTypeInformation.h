@@ -36,6 +36,7 @@ enum class VariablePostProcessFlags
 	None = 0,
 	IsStructWrapperUsed = 1 << 0, /**< Special flag to be set during post-processing. Signals to the user that a struct wrapper had to be generated and should be used instead of the native type. */
 	IsReferencingBaseClass = 1 << 1, /**< Special flag to be set during post-processing. Signals to the user that a parameter, return value or a field is referencing a script exported base class. */
+	UsesIScriptExportableAPI = 1 << 2, /**< True if the type being exported is using the new IScriptExportable API. */
 };
 
 /** Various flags that can be added to VariableTypeInformation, specific to method parameters. */

@@ -871,10 +871,27 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 			}
 		};
 
-		auto markParam = [&fnMarkComplexType,&fnMarkBaseType](VariableInformation& paramInfo)
+		auto fnMarkUsingIScriptExportable = [](VariableTypeInformation& typeInformation)
+		{
+			const TypeMappingInformation typeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(typeInformation);
+			if(!typeMappingInformation.IsClassType() && !typeMappingInformation.IsHandleType() && typeMappingInformation.TypeCategory != ExportedClassTypeCategory::GUIElement)
+				return;
+
+			const std::string& typeName = typeInformation.GetLastWrappedOrSelfTypeName();
+			ClassInfo* const classInfo = TypeLookup::FindClassInformation(typeName, false);
+			if(classInfo != nullptr)
+			{
+				const bool usesIScriptExportableAPI = classInfo->IsFlagSet(ClassFlags::UsesIScriptExportableAPI);
+				if(usesIScriptExportableAPI)
+					typeInformation.SetPostProcessFlag(VariablePostProcessFlags::UsesIScriptExportableAPI, true);
+			}
+		};
+
+		auto fnMarkParameter = [&fnMarkComplexType, &fnMarkBaseType, &fnMarkUsingIScriptExportable](VariableInformation& paramInfo)
 		{
 			fnMarkComplexType(paramInfo.TypeInformation);
 			fnMarkBaseType(paramInfo.TypeInformation);
+			fnMarkUsingIScriptExportable(paramInfo.TypeInformation);
 		};
 
 		for (auto& classInfo : fileInfo.second.Classes)
@@ -882,35 +899,33 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 			for(auto& methodInfo : classInfo.Methods)
 			{
 				for (auto& paramInfo : methodInfo.Parameters)
-					markParam(paramInfo);
+					fnMarkParameter(paramInfo);
 
 				if (!methodInfo.ReturnValue.TypeInformation.IsEmpty())
 				{
 					fnMarkComplexType(methodInfo.ReturnValue.TypeInformation);
 					fnMarkBaseType(methodInfo.ReturnValue.TypeInformation);
+					fnMarkUsingIScriptExportable(methodInfo.ReturnValue.TypeInformation);
 				}
 			}
 
 			for (auto& eventInfo : classInfo.Events)
 			{
 				for (auto& paramInfo : eventInfo.Parameters)
-					markParam(paramInfo);
+					fnMarkParameter(paramInfo);
 			}
 
 			for (auto& ctorInfo : classInfo.Constructors)
 			{
 				for (auto& paramInfo : ctorInfo.Parameters)
-					markParam(paramInfo);
+					fnMarkParameter(paramInfo);
 			}
 		}
 
 		for(auto& structInfo : fileInfo.second.Structs)
 		{
 			for(auto& fieldInfo : structInfo.Fields)
-			{
-				fnMarkComplexType(fieldInfo.TypeInformation);
-				markParam(fieldInfo);
-			}
+				fnMarkParameter(fieldInfo);
 		}
 	}
 
@@ -943,7 +958,7 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 
 				fileInfo.second.ForwardDeclarations.insert(ForwardDeclarationInformation(classInfo.NativeNameWithoutTemplateArguments, classInfo.Namespace, classInfo.TemplateParameters, classInfo.IsFlagSet(ClassFlags::IsStruct)));
 
-				if((classInfo.ClassFlags & (int)ClassFlags::UsesIScriptExportableAPI) != 0)
+				if(classInfo.IsFlagSet(ClassFlags::UsesIScriptExportableAPI))
 				{
 					if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::Class || typeInfo.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
 						fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptObjectWrapper.h");
