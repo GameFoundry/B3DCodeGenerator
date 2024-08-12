@@ -945,18 +945,18 @@ static std::string GenerateMethodBodyBlockForArgument(const std::string& paramet
 
 			monoType = scriptType + "::GetMetaData()->ScriptClass";
 
-			postCallActions << "\t\tauto convertCallback = [](const Any& returnVal)\n";
+			postCallActions << "\t\tauto fnConvertCallback = [](const Any& returnValue)\n";
 			postCallActions << "\t\t{\n";
-			postCallActions << "\t\t\t" << argumentType << " nativeObj = AnyCast<" << argumentType << ">(returnVal);\n";
-			postCallActions << "\t\t\tMonoObject* monoObj;\n";
+			postCallActions << "\t\t\t" << argumentType << " nativeObject = AnyCast<" << argumentType << ">(returnValue);\n";
+			postCallActions << "\t\t\tMonoObject* scriptObject;\n";
 
 			if (!asyncOpUnderlyingTypeInformation.IsArrayOrVector())
 			{
 				if (parameterTypeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass || parameterTypeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Class)
-					postCallActions << GenerateNativeClassToMonoObject(asyncOpUnderlyingTypeInformation, "monoObj", scriptType, "nativeObj", false, "\t\t\t");
+					postCallActions << GenerateNativeClassToMonoObject(asyncOpUnderlyingTypeInformation, "scriptObject", scriptType, "nativeObject", false, "\t\t\t");
 				else // Resource
 				{
-					postCallActions << GenerateNativeHandleToMonoObject(asyncOpUnderlyingTypeInformation, parameterTypeMappingInformation, "nativeObj", "", "scriptObj", "monoObj", false, "\t\t\t");
+					postCallActions << GenerateNativeHandleToMonoObject(asyncOpUnderlyingTypeInformation, parameterTypeMappingInformation, "nativeObject", "", "scriptWrapperObject", "scriptObject", false, "\t\t\t");
 				}
 
 			}
@@ -964,7 +964,7 @@ static std::string GenerateMethodBodyBlockForArgument(const std::string& paramet
 			{
 				const std::string arrayName = "scriptArray";
 
-				postCallActions << "\t\t\tint arraySize = ";
+				postCallActions << "\t\t\tint elementCount = ";
 				if (asyncOpUnderlyingTypeInformation.IsArrayOrVector(false))
 					postCallActions << "(int)" << argumentName << ".size()";
 				else
@@ -973,7 +973,7 @@ static std::string GenerateMethodBodyBlockForArgument(const std::string& paramet
 
 				postCallActions << "\t\t\tScriptArray " << arrayName;
 				postCallActions << " = " << "ScriptArray::Create<" << scriptType << ">(arraySize);" << std::endl;
-				postCallActions << "\t\t\tfor(int i = 0; i < arraySize; i++)" << std::endl;
+				postCallActions << "\t\t\tfor(int elementIndex = 0; elementIndex < elementCount; elementIndex++)" << std::endl;
 				postCallActions << "\t\t\t{" << std::endl;
 
 				const VariableTypeInformation& arrayElementTypeInformation = asyncOpUnderlyingTypeInformation.AssertGetUnderlyingType();
@@ -983,10 +983,10 @@ static std::string GenerateMethodBodyBlockForArgument(const std::string& paramet
 				case ExportedClassTypeCategory::ReflectableClass:
 				case ExportedClassTypeCategory::Class:
 				{
-					const std::string arrayElementName = "arrayElem" + parameterName;
+					const std::string arrayElementName = "arrayElement" + parameterName;
 
 					const std::string arrayElementPtrType = GetCppNativeQualifiedTypeName(arrayElementTypeInformation, parameterTypeMappingInformation);
-					const std::string arrayElementPtrName = "arrayElemPtr" + parameterName;
+					const std::string arrayElementPtrName = "arrayElementPointer" + parameterName;
 
 					postCallActions << "\t\t\t\t" << arrayElementPtrType << " " << arrayElementPtrName;
 					if (arrayElementTypeInformation.TypeCategory != VariableTypeCategory::SharedPointer)
@@ -995,7 +995,7 @@ static std::string GenerateMethodBodyBlockForArgument(const std::string& paramet
 
 						if (arrayElementTypeInformation.IsQualifierFlagSet(VariableQualifierFlags::IsPointer))
 						{
-							postCallActions << "\t\t\t\tif(nativeObj[i])\n";
+							postCallActions << "\t\t\t\tif(nativeObject[elementIndex])\n";
 							postCallActions << "\t\t\t\t\t*" << arrayElementPtrName << " = *";
 						}
 						else
@@ -1003,22 +1003,22 @@ static std::string GenerateMethodBodyBlockForArgument(const std::string& paramet
 							postCallActions << "\t\t\t\t*" << arrayElementPtrName << " = ";
 						}
 
-						postCallActions << "nativeObj[i];\n";
+						postCallActions << "nativeObject[elementIndex];\n";
 					}
 					else
 					{
-						postCallActions << " = nativeObj[i];\n";
+						postCallActions << " = nativeObject[elementIndex];\n";
 					}
 
 					postCallActions << "\t\t\t\tMonoObject* " << arrayElementName << ";\n";
 					postCallActions << GenerateNativeClassToMonoObject(arrayElementTypeInformation, arrayElementName, scriptType, arrayElementPtrName, false, "\t\t\t\t");
 
-					postCallActions << "\t\t\t\t" << arrayName << ".Set(i, " << arrayElementName << ");" << std::endl;
+					postCallActions << "\t\t\t\t" << arrayName << ".Set(elementIndex, " << arrayElementName << ");" << std::endl;
 					break;
 				}
 				case ExportedClassTypeCategory::Resource:
 				{
-					postCallActions << GenerateNativeHandleToMonoObject(arrayElementTypeInformation, parameterTypeMappingInformation, "nativeObj", "i", "scriptObj", arrayName, false, "\t\t\t\t");
+					postCallActions << GenerateNativeHandleToMonoObject(arrayElementTypeInformation, parameterTypeMappingInformation, "nativeObject", "elementIndex", "scriptWrapperObject", arrayName, false, "\t\t\t\t");
 				}
 				break;
 				default:
@@ -1027,20 +1027,20 @@ static std::string GenerateMethodBodyBlockForArgument(const std::string& paramet
 				}
 
 				postCallActions << "\t\t\t}" << std::endl;
-				postCallActions << "\t\t\tmonoObj = " << arrayName << ".GetInternal();" << std::endl;
+				postCallActions << "\t\t\tscriptObject = " << arrayName << ".GetInternal();" << std::endl;
 			}
 
-			postCallActions << "\t\t\treturn monoObj;\n";
+			postCallActions << "\t\t\treturn scriptObject;\n";
 			postCallActions << "\t\t};\n";
 			postCallActions << "\n;";
 		}
 		else
-			postCallActions << "\t\tauto convertCallback = nullptr;\n";
+			postCallActions << "\t\tauto fnConvertCallback = nullptr;\n";
 
 		if (returnValue)
-			postCallActions << "\t\t" << parameterName << " = " << "ScriptAsyncOpBase::Create(" << argumentName << ", convertCallback, " << monoType << ");\n";
+			postCallActions << "\t\t" << parameterName << " = " << "ScriptAsyncOpBase::Create(" << argumentName << ", fnConvertCallback, " << monoType << ");\n";
 		else
-			postCallActions << "\t\tMonoUtil::ReferenceCopy(" << parameterName << ", " << "ScriptAsyncOpBase::Create(" << argumentName << ", convertCallback, " << monoType << "));\n";
+			postCallActions << "\t\tMonoUtil::ReferenceCopy(" << parameterName << ", " << "ScriptAsyncOpBase::Create(" << argumentName << ", fnConvertCallback, " << monoType << "));\n";
 
 		return argumentName;
 	}
@@ -3311,7 +3311,7 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 			}
 
 			output << "\t{\n";
-			output << "\t\tif(value == nullptr) return nullptr;\n";
+			output << "\t\tif(nativeObject == nullptr) return nullptr;\n";
 			output << "\n";
 
 			output << "\t\tif(ScriptObjectWrapper* const scriptObjectWrapper = (ScriptObjectWrapper*)nativeObject->GetScriptObjectWrapper())\n";
