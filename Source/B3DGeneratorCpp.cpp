@@ -187,51 +187,65 @@ static std::string GetInteropThunkSignatureQualifiedTypeName(const VariableTypeI
 }
 
 /**
- * Generates a line of code that retrieves the underlying (internal) object from the script interop object.
+ * Generates a line of code that retrieves the native object from the script wrapper object.
  *
- * @param typeInformation			Information about the native type the internal object represents.
+ * @param typeInformation			Information about the native type the native object represents.
  * @param typeMappingInformation	Mapping of the provided type in script.
- * @param variableName				Name of the variable containing the script interop object, to access the underlying object through.
- * @return							String containing the C++ line of code to retrieve the underlying (internal) object from @p variableName.
+ * @param variableName				Name of the variable containing the script wrapper object, to access the native object through.
+ * @return							String containing the C++ line of code to retrieve the native object from @p variableName.
  */
-static std::string GenerateGetInternalCallLine(const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation, const std::string& variableName)
+static std::string GenerateGetNativeObjectCallLine(const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation, const std::string& variableName)
 {
 	const bool isPassingAsResourceReference = typeInformation.IsParameterFlagSet(ParameterFlags::AsResourceRef);
 	const bool isReferencingBaseClass = typeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsReferencingBaseClass);
+	const bool isUsingIScriptExportableAPI = typeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::UsesIScriptExportableAPI);
 
 	const std::string& nativeTypeName = typeInformation.GetLastWrappedOrSelfTypeName();
 
-	// TODO - Update for new API
-
 	std::stringstream output;
-	if (typeMappingInformation.IsClassType())
-		output << variableName << "->GetInternal()";
-	else if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
-		output << "static_cast<" << nativeTypeName << "*>(" << variableName << "->GetGuiElement())";
-	else // Must be one of the handle types
+	if(isUsingIScriptExportableAPI)
 	{
-		assert(typeMappingInformation.IsHandleType());
-
-		if (!isReferencingBaseClass || isPassingAsResourceReference)
+		if(typeMappingInformation.IsClassType())
+			output << variableName << "->GetNativeObjectAsShared()";
+		else if(typeMappingInformation.IsHandleType())
+			output << variableName << "->GetNativeObjectAsHandle()";
+		else // Must be GUI element type
 		{
-			if(isPassingAsResourceReference)
-				output << "B3DStaticResourceCast<" << nativeTypeName << ">(" << variableName << "->GetHandle())";
+			assert(typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GUIElement);
+			output << variableName << "->GetNativeObject()";
+		}
+	}
+	else
+	{
+		if(typeMappingInformation.IsClassType())
+			output << variableName << "->GetInternal()";
+		else if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
+			output << "static_cast<" << nativeTypeName << "*>(" << variableName << "->GetGuiElement())";
+		else // Must be one of the handle types
+		{
+			assert(typeMappingInformation.IsHandleType());
+
+			if(!isReferencingBaseClass || isPassingAsResourceReference)
+			{
+				if(isPassingAsResourceReference)
+					output << "B3DStaticResourceCast<" << nativeTypeName << ">(" << variableName << "->GetHandle())";
+				else
+				{
+					if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Resource && nativeTypeName == "Resource")
+						output << "B3DStaticResourceCast<" << nativeTypeName << ">(" << variableName << "->GetGenericHandle())";
+					else if(typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GameObject)
+						output << variableName << "->GetNativeHandle()";
+					else
+						output << variableName << "->GetHandle()";
+				}
+			}
 			else
 			{
-				if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Resource && nativeTypeName == "Resource")
+				if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Resource)
 					output << "B3DStaticResourceCast<" << nativeTypeName << ">(" << variableName << "->GetGenericHandle())";
-				else if(typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GameObject)
-					output << variableName << "->GetNativeHandle()";
-				else
-					output << variableName << "->GetHandle()";
+				else if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Component)
+					output << "B3DStaticGameObjectCast<" << nativeTypeName << ">(" << variableName << "->GetComponent())";
 			}
-		}
-		else
-		{
-			if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Resource)
-				output << "B3DStaticResourceCast<" << nativeTypeName << ">(" << variableName << "->GetGenericHandle())";
-			else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Component)
-				output << "B3DStaticGameObjectCast<" << nativeTypeName << ">(" << variableName << "->GetComponent())";
 		}
 	}
 	
@@ -545,10 +559,7 @@ static std::string GenerateInternalMethodSignature(const ClassInfo& classInfo, c
 	}
 	else if (!isStatic && !isModule)
 	{
-		if(isUsingIScriptExportableAPI)
-			output << interopThisPtrType << "* self";
-		else
-			output << interopThisPtrType << "* thisPtr";
+		output << interopThisPtrType << "* self";
 
 		if (!methodInfo.Parameters.empty() || returnAsParameter)
 			output << ", ";
@@ -706,7 +717,11 @@ static std::string GenerateScriptObjectToScriptObjectWrapper(const std::string& 
 	if (!isBase || isRRef)
 	{
 		output << indent << scriptWrapperType << "* " << scriptWrapperVariableName << ";" << std::endl;
-		output << indent << scriptWrapperVariableName << " = " << scriptWrapperType << "::ToNative(" << scriptObjectVariableName << ");" << std::endl;
+
+		if(isUsingIScriptExportableAPI)
+			output << indent << scriptWrapperVariableName << " = " << scriptWrapperType << "::GetScriptObjectWrapper(" << scriptObjectVariableName << ");" << std::endl;
+		else
+			output << indent << scriptWrapperVariableName << " = " << scriptWrapperType << "::ToNative(" << scriptObjectVariableName << ");" << std::endl;
 	}
 	else
 	{
@@ -1171,7 +1186,7 @@ static std::string GenerateMethodBodyBlockForArgument(const std::string& paramet
 
 				preCallActions << GenerateScriptObjectToScriptObjectWrapper("\t\t", scriptObjectWrapperType, scriptName, parameterName, parameterInformation.TypeInformation, parameterTypeMappingInformation);
 				preCallActions << "\t\tif(" << scriptName << " != nullptr)" << std::endl;
-				preCallActions << "\t\t\t" << argumentName << " = " << GenerateGetInternalCallLine(parameterInformation.TypeInformation, parameterTypeMappingInformation, scriptName) << ";" << std::endl;
+				preCallActions << "\t\t\t" << argumentName << " = " << GenerateGetNativeObjectCallLine(parameterInformation.TypeInformation, parameterTypeMappingInformation, scriptName) << ";" << std::endl;
 			}
 		}
 			break;
@@ -1190,7 +1205,7 @@ static std::string GenerateMethodBodyBlockForArgument(const std::string& paramet
 				
 				preCallActions << GenerateScriptObjectToScriptObjectWrapper("\t\t", scriptObjectWrapperType, scriptName, parameterName, parameterInformation.TypeInformation, parameterTypeMappingInformation);
 				preCallActions << "\t\tif(" << scriptName << " != nullptr)" << std::endl;
-				preCallActions << "\t\t\t" << argumentName << " = " << GenerateGetInternalCallLine(parameterInformation.TypeInformation, parameterTypeMappingInformation, scriptName) << ";" << std::endl;
+				preCallActions << "\t\t\t" << argumentName << " = " << GenerateGetNativeObjectCallLine(parameterInformation.TypeInformation, parameterTypeMappingInformation, scriptName) << ";" << std::endl;
 			}
 		}
 			break;
@@ -1207,7 +1222,7 @@ static std::string GenerateMethodBodyBlockForArgument(const std::string& paramet
 
 				preCallActions << GenerateScriptObjectToScriptObjectWrapper("\t\t", scriptObjectWrapperType, scriptObjectWrapperName, parameterName, parameterInformation.TypeInformation, parameterTypeMappingInformation);
 				preCallActions << "\t\tif(" << scriptObjectWrapperName << " != nullptr)" << std::endl;
-				preCallActions << "\t\t\t" << argumentName << " = " << GenerateGetInternalCallLine(parameterInformation.TypeInformation, parameterTypeMappingInformation, scriptObjectWrapperName) << ";" << std::endl;
+				preCallActions << "\t\t\t" << argumentName << " = " << GenerateGetNativeObjectCallLine(parameterInformation.TypeInformation, parameterTypeMappingInformation, scriptObjectWrapperName) << ";" << std::endl;
 			}
 		}
 		break;
@@ -1309,7 +1324,7 @@ static std::string GenerateMethodBodyBlockForArgument(const std::string& paramet
 				std::string arrayElementPointerName = "arrayElementPointer" + parameterName;
 
 				preCallActions << "\t\t\t\t\t" << arrayElementPointerType << " " << arrayElementPointerName << " = " << 
-					GenerateGetInternalCallLine(arrayElementTypeInformation, parameterTypeMappingInformation, scriptObjectWrapperName) << ";\n";
+					GenerateGetNativeObjectCallLine(arrayElementTypeInformation, parameterTypeMappingInformation, scriptObjectWrapperName) << ";\n";
 
 				if(parameterTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Class || parameterTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::ReflectableClass)
 				{
@@ -1571,7 +1586,7 @@ static std::string GenerateFieldConvertBlock(const std::string& name, const Vari
 					std::string scriptName = "script" + name;
 					preActions << GenerateScriptObjectToScriptObjectWrapper("\t\t", scriptType, scriptName, "value." + name, fieldInformation.TypeInformation, parameterTypeMappingInformation);
 					preActions << "\t\tif(" << scriptName << " != nullptr)" << std::endl;
-					preActions << "\t\t\t" << arg << " = " << GenerateGetInternalCallLine(fieldInformation.TypeInformation, parameterTypeMappingInformation, scriptName) << ";" << std::endl;
+					preActions << "\t\t\t" << arg << " = " << GenerateGetNativeObjectCallLine(fieldInformation.TypeInformation, parameterTypeMappingInformation, scriptName) << ";" << std::endl;
 				}
 				else
 					outs() << "Error: Invalid struct member type for \"" << name << "\"\n";
@@ -1670,7 +1685,7 @@ static std::string GenerateFieldConvertBlock(const std::string& name, const Vari
 				
 				preActions << GenerateScriptObjectToScriptObjectWrapper("\t\t", scriptType, scriptName, "value." + name, fieldInformation.TypeInformation, parameterTypeMappingInformation);
 				preActions << "\t\tif(" << scriptName << " != nullptr)\n";
-				preActions << "\t\t\t" << arg << " = " << GenerateGetInternalCallLine(fieldInformation.TypeInformation, parameterTypeMappingInformation, scriptName) << ";" << std::endl;
+				preActions << "\t\t\t" << arg << " = " << GenerateGetNativeObjectCallLine(fieldInformation.TypeInformation, parameterTypeMappingInformation, scriptName) << ";" << std::endl;
 			}
 
 			const VariableTypeInformation& underlyingType = fieldInformation.TypeInformation.TypeCategory == VariableTypeCategory::ComponentOrActor ? fieldInformation.TypeInformation.AssertGetUnderlyingType() : fieldInformation.TypeInformation;
@@ -1772,7 +1787,7 @@ static std::string GenerateFieldConvertBlock(const std::string& name, const Vari
 				std::string elemPtrName = "arrayElemPtr" + name;
 
 				preActions << "\t\t\t\t\t" << elemPtrType << " " << elemPtrName << " = " << 
-					GenerateGetInternalCallLine(arrayElementTypeInformation, parameterTypeMappingInformation, scriptName) << ";\n";
+					GenerateGetNativeObjectCallLine(arrayElementTypeInformation, parameterTypeMappingInformation, scriptName) << ";\n";
 
 				if(parameterTypeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Class || parameterTypeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
 				{
@@ -2195,8 +2210,11 @@ static std::string GenerateInternalMethodBody(const ClassInfo& classInfo, const 
 		{
 			if (typeMappingInformation.IsClassType())
 			{
-				output << "\t\tSPtr<" << classInfo.NativeName << "> instance = B3DMakeShared<" << classInfo.NativeName << ">(" << methodArgs.str() << ");" << std::endl;
-				output << "\t\tnew (B3DAllocate<" << interopClassName << ">())" << interopClassName << "(managedInstance, instance);" << std::endl;
+				output << "\t\tSPtr<" << classInfo.NativeName << "> nativeObject = B3DMakeShared<" << classInfo.NativeName << ">(" << methodArgs.str() << ");" << std::endl;
+
+				if(!isUsingIScriptExportableAPI)
+					output << "\t\tnew (B3DAllocate<" << interopClassName << ">())" << interopClassName << "(managedInstance, nativeObject);" << std::endl;
+
 				isValid = true;
 			}
 		}
@@ -2206,25 +2224,39 @@ static std::string GenerateInternalMethodBody(const ClassInfo& classInfo, const 
 
 			if (typeMappingInformation.IsClassType())
 			{
-				output << "\t\tSPtr<" << classInfo.NativeName << "> instance = " << fullMethodName << "(" << methodArgs.str() << ");" << std::endl;
-				output << "\t\tnew (B3DAllocate<" << interopClassName << ">())" << interopClassName << "(managedInstance, instance);" << std::endl;
+				output << "\t\tSPtr<" << classInfo.NativeName << "> nativeObject = " << fullMethodName << "(" << methodArgs.str() << ");" << std::endl;
+
+				if(!isUsingIScriptExportableAPI)
+					output << "\t\tnew (B3DAllocate<" << interopClassName << ">())" << interopClassName << "(managedInstance, nativeObject);" << std::endl;
+
 				isValid = true;
 			}
 			else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Resource)
 			{
-				output << "\t\tTResourceHandle<" << classInfo.NativeName << "> instance = " << fullMethodName << "(" << methodArgs.str() << ");" << std::endl;
-				output << "\t\tScriptResourceManager::Instance().CreateBuiltinScriptResource(instance, managedInstance);" << std::endl;
+				output << "\t\tTResourceHandle<" << classInfo.NativeName << "> nativeObject = " << fullMethodName << "(" << methodArgs.str() << ");" << std::endl;
+
+				if(!isUsingIScriptExportableAPI)
+					output << "\t\tScriptResourceManager::Instance().CreateBuiltinScriptResource(nativeObject, managedInstance);" << std::endl;
+
 				isValid = true;
 			}
 			else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
 			{
-				output << "\t\t" << classInfo.NativeName << "* instance = " << fullMethodName << "(" << methodArgs.str() << ");" << std::endl;
-				output << "\t\tnew (B3DAllocate<" << interopClassName << ">())" << interopClassName << "(managedInstance, instance);" << std::endl;
+				output << "\t\t" << classInfo.NativeName << "* nativeObject = " << fullMethodName << "(" << methodArgs.str() << ");" << std::endl;
+
+				if(!isUsingIScriptExportableAPI)
+					output << "\t\tnew (B3DAllocate<" << interopClassName << ">())" << interopClassName << "(managedInstance, nativeObject);" << std::endl;
+
 				isValid = true;
 			}
 		}
 
-		if (!isValid)
+		if(isValid)
+		{
+			if(isUsingIScriptExportableAPI)
+				output << "\t\tB3DNew<" << interopClassName << ">(nativeObject, scriptObject);\n";
+		}
+		else
 			outs() << "Error: Cannot generate a constructor for \"" << classInfo.NativeName << "\". Unsupported class type. \n";
 	}
 	else
@@ -2242,7 +2274,7 @@ static std::string GenerateInternalMethodBody(const ClassInfo& classInfo, const 
 				typeInformation.TypeName = classInfo.NativeName;
 				typeInformation.PostProcessFlags |= isBase ? (uint32_t)VariablePostProcessFlags::IsReferencingBaseClass : 0;
 
-				methodCall << GenerateGetInternalCallLine(typeInformation, typeMappingInformation, "thisPtr"); // TODO - self for new API
+				methodCall << GenerateGetNativeObjectCallLine(typeInformation, typeMappingInformation, "self");
 				methodCall << "->" << methodInfo.NativeName << "(" << methodArgs.str() << ")";
 			}
 		}
@@ -2257,7 +2289,7 @@ static std::string GenerateInternalMethodBody(const ClassInfo& classInfo, const 
 				typeInformation.TypeName = classInfo.NativeName;
 				typeInformation.PostProcessFlags |= isBase ? (uint32_t)VariablePostProcessFlags::IsReferencingBaseClass : 0;
 
-				methodCall << fullMethodName << "(" << GenerateGetInternalCallLine(typeInformation, typeMappingInformation, "thisPtr"); // TODO - self for new API
+				methodCall << fullMethodName << "(" << GenerateGetNativeObjectCallLine(typeInformation, typeMappingInformation, "self");
 
 				std::string methodArgsStr = methodArgs.str();
 				if (!methodArgsStr.empty())
@@ -2358,7 +2390,7 @@ static std::string GenerateInternalFieldGetterBody(const ClassInfo& classInfo, c
 		typeInformation.TypeName = classInfo.NativeName;
 		typeInformation.PostProcessFlags |= isBase ? (uint32_t)VariablePostProcessFlags::IsReferencingBaseClass : 0;
 
-		fieldAccess << GenerateGetInternalCallLine(typeInformation, typeMappingInformation, "thisPtr"); // TODO - New API
+		fieldAccess << GenerateGetNativeObjectCallLine(typeInformation, typeMappingInformation, "self");
 		fieldAccess << "->" << fieldInfo.Name;
 	}
 
@@ -2424,7 +2456,7 @@ static std::string GenerateInternalFieldSetterBody(const ClassInfo& classInfo, c
 		typeInformation.TypeName = classInfo.NativeName;
 		typeInformation.PostProcessFlags |= isBase ? (uint32_t)VariablePostProcessFlags::IsReferencingBaseClass : 0;
 
-		fieldAccess << GenerateGetInternalCallLine(typeInformation, typeMappingInformation, "thisPtr"); // TODO - New API
+		fieldAccess << GenerateGetNativeObjectCallLine(typeInformation, typeMappingInformation, "self");
 		fieldAccess << "->" << fieldInfo.Name;
 	}
 
@@ -2854,16 +2886,8 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 		interopClassThisPtrType = interopClassName;
 
 	// Internal_GetRef interop method
-	if(isUsingIScriptExportableAPI)
-	{
-		if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Resource)
-			output << "\t\tstatic MonoObject* InternalGetRef(" << interopClassThisPtrType << "* self);\n\n";
-	}
-	else
-	{
-		if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Resource)
-			output << "\t\tstatic MonoObject* InternalGetRef(" << interopClassThisPtrType << "* thisPtr);\n\n";
-	}
+	if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Resource)
+		output << "\t\tstatic MonoObject* InternalGetRef(" << interopClassThisPtrType << "* self);\n\n";
 
 	for (auto& methodInfo : classInfo.Constructors)
 	{
@@ -3445,18 +3469,18 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 			output << "\tMonoObject* " << interopClassName << "::InternalGetRef(" << interopClassThisPtrType << "* self)\n";
 			output << "\t{\n";
 			if(isBase)
-				output << "\t\treturn self->GetRRef(self->GetNativeObjectHandle(), " + classInfo.NativeName + "::GetRttiStatic()->GetRttiId());\n";
+				output << "\t\treturn self->GetRRef(self->GetNativeObjectAsHandle(), " + classInfo.NativeName + "::GetRttiStatic()->GetRttiId());\n";
 			else
 				output << "\t\treturn self->GetRRef();\n";
 		}
 		else
 		{
-			output << "\tMonoObject* " << interopClassName << "::InternalGetRef(" << interopClassThisPtrType << "* thisPtr)\n";
+			output << "\tMonoObject* " << interopClassName << "::InternalGetRef(" << interopClassThisPtrType << "* self)\n";
 			output << "\t{\n";
 			if(isBase)
-				output << "\t\treturn thisPtr->GetRRef(thisPtr->GetGenericHandle(), " + classInfo.NativeName + "::GetRttiStatic()->GetRttiId());\n";
+				output << "\t\treturn self->GetRRef(self->GetGenericHandle(), " + classInfo.NativeName + "::GetRttiStatic()->GetRttiId());\n";
 			else
-				output << "\t\treturn thisPtr->GetRRef();\n";
+				output << "\t\treturn self->GetRRef();\n";
 		}
 
 		output << "\t}\n\n";
