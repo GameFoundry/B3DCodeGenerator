@@ -475,7 +475,7 @@ TypeMappingInformation TypeLookup::GetNativeToScriptTypeMapping(const VariableTy
 	}
 }
 
-std::string TypeLookup::GetScriptInteropTypeName(const std::string& typeName, bool isResourceReference)
+std::string TypeLookup::GetScriptWrapperObjectTypeName(const std::string& typeName, bool isResourceReference)
 {
 	auto iterFind = mNativeToScriptTypeMap.find(typeName);
 	if (iterFind == mNativeToScriptTypeMap.end())

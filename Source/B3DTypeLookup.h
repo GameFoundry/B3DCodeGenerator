@@ -155,13 +155,13 @@ public:
 	static TypeMappingInformation GetNativeToScriptTypeMapping(const VariableTypeInformation& typeInformation);
 
 	/**
-	 * Returns the name of the script interop type used for the provided type name
+	 * Returns the name of the script wrapper object type used for the provided native type name.
 	 *
-	 * @param typeName					Type name of the type to look up.
+	 * @param typeName				Native type name of the type to look up.
 	 * @param isResourceReference	If the type is a resource, this will return a resource reference script interop class, rather than the resource's own interop class.
-	 * @return						Name of the type used for script interop for the provided type name.
+	 * @return						Name of the script wrapper object type.
 	 */
-	static std::string GetScriptInteropTypeName(const std::string& typeName, bool isResourceReference = false);
+	static std::string GetScriptWrapperObjectTypeName(const std::string& typeName, bool isResourceReference = false);
 
 	/**
 	 * Performs final post processing on all files to generate. Should be called once after all files to generate have been registered, before actually using the types for code generation.
