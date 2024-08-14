@@ -1583,10 +1583,10 @@ static std::string GenerateFieldConvertBlock(const std::string& name, const Vari
 					const std::string argumentType = GetCppNativeQualifiedTypeName(fieldInformation.TypeInformation, parameterTypeMappingInformation);
 					preActions << "\t\t" << argumentType << " " << argumentVariableName << ";" << std::endl;
 
-					std::string scriptName = "scriptWrapperObject" + name;
-					preActions << GenerateScriptObjectToScriptObjectWrapper("\t\t", scriptWrapperObjectType, scriptName, "value." + name, fieldInformation.TypeInformation, parameterTypeMappingInformation);
-					preActions << "\t\tif(" << scriptName << " != nullptr)" << std::endl;
-					preActions << "\t\t\t" << argumentVariableName << " = " << GenerateGetNativeObjectCallLine(fieldInformation.TypeInformation, parameterTypeMappingInformation, scriptName) << ";" << std::endl;
+					const std::string scriptWrapperObjectVariableName = "scriptWrapperObject" + name;
+					preActions << GenerateScriptObjectToScriptObjectWrapper("\t\t", scriptWrapperObjectType, scriptWrapperObjectVariableName, "value." + name, fieldInformation.TypeInformation, parameterTypeMappingInformation);
+					preActions << "\t\tif(" << scriptWrapperObjectVariableName << " != nullptr)" << std::endl;
+					preActions << "\t\t\t" << argumentVariableName << " = " << GenerateGetNativeObjectCallLine(fieldInformation.TypeInformation, parameterTypeMappingInformation, scriptWrapperObjectVariableName) << ";" << std::endl;
 				}
 				else
 					outs() << "Error: Invalid struct member type for \"" << name << "\"\n";
@@ -2273,6 +2273,7 @@ static std::string GenerateInternalMethodBody(const ClassInfo& classInfo, const 
 				VariableTypeInformation typeInformation;
 				typeInformation.TypeName = classInfo.NativeName;
 				typeInformation.PostProcessFlags |= isBase ? (uint32_t)VariablePostProcessFlags::IsReferencingBaseClass : 0;
+				typeInformation.PostProcessFlags |= isUsingIScriptExportableAPI ? (uint32_t)VariablePostProcessFlags::UsesIScriptExportableAPI : 0;
 
 				methodCall << GenerateGetNativeObjectCallLine(typeInformation, typeMappingInformation, "self");
 				methodCall << "->" << methodInfo.NativeName << "(" << methodArgs.str() << ")";
@@ -2288,6 +2289,7 @@ static std::string GenerateInternalMethodBody(const ClassInfo& classInfo, const 
 				VariableTypeInformation typeInformation;
 				typeInformation.TypeName = classInfo.NativeName;
 				typeInformation.PostProcessFlags |= isBase ? (uint32_t)VariablePostProcessFlags::IsReferencingBaseClass : 0;
+				typeInformation.PostProcessFlags |= isUsingIScriptExportableAPI ? (uint32_t)VariablePostProcessFlags::UsesIScriptExportableAPI : 0;
 
 				methodCall << fullMethodName << "(" << GenerateGetNativeObjectCallLine(typeInformation, typeMappingInformation, "self");
 
@@ -2351,6 +2353,7 @@ static std::string GenerateInternalFieldGetterBody(const ClassInfo& classInfo, c
 
 	const bool isBase = classInfo.IsFlagSet(ClassFlags::IsBase);
 	const bool isModule = classInfo.IsFlagSet(ClassFlags::IsModule);
+	const bool isUsingIScriptExportableAPI = classInfo.IsFlagSet(ClassFlags::UsesIScriptExportableAPI);
 	const bool isStatic = methodInfo.IsFlagSet(MethodFlags::Static);
 
 	bool returnAsParameter = false;
@@ -2389,6 +2392,7 @@ static std::string GenerateInternalFieldGetterBody(const ClassInfo& classInfo, c
 		VariableTypeInformation typeInformation;
 		typeInformation.TypeName = classInfo.NativeName;
 		typeInformation.PostProcessFlags |= isBase ? (uint32_t)VariablePostProcessFlags::IsReferencingBaseClass : 0;
+		typeInformation.PostProcessFlags |= isUsingIScriptExportableAPI ? (uint32_t)VariablePostProcessFlags::UsesIScriptExportableAPI : 0;
 
 		fieldAccess << GenerateGetNativeObjectCallLine(typeInformation, typeMappingInformation, "self");
 		fieldAccess << "->" << fieldInfo.Name;
@@ -2433,6 +2437,7 @@ static std::string GenerateInternalFieldSetterBody(const ClassInfo& classInfo, c
 
 	const bool isBase = classInfo.IsFlagSet(ClassFlags::IsBase);
 	const bool isModule = classInfo.IsFlagSet(ClassFlags::IsModule);
+	const bool isUsingIScriptExportableAPI = classInfo.IsFlagSet(ClassFlags::UsesIScriptExportableAPI);
 	const bool isStatic = methodInfo.IsFlagSet(MethodFlags::Static);
 
 	const VariableInformation& parameterInformation = methodInfo.Parameters[0];
@@ -2455,6 +2460,7 @@ static std::string GenerateInternalFieldSetterBody(const ClassInfo& classInfo, c
 		VariableTypeInformation typeInformation;
 		typeInformation.TypeName = classInfo.NativeName;
 		typeInformation.PostProcessFlags |= isBase ? (uint32_t)VariablePostProcessFlags::IsReferencingBaseClass : 0;
+		typeInformation.PostProcessFlags |= isUsingIScriptExportableAPI ? (uint32_t)VariablePostProcessFlags::UsesIScriptExportableAPI : 0;
 
 		fieldAccess << GenerateGetNativeObjectCallLine(typeInformation, typeMappingInformation, "self");
 		fieldAccess << "->" << fieldInfo.Name;
@@ -2539,10 +2545,10 @@ static std::string GenerateInternalEventCallbackBody(const ClassInfo& classInfo,
  */
 static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 {
-	bool inEditor = IsAPIEditor (classInfo.API);
-	bool isBase = classInfo.IsFlagSet(ClassFlags::IsBase);
-	bool isModule = classInfo.IsFlagSet(ClassFlags::IsModule);
-	bool isRootBase = classInfo.BaseClassName.empty();
+	const bool inEditor = IsAPIEditor (classInfo.API);
+	const bool isBase = classInfo.IsFlagSet(ClassFlags::IsBase);
+	const bool isModule = classInfo.IsFlagSet(ClassFlags::IsModule);
+	const bool isRootBase = classInfo.BaseClassName.empty();
 	const bool isUsingIScriptExportableAPI = classInfo.IsFlagSet(ClassFlags::UsesIScriptExportableAPI);
 
 	bool hasStaticEvents = isModule && !classInfo.Events.empty();
