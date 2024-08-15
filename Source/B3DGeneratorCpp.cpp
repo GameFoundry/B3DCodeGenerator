@@ -1070,7 +1070,7 @@ static std::string GenerateMethodBodyBlockForArgument(const std::string& paramet
 
 		postCallActions << "\t\tMonoUtil::ValueCopy(" << outputVariableName << ", ";
 		postCallActions << "&interop" << outputVariableName << ", ";
-		postCallActions << scriptType << "::GetMetaData()->ScriptClass->GetInternalClassInternal());\n";
+		postCallActions << scriptType << "::GetMetaData()->ScriptClass->GetInternalClass());\n";
 	};
 
 	const std::string parameterTypeName = parameterInformation.TypeInformation.GetLastWrappedOrSelfTypeName();
@@ -3691,7 +3691,7 @@ std::string GenerateStructDefinition(const StructInfo& structInfo)
 	// Box
 	output << "\tMonoObject*" << interopClassName << "::Box(const " << structInfo.InteropName << "& value)" << std::endl;
 	output << "\t{" << std::endl;
-	output << "\t\treturn MonoUtil::Box(metaData.ScriptClass->GetInternalClassInternal(), (void*)&value);" << std::endl;
+	output << "\t\treturn MonoUtil::Box(metaData.ScriptClass->GetInternalClass(), (void*)&value);" << std::endl;
 	output << "\t}" << std::endl;
 	output << std::endl;
 
