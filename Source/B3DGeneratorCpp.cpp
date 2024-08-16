@@ -3780,6 +3780,9 @@ void GenerateLookupFileHeader(const std::string& tableName, ExportedClassTypeCat
 		bool hasType = false;
 		for (auto& classInfo : classInfos)
 		{
+			if(classInfo.IsFlagSet(ClassFlags::UsesIScriptExportableAPI))
+				continue;
+
 			const TypeMappingInformation& typeInfo = TypeLookup::GetNativeToScriptTypeMapping(classInfo.NativeName);
 			if (typeInfo.TypeCategory != type)
 				continue;
