@@ -960,13 +960,16 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 
 				if(classInfo.IsFlagSet(ClassFlags::UsesIScriptExportableAPI))
 				{
-					if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::Class || typeInfo.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
+					if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource)
+						fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptResourceWrapper.h");
+					else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::GameObject || typeInfo.TypeCategory == ::ExportedClassTypeCategory::Component || typeInfo.TypeCategory == ::ExportedClassTypeCategory::SceneObject)
+						fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptGameObjectWrapper.h");
+					else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
+						fileInfo.second.ReferencedHeaderIncludes.push_back("GUI/BsScriptGUIElementWrapper.h");
+					else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
+						fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptReflectableWrapper.h");
+					else // Class
 						fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptObjectWrapper.h");
-					else
-					{
-						// TODO - Other types unsupported at the moment
-						errs() << "Error: Unsupported type trying to use the IScriptExportable interface. Code generation for this type will be incorrect.";
-					}
 				}
 				else
 				{
