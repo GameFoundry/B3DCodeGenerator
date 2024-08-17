@@ -41,8 +41,8 @@ extern std::string sFrameworkCppNs;
 extern std::string sEditorCppNs;
 extern std::string sFrameworkCsNs;
 extern std::string sEditorCsNs;
-extern std::string sFrameworkExportMacro;
-extern std::string sEditorExportMacro;
+extern std::string sFrameworkDllExportMacro;
+extern std::string sEditorDllExportMacro;
 extern std::string sFrameworkCopyrightNotice;
 extern std::string sEditorCopyrightNotice;
 

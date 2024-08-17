@@ -21,8 +21,8 @@ std::string sFrameworkCppNs = "bs";
 std::string sEditorCppNs = "bs";
 std::string sFrameworkCsNs = "bs";
 std::string sEditorCsNs = "bs.Editor";
-std::string sFrameworkExportMacro = "B3D_SCRIPT_INTEROP_EXPORT";
-std::string sEditorExportMacro = "B3D_EDITOR_SCRIPT_INTEROP_EXPORT";
+std::string sFrameworkDllExportMacro = "B3D_SCRIPT_INTEROP_EXPORT";
+std::string sEditorDllExportMacro = "B3D_EDITOR_SCRIPT_INTEROP_EXPORT";
 std::string sFrameworkCopyrightNotice = 
 	"//********************************* bs::framework - Copyright 2018-2022 Marko Pintera ************************************//\n" \
 	"//*********** Licensed under the MIT license. See LICENSE.md for full terms. This notice is not to be removed. ***********//\n";
@@ -190,10 +190,10 @@ int main(int argc, const char** argv)
 		sEditorCsNs = std::string(CsEditorNamespaceOption.getValue().c_str());
 	
 	if (!CppFrameworkExportMacroOption.getValue().empty())
-		sFrameworkExportMacro = std::string(CppFrameworkExportMacroOption.getValue().c_str());
+		sFrameworkDllExportMacro = std::string(CppFrameworkExportMacroOption.getValue().c_str());
 	
 	if (!CppEditorExportMacroOption.getValue().empty())
-		sEditorExportMacro = std::string(CppEditorExportMacroOption.getValue().c_str());
+		sEditorDllExportMacro = std::string(CppEditorExportMacroOption.getValue().c_str());
 
 	if (!CppFrameworkCopyrightNoticeOption.empty())
 		sFrameworkCopyrightNotice = std::string(CppFrameworkCopyrightNoticeOption.getValue().c_str());

@@ -2565,11 +2565,11 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 		}
 	}
 
-	std::string exportAttr;
+	std::string dllExportMacro;
 	if (!inEditor)
-		exportAttr = sFrameworkExportMacro;
+		dllExportMacro = sFrameworkDllExportMacro;
 	else
-		exportAttr = sEditorExportMacro;
+		dllExportMacro = sEditorDllExportMacro;
 
 	auto fnGenerateEventCallbackMethods = [&classInfo](std::stringstream& stream)
 	{
@@ -2595,6 +2595,8 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 	auto fnGenerateEventHandles = [&classInfo](std::stringstream& stream)
 	{
 		const bool isModule = classInfo.IsFlagSet(ClassFlags::IsModule);
+		const bool isUsingIScriptExportableAPI = classInfo.IsFlagSet(ClassFlags::UsesIScriptExportableAPI);
+
 		for (auto& eventInfo : classInfo.Events)
 		{
 			const bool isStatic = eventInfo.IsFlagSet(MethodFlags::Static);
@@ -2602,7 +2604,10 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 			if(!isCallback && (isStatic || isModule))
 			{
 				stream << GenerateApiCheckBegin(eventInfo.API);
-				stream << "\t\tstatic HEvent " << eventInfo.NativeName << "Conn;" << std::endl;
+				if(isUsingIScriptExportableAPI)
+					stream << "\t\tstatic HEvent " << eventInfo.NativeName << "Connection;" << std::endl;
+				else
+					stream << "\t\tstatic HEvent " << eventInfo.NativeName << "Conn;" << std::endl;
 				stream << GenerateApiCheckEnd(eventInfo.API);
 			}
 		}
@@ -2620,11 +2625,16 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 	{
 		// TODO - The event handling will need porting to the new API, potentially other stuff as well. In which case we might decide to restore this functionality.
 
+		// TODO - Common base class is needed, otherwise we cannot pass unrelated ScriptObjectWrapper pointers to interop methods in the base
+		// - Actually no. I can just pass everything as one of the ScriptObjectWrapper implementations (e.g. ScriptReflectableWrapper), then cast the native object as needed
+		// - But I don't have a base class for all reflectable objects, they are all templated. I could add one with IReflectable member, but that doesn't solve the issue
+		//   for non-reflectable types
+
 		if(isBase)
 		{
 			interopBaseClassName = TypeLookup::GetScriptWrapperObjectTypeName(classInfo.NativeName) + "Base";
 
-			output << "\tclass " << exportAttr << " ";
+			output << "\tclass " << dllExportMacro << " ";
 			output << interopBaseClassName << " : public ";
 
 			if(isRootBase)
@@ -2650,15 +2660,8 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 			output << "\t{" << std::endl;
 			output << "\tpublic:" << std::endl;
 
-			if(isUsingIScriptExportableAPI)
-				output << "\t\t" << interopBaseClassName << "(MonoObject* scriptObject);" << std::endl;
-			else
-				output << "\t\t" << interopBaseClassName << "(MonoObject* instance);" << std::endl;
-
-			if(isUsingIScriptExportableAPI)
-				output << "\t\tvirtual ~" << interopBaseClassName << "() = default;\n";
-			else
-				output << "\t\tvirtual ~" << interopBaseClassName << "() {}" << std::endl;
+			output << "\t\t" << interopBaseClassName << "(MonoObject* instance);" << std::endl;
+			output << "\t\tvirtual ~" << interopBaseClassName << "() {}" << std::endl;
 
 			if(hasNonStaticEvents && typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GUIElement) // TODO - Currently only implement for GUIElement, see definition generation code
 				output << "\t\tvoid RegisterEvents(GUIElement* value) override;\n";
@@ -2668,7 +2671,7 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 			if(!classInfo.Events.empty())
 				output << std::endl;
 
-			if(!isModule && !isUsingIScriptExportableAPI)
+			if(!isModule)
 			{
 				if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
 				{
@@ -2706,7 +2709,7 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 	}
 
 	// Generate main class
-	output << "\tclass " << exportAttr << " ";
+	output << "\tclass " << dllExportMacro << " ";
 
 	std::string interopClassName = TypeLookup::GetScriptWrapperObjectTypeName(classInfo.NativeName);
 	output << interopClassName << " : public ";
@@ -2814,8 +2817,15 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 			output << "\t\t" << wrappedDataType << " GetInternal() const { return mInternal; }" << std::endl;
 	}
 
-	if(hasNonStaticEvents && !isBase && typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GUIElement) // TODO - Currently only implement for GUIElement, see definition generation code
-		output << "\t\tvoid RegisterEvents(GUIElement* value) override;\n";
+	if(!isUsingIScriptExportableAPI)
+	{
+		if(hasNonStaticEvents && !isBase && typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GUIElement) // TODO - Currently only implement for GUIElement, see definition generation code
+			output << "\t\tvoid RegisterEvents(GUIElement* value) override;\n";
+	}
+	else
+	{
+		// TODO
+	}
 
 	if(isUsingIScriptExportableAPI)
 	{
@@ -3623,9 +3633,9 @@ static std::string GenerateStructDeclaration(const StructInfo& structInfo)
 
 	bool inEditor = IsAPIEditor (structInfo.API);
 	if (!inEditor)
-		output << sFrameworkExportMacro << " ";
+		output << sFrameworkDllExportMacro << " ";
 	else
-		output << sEditorExportMacro << " ";
+		output << sEditorDllExportMacro << " ";
 
 	std::string interopClassName = TypeLookup::GetScriptWrapperObjectTypeName(structInfo.NativeName);
 	output << interopClassName << " : public " << "ScriptObject<" << interopClassName << ">";
