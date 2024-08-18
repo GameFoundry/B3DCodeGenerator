@@ -135,6 +135,48 @@ static std::string GetCppNativeQualifiedTypeName(const std::string& typeName, co
 	return GetCppNativeQualifiedTypeName(typeInformation, typeMappingInformation, wrapClassTypesInSharedPointer);
 }
 
+/** Wraps the provided type in const& if necessary. Primarily required when passing the type as parameter or return value. @p type is returned by GetCppNativeQualifiedTypeName(). */
+static std::string GetParameterQualifiedType(const TypeMappingInformation& typeMappingInformation, const std::string& type)
+{
+	if(typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GUIElement)
+		return type; // Return as-is, as it's passed by pointer and the * is already encoded in the name
+
+	return "const " + type + "&";
+}
+
+/** Returns the name of the templated base class to use for the script object wrapper implementation. */
+static std::string GetWrapperTemplatedBaseClass(const TypeMappingInformation& typeMappingInformation, bool isModule)
+{
+	if(isModule)
+		return "TNonInstantiableScriptObjectWrapper";
+
+	if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Resource)
+		return "TScriptResourceWrapper";
+	else if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Component)
+		return "TScriptGameObjectWrapper";
+	else if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
+		return "TScriptGUIElementWrapper";
+	else if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
+		return "TScriptReflectableWrapper";
+	else // Class
+		return "TScriptNonReflectableWrapper";
+}
+
+/** Returns the root base class to use for the script object wrapper implementation. This is the class that root base script interop wrappers should inherit from. */
+static std::string GetWrapperRootBaseClass(const TypeMappingInformation& typeMappingInformation)
+{
+	if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Resource)
+		return "ScriptResourceWrapper";
+	else if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Component)
+		return "ScriptGameObjectWrapper";
+	else if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
+		return "ScriptGUIElementWrapper";
+	else if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
+		return "ScriptReflectableWrapper";
+	else // Class
+		return "ScriptObjectWrapper";
+}
+
 /**
  * Returns a type name for the Mono thunk signature lookup, representing the type in @p typeInformation.
  *
@@ -206,13 +248,18 @@ static std::string GenerateGetNativeObjectCallLine(const VariableTypeInformation
 	if(isUsingIScriptExportableAPI)
 	{
 		if(typeMappingInformation.IsClassType())
-			output << variableName << "->GetNativeObjectAsShared()";
+			output << "std::static_pointer_cast<" << nativeTypeName << ">(" << variableName << "->GetBaseNativeObjectAsShared())";
 		else if(typeMappingInformation.IsHandleType())
-			output << variableName << "->GetNativeObjectAsHandle()";
+		{
+			if(typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Resource)
+				output << "B3DStaticResourceCast<" << nativeTypeName << ">(" << variableName << "->GetBaseNativeObjectAsHandle())";
+			else // Game object
+				output << "B3DStaticGameObjectCast<" << nativeTypeName << ">(" << variableName << "->GetBaseNativeObjectAsHandle()";
+		}
 		else // Must be GUI element type
 		{
 			assert(typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GUIElement);
-			output << variableName << "->GetNativeObject()";
+			output << "static_cast<" << nativeTypeName << "*>(" << variableName << "->GetNativeObject())";
 		}
 	}
 	else
@@ -642,7 +689,7 @@ std::string GenerateEventThunkSignature(const MethodInfo& eventInfo, bool isModu
 	const bool isStatic = eventInfo.IsFlagSet(MethodFlags::Static);
 
 	std::stringstream output;
-	output << "\t\ttypedef void(B3D_THUNKCALL *" << eventInfo.NativeName << "ThunkDef) (";
+	output << "\t\ttypedef void(B3D_THUNKCALL *" << eventInfo.NativeName << "ThunkDefinition) (";
 	
 	if (!isStatic && !isModule)
 		output << "MonoObject*, ";
@@ -658,7 +705,7 @@ std::string GenerateEventThunkSignature(const MethodInfo& eventInfo, bool isModu
 	}
 
 	output << "MonoException**);" << std::endl;
-	output << "\t\tstatic " << eventInfo.NativeName << "ThunkDef " << eventInfo.NativeName << "Thunk;" << std::endl;
+	output << "\t\tstatic " << eventInfo.NativeName << "ThunkDefinition " << eventInfo.NativeName << "Thunk;" << std::endl;
 
 	return output.str();
 }
@@ -2545,7 +2592,7 @@ static std::string GenerateInternalEventCallbackBody(const ClassInfo& classInfo,
  */
 static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 {
-	const bool inEditor = IsAPIEditor (classInfo.API);
+	const bool inEditor = IsAPIEditor(classInfo.API);
 	const bool isBase = classInfo.IsFlagSet(ClassFlags::IsBase);
 	const bool isModule = classInfo.IsFlagSet(ClassFlags::IsModule);
 	const bool isRootBase = classInfo.BaseClassName.empty();
@@ -2553,9 +2600,9 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 
 	bool hasStaticEvents = isModule && !classInfo.Events.empty();
 	bool hasNonStaticEvents = !isModule && !classInfo.Events.empty();
-	if (!hasStaticEvents)
+	if(!hasStaticEvents)
 	{
-		for (auto& eventInfo : classInfo.Events)
+		for(auto& eventInfo : classInfo.Events)
 		{
 			bool isStatic = eventInfo.IsFlagSet(MethodFlags::Static);
 			if(isStatic)
@@ -2566,7 +2613,7 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 	}
 
 	std::string dllExportMacro;
-	if (!inEditor)
+	if(!inEditor)
 		dllExportMacro = sFrameworkDllExportMacro;
 	else
 		dllExportMacro = sEditorDllExportMacro;
@@ -2597,7 +2644,7 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 		const bool isModule = classInfo.IsFlagSet(ClassFlags::IsModule);
 		const bool isUsingIScriptExportableAPI = classInfo.IsFlagSet(ClassFlags::UsesIScriptExportableAPI);
 
-		for (auto& eventInfo : classInfo.Events)
+		for(auto& eventInfo : classInfo.Events)
 		{
 			const bool isStatic = eventInfo.IsFlagSet(MethodFlags::Static);
 			const bool isCallback = eventInfo.IsFlagSet(MethodFlags::Callback);
@@ -2623,13 +2670,6 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 	// Generate a common base class if required
 	if(!isUsingIScriptExportableAPI)
 	{
-		// TODO - The event handling will need porting to the new API, potentially other stuff as well. In which case we might decide to restore this functionality.
-
-		// TODO - Common base class is needed, otherwise we cannot pass unrelated ScriptObjectWrapper pointers to interop methods in the base
-		// - Actually no. I can just pass everything as one of the ScriptObjectWrapper implementations (e.g. ScriptReflectableWrapper), then cast the native object as needed
-		// - But I don't have a base class for all reflectable objects, they are all templated. I could add one with IReflectable member, but that doesn't solve the issue
-		//   for non-reflectable types
-
 		if(isBase)
 		{
 			interopBaseClassName = TypeLookup::GetScriptWrapperObjectTypeName(classInfo.NativeName) + "Base";
@@ -2707,6 +2747,51 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 			interopBaseClassName = TypeLookup::GetScriptWrapperObjectTypeName(classInfo.BaseClassName) + "Base";
 		}
 	}
+	else
+	{
+		if(isBase)
+		{
+			interopBaseClassName = TypeLookup::GetScriptWrapperObjectTypeName(classInfo.NativeName) + "WrapperBase";
+
+			std::string parentBaseClassName;
+			if(isRootBase)
+				parentBaseClassName = GetWrapperRootBaseClass(typeMappingInformation);
+			else
+				parentBaseClassName = TypeLookup::GetScriptWrapperObjectTypeName(classInfo.BaseClassName) + "WrapperBase";
+
+			output << "\tclass " << dllExportMacro << " " << interopBaseClassName << " : public " << parentBaseClassName << "\n";
+
+			output << "\t{\n";
+			output << "\tpublic:\n";
+			output << "\t\tusing " << parentBaseClassName << "::" << parentBaseClassName << ";\n";
+			output << "\n";
+
+			// Only non-reflectable types need this method, as all other types have a built-in base class that handles this
+			if(isRootBase && typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Class)
+			{
+				output << "\tprivate:\n";
+				output << "\t\tvirtual" << wrappedDataType << " GetBaseNativeObjectAsShared() const = 0;\n";
+			}
+
+			if(hasNonStaticEvents)
+				output << "\t\tstatic void RegisterEvents(" << GetParameterQualifiedType(typeMappingInformation, wrappedDataType) << " nativeObject);\n";
+
+			fnGenerateEventCallbackMethods(output);
+
+			if(!classInfo.Events.empty())
+				output << std::endl;
+
+			fnGenerateEventThunks(output);
+
+			if(!classInfo.Events.empty())
+				output << std::endl;
+
+			fnGenerateEventHandles(output);
+
+			output << "\t};\n";
+			output << "\n";
+		}
+	}
 
 	// Generate main class
 	output << "\tclass " << dllExportMacro << " ";
@@ -2716,21 +2801,18 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 
 	if(isUsingIScriptExportableAPI)
 	{
+		std::string wrapperTemplatedBaseClass = GetWrapperTemplatedBaseClass(typeMappingInformation, isModule);
+		output << wrapperTemplatedBaseClass << "<";
+
 		if(!isModule)
 		{
-			if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Resource)
-				output << "TScriptResourceWrapper<" << classInfo.NativeName << ", " << interopClassName;
-			else if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Component)
-				output << "TScriptGameObjectWrapper<" << classInfo.NativeName << ", " << interopClassName;
-			else if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
-				output << "TScriptGUIElementWrapper<" << classInfo.NativeName << ", " << interopClassName;
-			else if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
-				output << "TScriptReflectableWrapper<" << classInfo.NativeName << ", " << interopClassName;
-			else // Class
-				output << "TScriptObjectWrapper<" << interopClassName;
+			output << classInfo.NativeName << ", " << interopClassName;
+
+			if(!interopBaseClassName.empty())
+				output << ", " << interopBaseClassName;
 		}
 		else
-			output << "TNonInstantiableScriptObjectWrapper<" << interopClassName;
+			output << interopClassName;
 	}
 	else
 	{
@@ -2745,7 +2827,7 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 		else // Class
 			output << "ScriptObject<" << interopClassName;
 
-		if (!interopBaseClassName.empty())
+		if(!interopBaseClassName.empty())
 			output << ", " << interopBaseClassName;
 	}
 
@@ -2773,7 +2855,7 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 	output << std::endl;
 
 	// Constructor
-	if (!isModule)
+	if(!isModule)
 	{
 		if(isUsingIScriptExportableAPI)
 		{
@@ -2808,10 +2890,10 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 
 	output << std::endl;
 
-	if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Class && !isModule && !isUsingIScriptExportableAPI)
+	if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Class && !isModule && !isUsingIScriptExportableAPI)
 	{
 		// getInternal() method (handle types have getHandle() implemented by their base type)
-		if (isBase || !classInfo.BaseClassName.empty())
+		if(isBase || !classInfo.BaseClassName.empty())
 			output << "\t\t" << wrappedDataType << " GetInternal() const;\n";
 		else
 			output << "\t\t" << wrappedDataType << " GetInternal() const { return mInternal; }" << std::endl;
@@ -2823,9 +2905,7 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 			output << "\t\tvoid RegisterEvents(GUIElement* value) override;\n";
 	}
 	else
-	{
-		// TODO
-	}
+		output << "\t\tstatic void RegisterEvents(" << GetParameterQualifiedType(typeMappingInformation, wrappedDataType) << " nativeObject);\n";
 
 	if(isUsingIScriptExportableAPI)
 	{
@@ -2998,7 +3078,7 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 		for(auto& eventInfo : classInfo.Events)
 		{
 			stream << GenerateApiCheckBegin(eventInfo.API);
-			stream << "\t" << className << "::" << eventInfo.NativeName << "ThunkDef " << className << "::" << eventInfo.NativeName << "Thunk; \n";
+			stream << "\t" << className << "::" << eventInfo.NativeName << "ThunkDefinition " << className << "::" << eventInfo.NativeName << "Thunk; \n";
 			stream << GenerateApiCheckEnd(eventInfo.API);
 		}
 
@@ -3022,18 +3102,30 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 
 	auto fnGenerateRegisterEvents = [&classInfo](std::stringstream& stream, const std::string& className, const std::string& wrappedDataType)
 	{
+		const bool isUsingIScriptExportableAPI = classInfo.IsFlagSet(ClassFlags::UsesIScriptExportableAPI);
+
 		for(auto& eventInfo : classInfo.Events)
 		{
-			bool isStatic = eventInfo.IsFlagSet(MethodFlags::Static);
-			bool isCallback = eventInfo.IsFlagSet(MethodFlags::Callback);
+			const bool isStatic = eventInfo.IsFlagSet(MethodFlags::Static);
+			const bool isCallback = eventInfo.IsFlagSet(MethodFlags::Callback);
 			if(!isStatic)
 			{
 				stream << GenerateApiCheckBegin(eventInfo.API);
 
-				if(!isCallback)
-					stream << "\t\tstatic_cast<" << wrappedDataType << ">(value)->" << eventInfo.NativeName << ".Connect(";
+				if(isUsingIScriptExportableAPI)
+				{
+					if(!isCallback)
+						stream << "\t\t" << wrappedDataType << "nativeObject->" << eventInfo.NativeName << ".Connect(";
+					else
+						stream << "\t\t" << wrappedDataType << "nativeObject->" << eventInfo.NativeName << " = ";
+				}
 				else
-					stream << "\t\tstatic_cast<" << wrappedDataType << ">(value)->" << eventInfo.NativeName << " = ";
+				{
+					if(!isCallback)
+						stream << "\t\tstatic_cast<" << wrappedDataType << ">(value)->" << eventInfo.NativeName << ".Connect(";
+					else
+						stream << "\t\tstatic_cast<" << wrappedDataType << ">(value)->" << eventInfo.NativeName << " = ";
+				}
 
 				stream << "std::bind(&" << className << "::" << eventInfo.InteropName << ", this";
 
@@ -3049,17 +3141,31 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 		}
 	};
 
-	auto fnGenerateRegisterEventsMethodBody = [&fnGenerateRegisterEvents](std::stringstream& stream, const std::string& className, const std::string& baseClassName, const std::string& wrappedDataType)
+	auto fnGenerateRegisterEventsMethodBody = [&fnGenerateRegisterEvents](std::stringstream& stream, const TypeMappingInformation& typeMappingInformation, const ClassInfo& classInfo, std::string& className, const std::string& baseClassName, const std::string& wrappedDataType)
 	{
-		stream << "\tvoid " << className << "::RegisterEvents(GUIElement* value)\n";
+		const bool isUsingIScriptExportableAPI = classInfo.IsFlagSet(ClassFlags::UsesIScriptExportableAPI);
+
+		if(!isUsingIScriptExportableAPI)
+			stream << "\tvoid " << className << "::RegisterEvents(GUIElement* value)\n";
+		else
+			stream << "\tvoid " << className << "::RegisterEvents(" << GetParameterQualifiedType(typeMappingInformation, wrappedDataType) << " nativeObject)\n";
+
 		stream << "\t{\n";
 
 		fnGenerateRegisterEvents(stream, className, wrappedDataType);
 
-		if(!baseClassName.empty())
-			stream << "\t\t" << baseClassName << "::RegisterEvents(value);\n";
+		if(!isUsingIScriptExportableAPI)
+		{
+			if(!baseClassName.empty())
+				stream << "\t\t" << baseClassName << "::RegisterEvents(value);\n";
+			else
+				stream << "\t\tScriptGUIElementBase::RegisterEvents(value);\n";
+		}
 		else
-			stream << "\t\tScriptGUIElementBase::RegisterEvents(value);\n";
+		{
+			if(!baseClassName.empty())
+				stream << "\t\t" << baseClassName << "::RegisterEvents(nativeObject);\n";
+		}
 
 		stream << "\t}\n";
 	};
@@ -3070,15 +3176,25 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 
 	std::string interopBaseClassName;
 
-	if(isBase)
-		interopBaseClassName = TypeLookup::GetScriptWrapperObjectTypeName(classInfo.NativeName) + "Base";
-	else if(!classInfo.BaseClassName.empty())
-		interopBaseClassName = TypeLookup::GetScriptWrapperObjectTypeName(classInfo.BaseClassName) + "Base";
+	if(isUsingIScriptExportableAPI)
+	{
+		if(isBase)
+			interopBaseClassName = TypeLookup::GetScriptWrapperObjectTypeName(classInfo.NativeName) + "WrapperBase";
+		else if(!classInfo.BaseClassName.empty())
+			interopBaseClassName = TypeLookup::GetScriptWrapperObjectTypeName(classInfo.BaseClassName) + "WrapperBase";
+	}
+	else
+	{
+		if(isBase)
+			interopBaseClassName = TypeLookup::GetScriptWrapperObjectTypeName(classInfo.NativeName) + "Base";
+		else if(!classInfo.BaseClassName.empty())
+			interopBaseClassName = TypeLookup::GetScriptWrapperObjectTypeName(classInfo.BaseClassName) + "Base";
+	}
 
 	std::stringstream output;
 	output << GenerateApiCheckBegin(classInfo.API);
 
-	if(isBase && !isUsingIScriptExportableAPI)
+	if(isBase)
 	{
 		// Event thunks
 		fnGenerateEventThunks(output, interopBaseClassName);
@@ -3086,51 +3202,75 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 		// Event handles
 		fnGenerateEventHandles(output, interopBaseClassName);
 
-		// Base class constructor
-		output << "\t" << interopBaseClassName << "::" << interopBaseClassName << "(MonoObject* managedInstance)\n";
-		output << "\t\t:";
-
-		bool isRootBase = classInfo.BaseClassName.empty();
-		std::string parentBaseClassName;
-		if(isRootBase)
+		if(!isUsingIScriptExportableAPI)
 		{
-			if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Class)
-				parentBaseClassName = "ScriptObjectBase";
-			if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
-				parentBaseClassName = "ScriptReflectableBase";
-			else if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Component)
-				parentBaseClassName = "ScriptComponentBase";
-			else if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Resource)
-				parentBaseClassName = "ScriptResourceBase";
-			else if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
-				parentBaseClassName = "ScriptGUIInteractableBase";
+			// Base class constructor
+			output << "\t" << interopBaseClassName << "::" << interopBaseClassName << "(MonoObject* managedInstance)\n";
+			output << "\t\t:";
+		}
+
+		const bool isRootBase = classInfo.BaseClassName.empty();
+		std::string parentBaseClassName;
+		if(isUsingIScriptExportableAPI)
+		{
+			if(isRootBase)
+				parentBaseClassName = GetWrapperRootBaseClass(typeMappingInformation);
+			else
+				parentBaseClassName = TypeLookup::GetScriptWrapperObjectTypeName(classInfo.BaseClassName) + "WrapperBase";
 		}
 		else
 		{
-			parentBaseClassName = TypeLookup::GetScriptWrapperObjectTypeName(classInfo.BaseClassName) + "Base";
+			if(isRootBase)
+			{
+				if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Class)
+					parentBaseClassName = "ScriptObjectBase";
+				if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
+					parentBaseClassName = "ScriptReflectableBase";
+				else if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Component)
+					parentBaseClassName = "ScriptComponentBase";
+				else if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Resource)
+					parentBaseClassName = "ScriptResourceBase";
+				else if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
+					parentBaseClassName = "ScriptGUIInteractableBase";
+			}
+			else
+			{
+				parentBaseClassName = TypeLookup::GetScriptWrapperObjectTypeName(classInfo.BaseClassName) + "Base";
+			}
 		}
 
-		output << parentBaseClassName;
-		output << "(managedInstance)\n";
-		output << "\t { }\n";
-		output << "\n";
-
-		// Base class GetInternal() method
-		if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
+		if(!isUsingIScriptExportableAPI)
 		{
-			output << "\t" << wrappedDataType << " " << interopBaseClassName << "::"
-				   << "GetInternal() const\n";
-			output << "\t{\n";
-			output << "\t\treturn std::static_pointer_cast<" << classInfo.NativeName << ">(mInternal);\n";
-			output << "\t}\n";
+			output << parentBaseClassName;
+			output << "(managedInstance)\n";
+			output << "\t { }\n";
+			output << "\n";
+
+			// Base class GetInternal() method
+			if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
+			{
+				output << "\t" << wrappedDataType << " " << interopBaseClassName << "::"
+					   << "GetInternal() const\n";
+				output << "\t{\n";
+				output << "\t\treturn std::static_pointer_cast<" << classInfo.NativeName << ">(mInternal);\n";
+				output << "\t}\n";
+			}
 		}
 
 		// Event callback method implementations
 		fnGenerateEventCallbacks(output, interopBaseClassName);
 
 		// RegisterEvents method
-		if(hasNonStaticEvents && typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GUIElement) // TODO - Currently only implemented for GUIElement, see below.
-			fnGenerateRegisterEventsMethodBody(output, interopBaseClassName, parentBaseClassName, wrappedDataType);
+		if(!isUsingIScriptExportableAPI)
+		{
+			if(hasNonStaticEvents && typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GUIElement) // TODO - Currently only implemented for GUIElement, see below.
+				fnGenerateRegisterEventsMethodBody(output, typeMappingInformation, classInfo, interopBaseClassName, parentBaseClassName, wrappedDataType);
+		}
+		else
+		{
+			if(hasNonStaticEvents)
+				fnGenerateRegisterEventsMethodBody(output, typeMappingInformation, classInfo, interopBaseClassName, parentBaseClassName, wrappedDataType);
+		}
 	}
 
 	// Event thunks
@@ -3179,21 +3319,13 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 
 	if(isUsingIScriptExportableAPI)
 	{
+		const std::string wrapperTemplatedBaseClass = GetWrapperTemplatedBaseClass(typeMappingInformation, isModule);
+		output << wrapperTemplatedBaseClass;
+
 		if(!isModule)
-		{
-			if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Resource)
-				output << "TScriptResourceWrapper(nativeObject, scriptObject)";
-			else if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Component)
-				output << "TScriptGameObjectWrapper(nativeObject, scriptObject)";
-			else if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
-				output << "TScriptGUIElementWrapper(nativeObject, scriptObject)";
-			else if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
-				output << "TScriptReflectableWrapper(nativeObject, scriptObject)";
-			else
-				output << "TScriptObjectWrapper(nativeObject, scriptObject)";
-		}
+			output << "(nativeObject, scriptObject)";
 		else
-			output << "TNonInstantiableScriptObjectWrapper(scriptObject)";
+			output << "(scriptObject)";
 	}
 	else
 	{
@@ -3314,9 +3446,9 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 		output << GenerateApiCheckBegin(eventInfo.API);
 		output << "\t\t" << eventInfo.NativeName << "Thunk = ";
 		if(isUsingIScriptExportableAPI)
-			output << "(" << eventInfo.NativeName << "ThunkDef)sInteropMetaData.ScriptClass->GetMethodExact(";
+			output << "(" << eventInfo.NativeName << "ThunkDefinition)sInteropMetaData.ScriptClass->GetMethodExact(";
 		else
-			output << "(" << eventInfo.NativeName << "ThunkDef)metaData.ScriptClass->GetMethodExact(";
+			output << "(" << eventInfo.NativeName << "ThunkDefinition)metaData.ScriptClass->GetMethodExact(";
 		output << "\"Internal_" << eventInfo.InteropName << "\", \"";
 
 		for(auto I = eventInfo.Parameters.begin(); I != eventInfo.Parameters.end(); ++I)
@@ -3477,8 +3609,16 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 		fnGenerateEventCallbacks(output, interopClassName);
 
 	// RegisterEvents method
-	if(hasNonStaticEvents && !isBase && typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GUIElement) // TODO - Currently only implemented for GUIElement, see above.
-		fnGenerateRegisterEventsMethodBody(output, interopClassName, interopBaseClassName, wrappedDataType);
+	if(!isUsingIScriptExportableAPI)
+	{
+		if(hasNonStaticEvents && !isBase && typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GUIElement) // TODO - Currently only implemented for GUIElement, see above.
+			fnGenerateRegisterEventsMethodBody(output, typeMappingInformation, classInfo, interopClassName, interopBaseClassName, wrappedDataType);
+	}
+	else
+	{
+		if(hasNonStaticEvents && !isBase)
+			fnGenerateRegisterEventsMethodBody(output, typeMappingInformation, classInfo, interopClassName, interopBaseClassName, wrappedDataType);
+	}
 
 	// CLR hook method implementations
 	std::string interopClassThisPtrType;

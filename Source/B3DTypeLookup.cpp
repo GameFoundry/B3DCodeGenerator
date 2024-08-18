@@ -969,7 +969,7 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 					else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
 						fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptReflectableWrapper.h");
 					else // Class
-						fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptObjectWrapper.h");
+						fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptNonReflectableWrapper.h");
 				}
 				else
 				{
