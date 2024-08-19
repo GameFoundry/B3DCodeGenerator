@@ -2905,7 +2905,10 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 			output << "\t\tvoid RegisterEvents(GUIElement* value) override;\n";
 	}
 	else
-		output << "\t\tstatic void RegisterEvents(" << GetParameterQualifiedType(typeMappingInformation, wrappedDataType) << " nativeObject);\n";
+	{
+		if(hasNonStaticEvents && !isBase)
+			output << "\t\tstatic void RegisterEvents(" << GetParameterQualifiedType(typeMappingInformation, wrappedDataType) << " nativeObject);\n";
+	}
 
 	if(isUsingIScriptExportableAPI)
 	{
