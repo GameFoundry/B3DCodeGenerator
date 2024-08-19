@@ -234,9 +234,11 @@ static std::string GetInteropThunkSignatureQualifiedTypeName(const VariableTypeI
  * @param typeInformation			Information about the native type the native object represents.
  * @param typeMappingInformation	Mapping of the provided type in script.
  * @param variableName				Name of the variable containing the script wrapper object, to access the native object through.
+ * @param requiresStrongReference	If true the returned object will be wrapped in a type that holds a strong reference to it (e.g. shared pointer or handle). If false it will be returned
+ *									as a raw pointer.
  * @return							String containing the C++ line of code to retrieve the native object from @p variableName.
  */
-static std::string GenerateGetNativeObjectCallLine(const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation, const std::string& variableName)
+static std::string GenerateGetNativeObjectCallLine(const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation, const std::string& variableName, bool requiresStrongReference = true)
 {
 	const bool isPassingAsResourceReference = typeInformation.IsParameterFlagSet(ParameterFlags::AsResourceRef);
 	const bool isReferencingBaseClass = typeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsReferencingBaseClass);
@@ -247,20 +249,25 @@ static std::string GenerateGetNativeObjectCallLine(const VariableTypeInformation
 	std::stringstream output;
 	if(isUsingIScriptExportableAPI)
 	{
-		if(typeMappingInformation.IsClassType())
-			output << "std::static_pointer_cast<" << nativeTypeName << ">(" << variableName << "->GetBaseNativeObjectAsShared())";
-		else if(typeMappingInformation.IsHandleType())
+		if(requiresStrongReference)
 		{
-			if(typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Resource)
-				output << "B3DStaticResourceCast<" << nativeTypeName << ">(" << variableName << "->GetBaseNativeObjectAsHandle())";
-			else // Game object
-				output << "B3DStaticGameObjectCast<" << nativeTypeName << ">(" << variableName << "->GetBaseNativeObjectAsHandle()";
+			if(typeMappingInformation.IsClassType())
+				output << "std::static_pointer_cast<" << nativeTypeName << ">(" << variableName << "->GetBaseNativeObjectAsShared())";
+			else if(typeMappingInformation.IsHandleType())
+			{
+				if(typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Resource)
+					output << "B3DStaticResourceCast<" << nativeTypeName << ">(" << variableName << "->GetBaseNativeObjectAsHandle())";
+				else // Game object
+					output << "B3DStaticGameObjectCast<" << nativeTypeName << ">(" << variableName << "->GetBaseNativeObjectAsHandle()";
+			}
+			else // Must be GUI element type
+			{
+				assert(typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GUIElement);
+				output << "static_cast<" << nativeTypeName << "*>(" << variableName << "->GetNativeObject())";
+			}
 		}
-		else // Must be GUI element type
-		{
-			assert(typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GUIElement);
+		else
 			output << "static_cast<" << nativeTypeName << "*>(" << variableName << "->GetNativeObject())";
-		}
 	}
 	else
 	{
@@ -2322,7 +2329,7 @@ static std::string GenerateInternalMethodBody(const ClassInfo& classInfo, const 
 				typeInformation.PostProcessFlags |= isBase ? (uint32_t)VariablePostProcessFlags::IsReferencingBaseClass : 0;
 				typeInformation.PostProcessFlags |= isUsingIScriptExportableAPI ? (uint32_t)VariablePostProcessFlags::UsesIScriptExportableAPI : 0;
 
-				methodCall << GenerateGetNativeObjectCallLine(typeInformation, typeMappingInformation, "self");
+				methodCall << GenerateGetNativeObjectCallLine(typeInformation, typeMappingInformation, "self", false);
 				methodCall << "->" << methodInfo.NativeName << "(" << methodArgs.str() << ")";
 			}
 		}
@@ -2441,7 +2448,7 @@ static std::string GenerateInternalFieldGetterBody(const ClassInfo& classInfo, c
 		typeInformation.PostProcessFlags |= isBase ? (uint32_t)VariablePostProcessFlags::IsReferencingBaseClass : 0;
 		typeInformation.PostProcessFlags |= isUsingIScriptExportableAPI ? (uint32_t)VariablePostProcessFlags::UsesIScriptExportableAPI : 0;
 
-		fieldAccess << GenerateGetNativeObjectCallLine(typeInformation, typeMappingInformation, "self");
+		fieldAccess << GenerateGetNativeObjectCallLine(typeInformation, typeMappingInformation, "self", false);
 		fieldAccess << "->" << fieldInfo.Name;
 	}
 
@@ -2509,7 +2516,7 @@ static std::string GenerateInternalFieldSetterBody(const ClassInfo& classInfo, c
 		typeInformation.PostProcessFlags |= isBase ? (uint32_t)VariablePostProcessFlags::IsReferencingBaseClass : 0;
 		typeInformation.PostProcessFlags |= isUsingIScriptExportableAPI ? (uint32_t)VariablePostProcessFlags::UsesIScriptExportableAPI : 0;
 
-		fieldAccess << GenerateGetNativeObjectCallLine(typeInformation, typeMappingInformation, "self");
+		fieldAccess << GenerateGetNativeObjectCallLine(typeInformation, typeMappingInformation, "self", false);
 		fieldAccess << "->" << fieldInfo.Name;
 	}
 
