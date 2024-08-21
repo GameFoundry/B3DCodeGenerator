@@ -783,7 +783,12 @@ static std::string GenerateScriptObjectToScriptObjectWrapper(const std::string& 
 		if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
 			scriptBaseType = "ScriptGUIElementBase";
 		else
-			scriptBaseType = scriptWrapperType + "Base";
+		{
+			if(isUsingIScriptExportableAPI)
+				scriptBaseType = scriptWrapperType + "WrapperBase";
+			else
+				scriptBaseType = scriptWrapperType + "Base";
+		}
 
 		output << indent << scriptBaseType << "* " << scriptWrapperVariableName << ";" << std::endl;
 
