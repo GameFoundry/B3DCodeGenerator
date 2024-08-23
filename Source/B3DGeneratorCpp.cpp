@@ -4155,8 +4155,4 @@ void GenerateCpp(StringRef engineOutputFolder, StringRef editorOutputFolder, boo
 
 	// Generate builtin component lookup file
 	GenerateLookupFileHeader("BuiltinComponent", ::ExportedClassTypeCategory::Component, false, engineOutputFolder.str(), editorOutputFolder.str());
-
-	// Generate C++ reflectable type lookup files
-	GenerateLookupFileHeader("BuiltinReflectableTypes", ::ExportedClassTypeCategory::ReflectableClass, false, engineOutputFolder.str(), editorOutputFolder.str());
-	GenerateLookupFileHeader("BuiltinReflectableTypes", ::ExportedClassTypeCategory::ReflectableClass, true, engineOutputFolder.str(), editorOutputFolder.str());
 }
