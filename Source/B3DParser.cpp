@@ -1449,10 +1449,10 @@ bool BansheeCodeGeneratorASTVisitor::TryParseDeclarationAsClass(CXXRecordDecl* d
 	if(declaration->isStruct())
 		outClassInfo.ClassFlags |= (int)ClassFlags::IsStruct;
 
-	if(ParserUtility::HasIScriptExportableBaseClass(declaration))
-		outClassInfo.ClassFlags |= (int)ClassFlags::UsesIScriptExportableAPI;
-
 	::ExportedClassTypeCategory classType = DetermineExportedTypeCategory(declaration);
+
+	if(ParserUtility::HasIScriptExportableBaseClass(declaration) && classType != ExportedClassTypeCategory::Component) // TODO - DEBUG ONLY - Dont new API for components yet
+		outClassInfo.ClassFlags |= (int)ClassFlags::UsesIScriptExportableAPI;
 
 	std::string declFile = astContext->getSourceManager().getFilename(declaration->getSourceRange().getBegin()).str();
 	TypeLookup::RegisterNativeToScriptTypeMapping(outClassInfo.Namespace, sourceClassName, declFile, scriptExportInformation.ExportedTypeName, scriptExportInformation.ExportedFileName, outClassInfo.API, classType);

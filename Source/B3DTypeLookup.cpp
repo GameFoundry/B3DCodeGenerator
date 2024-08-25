@@ -885,6 +885,8 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 				if(usesIScriptExportableAPI)
 					typeInformation.SetPostProcessFlag(VariablePostProcessFlags::UsesIScriptExportableAPI, true);
 			}
+			else if(typeMappingInformation.TypeCategory == ExportedClassTypeCategory::SceneObject)
+				typeInformation.SetPostProcessFlag(VariablePostProcessFlags::UsesIScriptExportableAPI, true);
 		};
 
 		auto fnMarkParameter = [&fnMarkComplexType, &fnMarkBaseType, &fnMarkUsingIScriptExportable](VariableInformation& paramInfo)

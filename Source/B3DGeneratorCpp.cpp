@@ -252,13 +252,13 @@ static std::string GenerateGetNativeObjectCallLine(const VariableTypeInformation
 		if(requiresStrongReference)
 		{
 			if(typeMappingInformation.IsClassType())
-				output << "std::static_pointer_cast<" << nativeTypeName << ">(" << variableName << "->GetBaseNativeObjectAsShared())";
+				output << "std::static_pointer_cast<" << nativeTypeName << ">(" << variableName << "->GetBaseNativeObjectAsShared())"; // TODO - Call GetNativeObjectAsShared with no cast?
 			else if(typeMappingInformation.IsHandleType())
 			{
 				if(typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Resource)
-					output << "B3DStaticResourceCast<" << nativeTypeName << ">(" << variableName << "->GetBaseNativeObjectAsHandle())";
+					output << "B3DStaticResourceCast<" << nativeTypeName << ">(" << variableName << "->GetBaseNativeObjectAsHandle())"; // TODO - Call GetNativeObjectAsShared with no cast?
 				else // Game object
-					output << "B3DStaticGameObjectCast<" << nativeTypeName << ">(" << variableName << "->GetBaseNativeObjectAsHandle()";
+					output << "B3DStaticGameObjectCast<" << nativeTypeName << ">(" << variableName << "->GetBaseNativeObjectAsHandle())"; // TODO - Call GetNativeObjectAsShared with no cast?
 			}
 			else // Must be GUI element type
 			{
@@ -888,14 +888,15 @@ static std::string GenerateNativeClassToMonoObject(const VariableTypeInformation
 static std::string GenerateNativeHandleToMonoObject(const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation, const std::string& inputVariableName, const std::string& arrayIndexVariable, const std::string& scriptVariableName, 
 	const std::string& outputVariableName, bool isOutputParameter, const std::string& indent = "\t\t")
 {
+	const bool isUsingIScriptExportableAPI = typeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::UsesIScriptExportableAPI);
+
 	// NOTE: scriptVariableName can be automatically deduced from output variable name, but I'm avoding doing that right now to prevent changes to generated code
 	//const std::string scriptVariableName = "script" + outputVariableName;
 	std::stringstream output;
 
-	// TODO - Skip the managers if using the new API. First try getting script object wrapper from native object. If that fails use a generalized RTTI -> ScriptObjectWrapper lookup. 
-	// - Will need a variant of GetOrCreateScriptObject that accepts a base class (can likely hardcode it as partof ScriptComponentWrapper, ScriptResourceWrapper, etc.)
-
 	const std::string inputVariableAccess = arrayIndexVariable.empty() ? inputVariableName : inputVariableName + "[" + arrayIndexVariable + "]";
+	const std::string temporaryScriptObjectVariableName = "temp" + outputVariableName;
+	bool isUsingScriptWrapperVariable = true;
 
 	if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Resource)
 	{
@@ -912,9 +913,11 @@ static std::string GenerateNativeHandleToMonoObject(const VariableTypeInformatio
 	}
 	else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::GameObject)
 	{
-		output << indent << "ScriptGameObjectBase* " << scriptVariableName << " = nullptr;\n";
+		isUsingScriptWrapperVariable = false;
+
+		output << indent << "MonoObject* " << temporaryScriptObjectVariableName << " = nullptr;\n";
 		output << indent << "if(" << inputVariableAccess << ")\n";
-		output << indent << scriptVariableName << " = ScriptGameObjectManager::Instance().GetOrCreateScriptGameObject(" << inputVariableAccess << ");\n";
+		output << indent << temporaryScriptObjectVariableName << " = ScriptGameObjectManager::Instance().GetOrCreateScriptGameObject(" << inputVariableAccess << ");\n";
 	}
 	else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Component)
 	{
@@ -924,35 +927,62 @@ static std::string GenerateNativeHandleToMonoObject(const VariableTypeInformatio
 	}
 	else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::SceneObject)
 	{
-		output << indent << "ScriptSceneObject* " << scriptVariableName << " = nullptr;\n";
+		isUsingScriptWrapperVariable = false;
+
+		output << indent << "MonoObject* " << temporaryScriptObjectVariableName << " = nullptr;\n";
 		output << indent << "if(" << inputVariableAccess << ")\n";
-		output << indent << scriptVariableName << " = ScriptGameObjectManager::Instance().GetOrCreateScriptSceneObject(" << inputVariableAccess << ");\n";
+		output << indent << temporaryScriptObjectVariableName << " = ScriptSceneObject::GetOrCreateScriptObject(" << inputVariableAccess << ");\n";
 	}
 	else
 		assert(false && "Unsupported type category");
 
-	output << indent << "if(" << scriptVariableName << " != nullptr)\n";
+	if(isUsingScriptWrapperVariable)
+		output << indent << "if(" << scriptVariableName << " != nullptr)\n";
 
 	if(arrayIndexVariable.empty())
 	{
 		if(isOutputParameter)
 		{
-			output << indent << "\tMonoUtil::ReferenceCopy(" << outputVariableName << ", " << scriptVariableName << "->GetManagedInstance());\n";
+			if(!isUsingScriptWrapperVariable)
+				output << indent << "MonoUtil::ReferenceCopy(" << outputVariableName << ", " << temporaryScriptObjectVariableName << ");\n";
+			else if(isUsingIScriptExportableAPI)
+				output << indent << "\tMonoUtil::ReferenceCopy(" << outputVariableName << ", " << scriptVariableName << "->GetScriptObject());\n";
+			else
+				output << indent << "\tMonoUtil::ReferenceCopy(" << outputVariableName << ", " << scriptVariableName << "->GetManagedInstance());\n";
+
 			output << indent << "else\n";
 			output << indent << "\t*" << outputVariableName << " = nullptr;\n";
 		}
 		else
 		{
-			output << indent << "\t" << outputVariableName << " = " << scriptVariableName << "->GetManagedInstance();\n";
-			output << indent << "else\n";
-			output << indent << "\t" << outputVariableName << " = nullptr;\n";
+			if(!isUsingScriptWrapperVariable)
+				output << indent << outputVariableName << " = " << temporaryScriptObjectVariableName << ";\n";
+			else if(isUsingIScriptExportableAPI)
+				output << indent << "\t" << outputVariableName << " = " << scriptVariableName << "->GetScriptObject();\n";
+			else
+				output << indent << "\t" << outputVariableName << " = " << scriptVariableName << "->GetManagedInstance();\n";
+
+			if(isUsingScriptWrapperVariable)
+			{
+				output << indent << "else\n";
+				output << indent << "\t" << outputVariableName << " = nullptr;\n";
+			}
 		}
 	}
 	else
 	{
-		output << indent << "\t" << outputVariableName << ".Set(" << arrayIndexVariable << ", " << scriptVariableName << "->GetManagedInstance());\n";
-		output << indent << "else\n";
-		output << indent << "\t" << outputVariableName << ".Set(" << arrayIndexVariable << ", nullptr);\n";
+		if(!isUsingScriptWrapperVariable)
+			output << indent << outputVariableName << ".Set(" << arrayIndexVariable << ", " << temporaryScriptObjectVariableName << ");\n";
+		else if(isUsingIScriptExportableAPI)
+			output << indent << "\t" << outputVariableName << ".Set(" << arrayIndexVariable << ", " << scriptVariableName << "->GetScriptObject());\n";
+		else
+			output << indent << "\t" << outputVariableName << ".Set(" << arrayIndexVariable << ", " << scriptVariableName << "->GetManagedInstance());\n";
+
+		if(isUsingScriptWrapperVariable)
+		{
+			output << indent << "else\n";
+			output << indent << "\t" << outputVariableName << ".Set(" << arrayIndexVariable << ", nullptr);\n";
+		}
 	}
 
 	return output.str();
