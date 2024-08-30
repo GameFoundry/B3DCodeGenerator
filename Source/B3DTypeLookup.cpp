@@ -885,7 +885,7 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 				if(usesIScriptExportableAPI)
 					typeInformation.SetPostProcessFlag(VariablePostProcessFlags::UsesIScriptExportableAPI, true);
 			}
-			else if(typeMappingInformation.TypeCategory == ExportedClassTypeCategory::SceneObject)
+			else if(typeMappingInformation.TypeCategory == ExportedClassTypeCategory::SceneObject || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GameObject)
 				typeInformation.SetPostProcessFlag(VariablePostProcessFlags::UsesIScriptExportableAPI, true);
 		};
 
@@ -958,8 +958,10 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 			{
 				const TypeMappingInformation& typeInfo = TypeLookup::GetNativeToScriptTypeMapping(classInfo.NativeName);
 
+				// Forward declare the native type we're generating the wrapper for
 				fileInfo.second.ForwardDeclarations.insert(ForwardDeclarationInformation(classInfo.NativeNameWithoutTemplateArguments, classInfo.Namespace, classInfo.TemplateParameters, classInfo.IsFlagSet(ClassFlags::IsStruct)));
 
+				// Include the script wrapper object root base type
 				if(classInfo.IsFlagSet(ClassFlags::UsesIScriptExportableAPI))
 				{
 					if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource)
@@ -995,6 +997,7 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 						fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptObject.h");
 				}
 
+				// If class has a base type, include its script object wrapper file
 				if (!classInfo.BaseClassName.empty())
 				{
 					const TypeMappingInformation& baseTypeInfo = TypeLookup::GetNativeToScriptTypeMapping(classInfo.BaseClassName);
@@ -1005,6 +1008,7 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 						fileInfo.second.ReferencedHeaderIncludes.push_back(baseTypeInfo.InteropFile);
 				}
 
+				// Include native type
 				if (typeInfo.TypeCategory != ::ExportedClassTypeCategory::ReflectableClass && classInfo.TemplateParameters.empty())
 					fileInfo.second.ReferencedSourceIncludes.push_back(typeInfo.NativeFile);
 				else
@@ -1219,6 +1223,10 @@ void TypeLookup::GatherIncludes(const VariableTypeInformation& typeInformation, 
 				sourceIncludeType = IncludeType::IncludeInImplementation;
 				interopIncludeType = IncludeType::None;
 			}
+
+			// Game object handles need the full type definition
+			if(typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Component)
+				sourceIncludeType = IncludeType::IncludeInImplementation;
 
 			if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Struct && !underlyingTypeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsStructWrapperUsed))
 			{
