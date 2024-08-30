@@ -964,8 +964,12 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 				{
 					if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource)
 						fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptResourceWrapper.h");
-					else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::GameObject || typeInfo.TypeCategory == ::ExportedClassTypeCategory::Component || typeInfo.TypeCategory == ::ExportedClassTypeCategory::SceneObject)
+					else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::GameObject)
 						fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptGameObjectWrapper.h");
+					else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::Component)
+						fileInfo.second.ReferencedHeaderIncludes.push_back("Wrappers/BsScriptComponent.h");
+					else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::SceneObject)
+						fileInfo.second.ReferencedHeaderIncludes.push_back("Wrappers/BsScriptSceneObject.h");
 					else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
 						fileInfo.second.ReferencedHeaderIncludes.push_back("GUI/BsScriptGUIElementWrapper.h");
 					else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
@@ -1029,9 +1033,6 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 
 			if (includesInfo.RequiresAsyncOp)
 				fileInfo.second.ReferencedSourceIncludes.push_back("Wrappers/BsScriptAsyncOp.h");
-
-			if(includesInfo.RequiresScriptGameObjectManager)
-				fileInfo.second.ReferencedSourceIncludes.push_back("BsScriptGameObjectManager.h");
 
 			if(includesInfo.RequiresRTTI)
 				fileInfo.second.ReferencedSourceIncludes.push_back("Reflection/BsRTTIType.h");
@@ -1258,8 +1259,6 @@ void TypeLookup::GatherIncludes(const VariableTypeInformation& typeInformation, 
 		if (underlyingTypeInformation.IsParameterFlagSet(ParameterFlags::AsResourceRef))
 			output.RequiresScriptRRef = true;
 	}
-	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GameObject || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Component || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::SceneObject)
-		output.RequiresScriptGameObjectManager = true;
 
 	if (underlyingTypeInformation.TypeCategory == VariableTypeCategory::AsyncOp)
 		output.RequiresAsyncOp = true;
@@ -1322,8 +1321,6 @@ void TypeLookup::GatherIncludes(const FieldInfo& fieldInfo, bool isEditor, Inclu
 			if (underlyingTypeInformation.IsParameterFlagSet(ParameterFlags::AsResourceRef))
 				output.RequiresScriptRRef = true;
 		}
-		else if (fieldTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::GameObject || fieldTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Component || fieldTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::SceneObject)
-			output.RequiresScriptGameObjectManager = true;
 		else if (fieldTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Class || fieldTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::ReflectableClass)
 		{
 			const bool isBase = underlyingTypeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsReferencingBaseClass);

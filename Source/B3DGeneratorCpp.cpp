@@ -252,13 +252,13 @@ static std::string GenerateGetNativeObjectCallLine(const VariableTypeInformation
 		if(requiresStrongReference)
 		{
 			if(typeMappingInformation.IsClassType())
-				output << "std::static_pointer_cast<" << nativeTypeName << ">(" << variableName << "->GetBaseNativeObjectAsShared())"; // TODO - Call GetNativeObjectAsShared with no cast?
+				output << "std::static_pointer_cast<" << nativeTypeName << ">(" << variableName << "->GetBaseNativeObjectAsShared())";
 			else if(typeMappingInformation.IsHandleType())
 			{
 				if(typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Resource)
-					output << "B3DStaticResourceCast<" << nativeTypeName << ">(" << variableName << "->GetBaseNativeObjectAsHandle())"; // TODO - Call GetNativeObjectAsShared with no cast?
+					output << "B3DStaticResourceCast<" << nativeTypeName << ">(" << variableName << "->GetBaseNativeObjectAsHandle())";
 				else // Game object
-					output << "B3DStaticGameObjectCast<" << nativeTypeName << ">(" << variableName << "->GetBaseNativeObjectAsHandle())"; // TODO - Call GetNativeObjectAsShared with no cast?
+					output << "B3DStaticGameObjectCast<" << nativeTypeName << ">(" << variableName << "->GetBaseNativeObjectAsHandle())";
 			}
 			else // Must be GUI element type
 			{
@@ -917,13 +917,15 @@ static std::string GenerateNativeHandleToMonoObject(const VariableTypeInformatio
 
 		output << indent << "MonoObject* " << temporaryScriptObjectVariableName << " = nullptr;\n";
 		output << indent << "if(" << inputVariableAccess << ")\n";
-		output << indent << temporaryScriptObjectVariableName << " = ScriptGameObjectManager::Instance().GetOrCreateScriptGameObject(" << inputVariableAccess << ");\n";
+		output << indent << temporaryScriptObjectVariableName << " = ScriptGameObject::GetOrCreateScriptObject(" << inputVariableAccess << ");\n";
 	}
 	else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Component)
 	{
-		output << indent << "ScriptComponentBase* " << scriptVariableName << " = nullptr;\n";
+		isUsingScriptWrapperVariable = false;
+
+		output << indent << "MonoObject* " << temporaryScriptObjectVariableName << " = nullptr;\n";
 		output << indent << "if(" << inputVariableAccess << ")\n";
-		output << indent << "\t" << scriptVariableName << " = ScriptGameObjectManager::Instance().GetBuiltinScriptComponent(" << "B3DStaticGameObjectCast<Component>(" << inputVariableAccess << "));\n";
+		output << indent << "\t" << temporaryScriptObjectVariableName << " = ScriptComponent::GetOrCreateScriptObject(" << inputVariableAccess << ");\n";
 	}
 	else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::SceneObject)
 	{
@@ -2816,7 +2818,7 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 			}
 
 			if(hasNonStaticEvents)
-				output << "\t\tstatic void RegisterEvents(" << GetParameterQualifiedType(typeMappingInformation, wrappedDataType) << " nativeObject);\n";
+				output << "\t\tvirtual void RegisterEvents();\n";
 
 			fnGenerateEventCallbackMethods(output);
 
@@ -2949,7 +2951,7 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 	else
 	{
 		if(hasNonStaticEvents && !isBase)
-			output << "\t\tstatic void RegisterEvents(" << GetParameterQualifiedType(typeMappingInformation, wrappedDataType) << " nativeObject);\n";
+			output << "\t\tvirtual void RegisterEvents();\n";
 	}
 
 	if(isUsingIScriptExportableAPI)
@@ -3160,9 +3162,9 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 				if(isUsingIScriptExportableAPI)
 				{
 					if(!isCallback)
-						stream << "\t\t" << wrappedDataType << "nativeObject->" << eventInfo.NativeName << ".Connect(";
+						stream << "\t\tstatic_cast<" << classInfo.NativeName << "*>(GetNativeObject())->" << eventInfo.NativeName << ".Connect(";
 					else
-						stream << "\t\t" << wrappedDataType << "nativeObject->" << eventInfo.NativeName << " = ";
+						stream << "\t\tstatic_cast<" << classInfo.NativeName << "*>(GetNativeObject())->" << eventInfo.NativeName << " = ";
 				}
 				else
 				{
@@ -3193,7 +3195,7 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 		if(!isUsingIScriptExportableAPI)
 			stream << "\tvoid " << className << "::RegisterEvents(GUIElement* value)\n";
 		else
-			stream << "\tvoid " << className << "::RegisterEvents(" << GetParameterQualifiedType(typeMappingInformation, wrappedDataType) << " nativeObject)\n";
+			stream << "\tvoid " << className << "::RegisterEvents()\n";
 
 		stream << "\t{\n";
 
@@ -3209,7 +3211,7 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 		else
 		{
 			if(!baseClassName.empty())
-				stream << "\t\t" << baseClassName << "::RegisterEvents(nativeObject);\n";
+				stream << "\t\t" << baseClassName << "::RegisterEvents();\n";
 		}
 
 		stream << "\t}\n";
@@ -3409,11 +3411,18 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 	}
 
 	// Register any non-static events
-	if(!isModule && typeMappingInformation.TypeCategory != ExportedClassTypeCategory::GUIElement)
-		fnGenerateRegisterEvents(output, interopClassName, wrappedDataType); // TODO - Generating events in the constructor is wrong, as derived classes won't call the constructor. GUIElement currently implements a proper fix via RegisterEvents() methods, but this hasn't been implement for other types yet. Basically all that is missing is to add the RegisterEvents() methods to other supported types. But ideally I create a common class for all script exportable objects, and add the method there.
+	if(isUsingIScriptExportableAPI)
+	{
+		output << "\t\tRegisterEvents();\n";
+	}
+	else
+	{
+		if(!isModule && typeMappingInformation.TypeCategory != ExportedClassTypeCategory::GUIElement)
+			fnGenerateRegisterEvents(output, interopClassName, wrappedDataType); // TODO - Generating events in the constructor is wrong, as derived classes won't call the constructor. GUIElement currently implements a proper fix via RegisterEvents() methods, but this hasn't been implement for other types yet. Basically all that is missing is to add the RegisterEvents() methods to other supported types. But ideally I create a common class for all script exportable objects, and add the method there.
 
-	if(!isBase && typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GUIElement)
-		output << "\t\tRegisterEvents(value);\n";
+		if(!isBase && typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GUIElement)
+			output << "\t\tRegisterEvents(value);\n";
+	}
 
 	output << "\t}" << std::endl;
 	output << std::endl;
@@ -3949,87 +3958,6 @@ std::string GenerateStructDefinition(const StructInfo& structInfo)
 }
 
 /**
- * Generates a header file containing a lookup table with all types fitting the specified category.
- *
- * @param tableName				Name of the lookup table class.
- * @param type					Type category for which to generate the lookup. All classes of the specified type will be included in the lookup.
- * @param editor				True if generating lookup for editor code, false if generating for engine/framework.
- * @param engineOutputFolder	Output folder for the generated file, if generating for engine/framework.
- * @param editorOutputFolder	Output folder for the generated file, if generating for editor.
- */
-void GenerateLookupFileHeader(const std::string& tableName, ExportedClassTypeCategory type, bool editor, const std::string& engineOutputFolder, const std::string& editorOutputFolder)
-{
-	StringRef cppOutputFolder = editor ? editorOutputFolder : engineOutputFolder;
-
-	std::stringstream body;
-	std::stringstream includes;
-	for (auto& fileInfo : TypeLookup::GetFilesToGenerate())
-	{
-		auto& classInfos = fileInfo.second.Classes;
-		if (classInfos.empty())
-			continue;
-
-		if(fileInfo.second.InEditor != editor)
-			continue;
-
-		bool hasType = false;
-		for (auto& classInfo : classInfos)
-		{
-			if(classInfo.IsFlagSet(ClassFlags::UsesIScriptExportableAPI))
-				continue;
-
-			const TypeMappingInformation& typeInfo = TypeLookup::GetNativeToScriptTypeMapping(classInfo.NativeName);
-			if (typeInfo.TypeCategory != type)
-				continue;
-
-			includes << GenerateApiCheckBegin(classInfo.API);
-			includes << "#include \"" << GeneratorUtility::GetRelativePath(typeInfo.NativeFile, cppOutputFolder) << "\"" << std::endl;
-			includes << GenerateApiCheckEnd(classInfo.API);
-
-			std::string interopClassName = TypeLookup::GetScriptWrapperObjectTypeName(classInfo.NativeName);
-			body << GenerateApiCheckBegin(classInfo.API);
-			body << "\t\tADD_ENTRY(" << classInfo.NativeName << ", " << interopClassName << ")" << std::endl;
-			body << GenerateApiCheckEnd(classInfo.API);
-
-			hasType = true;
-		}
-
-		if(hasType)
-			includes << "#include \"BsScript" + fileInfo.first + ".generated.h\"" << std::endl;
-	}
-
-	std::string prefix = editor ? "Editor" : "";
-	std::ofstream output = GeneratorUtility::CreateFile("Bs" + prefix + tableName + "Lookup.generated.h", cppOutputFolder);
-
-	// License/copyright header
-	output << GeneratorUtility::GenerateCopyrightHeader(editor);
-
-	output << "#pragma once" << std::endl;
-	output << std::endl;
-
-	output << "#include \"Serialization/Bs" << tableName << "Lookup.h\"" << std::endl;
-	output << "#include \"Reflection/BsRTTIType.h\"" << std::endl;
-	output << includes.str();
-
-	output << std::endl;
-
-	output << "namespace " << (editor ? sEditorCppNs : sFrameworkCppNs) << std::endl;
-	output << "{" << std::endl;
-	output << "\tLOOKUP_BEGIN(" << prefix << tableName << ")" << std::endl;
-
-	output << body.str();
-
-	output << "\tLOOKUP_END" << std::endl;
-	output << "}" << std::endl;
-
-	output << "#undef LOOKUP_BEGIN" << std::endl;
-	output << "#undef ADD_ENTRY" << std::endl;
-	output << "#undef LOOKUP_END" << std::endl;
-
-	output.close();
-}
-
-/**
  * Generates all the script interop C++ code.
  *
  * @param engineOutputFolder		Folder in which to output engine/framework files.
@@ -4182,7 +4110,4 @@ void GenerateCpp(StringRef engineOutputFolder, StringRef editorOutputFolder, boo
 
 		output.close();
 	}
-
-	// Generate builtin component lookup file
-	GenerateLookupFileHeader("BuiltinComponent", ::ExportedClassTypeCategory::Component, false, engineOutputFolder.str(), editorOutputFolder.str());
 }

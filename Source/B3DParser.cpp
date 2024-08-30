@@ -1451,7 +1451,7 @@ bool BansheeCodeGeneratorASTVisitor::TryParseDeclarationAsClass(CXXRecordDecl* d
 
 	::ExportedClassTypeCategory classType = DetermineExportedTypeCategory(declaration);
 
-	if(ParserUtility::HasIScriptExportableBaseClass(declaration) && classType != ExportedClassTypeCategory::Component) // TODO - DEBUG ONLY - Dont new API for components yet
+	if(ParserUtility::HasIScriptExportableBaseClass(declaration))
 		outClassInfo.ClassFlags |= (int)ClassFlags::UsesIScriptExportableAPI;
 
 	std::string declFile = astContext->getSourceManager().getFilename(declaration->getSourceRange().getBegin()).str();

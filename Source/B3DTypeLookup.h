@@ -87,7 +87,6 @@ struct IncludeInfo
 struct IncludesInfo
 {
 	bool RequiresScriptResourceManager = false; /**< Requires the script resource manager include. */
-	bool RequiresScriptGameObjectManager = false; /**< Requires the script game object manager include. */
 	bool RequiresScriptRRef = false; /**< Requires the script resource reference include. */
 	bool RequiresRTTI = false; /**< Requires use of RTTIType. */
 	bool RequiresAsyncOp = false; /**< Requires use of an AsyncOp. */
