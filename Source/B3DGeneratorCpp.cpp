@@ -907,8 +907,11 @@ static std::string GenerateNativeHandleToMonoObject(const VariableTypeInformatio
 		}
 		else
 		{
-			output << indent << "ScriptResourceBase* " << scriptVariableName << ";\n";
-			output << indent << scriptVariableName << " = ScriptResourceManager::Instance().GetScriptResource(" << inputVariableAccess << ", true);\n";
+			isUsingScriptWrapperVariable = false;
+
+			output << indent << "MonoObject* " << temporaryScriptObjectVariableName << " = nullptr;\n";
+			output << indent << "if(" << inputVariableAccess << ")\n";
+			output << indent << temporaryScriptObjectVariableName << " = ScriptResourceWrapper::GetOrCreateScriptObject(" << inputVariableAccess << ");\n";
 		}
 	}
 	else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::GameObject)

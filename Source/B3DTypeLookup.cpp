@@ -1262,10 +1262,12 @@ void TypeLookup::GatherIncludes(const VariableTypeInformation& typeInformation, 
 
 	if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Resource)
 	{
-		output.RequiresScriptResourceManager = true;
 
-		if (underlyingTypeInformation.IsParameterFlagSet(ParameterFlags::AsResourceRef))
+		if(underlyingTypeInformation.IsParameterFlagSet(ParameterFlags::AsResourceRef))
+		{
 			output.RequiresScriptRRef = true;
+			output.RequiresScriptResourceManager = true;
+		}
 	}
 
 	if (underlyingTypeInformation.TypeCategory == VariableTypeCategory::AsyncOp)
@@ -1324,10 +1326,11 @@ void TypeLookup::GatherIncludes(const FieldInfo& fieldInfo, bool isEditor, Inclu
 
 		if (fieldTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Resource)
 		{
-			output.RequiresScriptResourceManager = true;
-
-			if (underlyingTypeInformation.IsParameterFlagSet(ParameterFlags::AsResourceRef))
+			if(underlyingTypeInformation.IsParameterFlagSet(ParameterFlags::AsResourceRef))
+			{
+				output.RequiresScriptResourceManager = true;
 				output.RequiresScriptRRef = true;
+			}
 		}
 		else if (fieldTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Class || fieldTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::ReflectableClass)
 		{
