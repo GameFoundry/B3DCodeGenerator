@@ -226,7 +226,7 @@ int main(int argc, const char** argv)
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "UUID", "Utility/BsUUID.h", "UUID", "", ExportedClassTypeCategory::Struct);
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "GameObject", "Scene/BsGameObject.h", "GameObject", "BsScriptGameObjectWrapper.h", ExportedClassTypeCategory::GameObject);
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "SceneObject", "Scene/BsSceneObject.h", "SceneObject", "Wrappers/BsScriptSceneObject.h", ExportedClassTypeCategory::SceneObject);
-	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Resource", "Resources/BsResource.h", "Resource", "Wrappers/BsScriptResource.h", ExportedClassTypeCategory::Resource);
+	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Resource", "Resources/BsResource.h", "Resource", "BsScriptResourceWrapper.h", ExportedClassTypeCategory::Resource);
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Any", "Utility/BsAny.h", "Any", "", ExportedClassTypeCategory::Class);
 
 	// Parse C++ into an easy to read format

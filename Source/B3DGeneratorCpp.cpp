@@ -3697,9 +3697,9 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 			output << "\tMonoObject* " << interopClassName << "::InternalGetRef(" << interopClassThisPtrType << "* self)\n";
 			output << "\t{\n";
 			if(isBase)
-				output << "\t\treturn self->GetRRef(self->GetNativeObjectAsHandle(), " + classInfo.NativeName + "::GetRttiStatic()->GetRttiId());\n";
+				output << "\t\treturn self->GetOrCreateResourceReference(self->GetNativeObjectAsHandle(), " + classInfo.NativeName + "::GetRttiStatic()->GetRttiId());\n";
 			else
-				output << "\t\treturn self->GetRRef();\n";
+				output << "\t\treturn self->GetOrCreateResourceReference();\n";
 		}
 		else
 		{
