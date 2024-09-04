@@ -885,7 +885,7 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 				if(usesIScriptExportableAPI)
 					typeInformation.SetPostProcessFlag(VariablePostProcessFlags::UsesIScriptExportableAPI, true);
 			}
-			else if(typeMappingInformation.TypeCategory == ExportedClassTypeCategory::SceneObject || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GameObject)
+			else if(typeMappingInformation.TypeCategory == ExportedClassTypeCategory::SceneObject || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GameObject || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Resource)
 				typeInformation.SetPostProcessFlag(VariablePostProcessFlags::UsesIScriptExportableAPI, true);
 		};
 
