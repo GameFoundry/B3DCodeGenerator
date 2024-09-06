@@ -2348,7 +2348,7 @@ static std::string GenerateInternalMethodBody(const ClassInfo& classInfo, const 
 		if(isValid)
 		{
 			if(isUsingIScriptExportableAPI)
-				output << "\t\tB3DNew<" << interopClassName << ">(nativeObject, scriptObject);\n";
+				output << "\t\tScriptObjectWrapper::Create<" << interopClassName << ">(nativeObject, scriptObject);\n";
 		}
 		else
 			outs() << "Error: Cannot generate a constructor for \"" << classInfo.NativeName << "\". Unsupported class type. \n";
@@ -2912,8 +2912,6 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 				output << "const " << wrappedDataType << "& nativeObject";
 			else
 				output << wrappedDataType << " nativeObject";
-
-			output << ", MonoObject* scriptObject";
 		}
 		else
 		{
@@ -3343,7 +3341,7 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 			else
 				output << wrappedDataType << " nativeObject";
 
-			output << ", MonoObject* scriptObject)\n";
+			output << ")\n";
 		}
 		else
 		{
@@ -3360,7 +3358,7 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 	else
 	{
 		if(isUsingIScriptExportableAPI)
-			output << "\t" << interopClassName << "::" << interopClassName << "(MonoObject* scriptObject)\n";
+			output << "\t" << interopClassName << "::" << interopClassName << "()\n";
 		else
 			output << "\t" << interopClassName << "::" << interopClassName << "(MonoObject* managedInstance)" << std::endl;
 	}
@@ -3373,9 +3371,9 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 		output << wrapperTemplatedBaseClass;
 
 		if(!isModule)
-			output << "(nativeObject, scriptObject)";
+			output << "(nativeObject)";
 		else
-			output << "(scriptObject)";
+			output << "()";
 	}
 	else
 	{
