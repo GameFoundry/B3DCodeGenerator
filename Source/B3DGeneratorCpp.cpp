@@ -256,7 +256,12 @@ static std::string GenerateGetNativeObjectCallLine(const VariableTypeInformation
 			else if(typeMappingInformation.IsHandleType())
 			{
 				if(typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Resource)
-					output << "B3DStaticResourceCast<" << nativeTypeName << ">(" << variableName << "->GetBaseNativeObjectAsHandle())";
+				{
+					if(isPassingAsResourceReference)
+						output << "B3DStaticResourceCast<" << nativeTypeName << ">(" << variableName << "->GetNativeObject())";
+					else
+						output << "B3DStaticResourceCast<" << nativeTypeName << ">(" << variableName << "->GetBaseNativeObjectAsHandle())";
+				}
 				else // Game object
 					output << "B3DStaticGameObjectCast<" << nativeTypeName << ">(" << variableName << "->GetBaseNativeObjectAsHandle())";
 			}
