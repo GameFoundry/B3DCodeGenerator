@@ -973,7 +973,7 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 					else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::SceneObject)
 						fileInfo.second.ReferencedHeaderIncludes.push_back("Wrappers/BsScriptSceneObject.h");
 					else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
-						fileInfo.second.ReferencedHeaderIncludes.push_back("GUI/BsScriptGUIElementWrapper.h");
+						fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptGUIElementWrapper.h");
 					else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
 						fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptReflectableWrapper.h");
 					else // Class

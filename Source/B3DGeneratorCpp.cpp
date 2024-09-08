@@ -785,15 +785,10 @@ static std::string GenerateScriptObjectToScriptObjectWrapper(const std::string& 
 	else
 	{
 		std::string scriptBaseType;
-		if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
-			scriptBaseType = "ScriptGUIElementBase";
+		if(isUsingIScriptExportableAPI)
+			scriptBaseType = scriptWrapperType + "WrapperBase";
 		else
-		{
-			if(isUsingIScriptExportableAPI)
-				scriptBaseType = scriptWrapperType + "WrapperBase";
-			else
-				scriptBaseType = scriptWrapperType + "Base";
-		}
+			scriptBaseType = scriptWrapperType + "Base";
 
 		output << indent << scriptBaseType << "* " << scriptWrapperVariableName << ";" << std::endl;
 
@@ -2843,6 +2838,10 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 			output << "\t};\n";
 			output << "\n";
 		}
+		else if(!classInfo.BaseClassName.empty())
+		{
+			interopBaseClassName = TypeLookup::GetScriptWrapperObjectTypeName(classInfo.BaseClassName) + "WrapperBase";
+		}
 	}
 
 	// Generate main class
@@ -3037,12 +3036,7 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 	// CLR hooks
 	std::string interopClassThisPtrType;
 	if (isBase)
-	{
-		if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
-			interopClassThisPtrType = "ScriptGUIElementBase";
-		else
-			interopClassThisPtrType = interopBaseClassName;
-	}
+		interopClassThisPtrType = interopBaseClassName;
 	else
 		interopClassThisPtrType = interopClassName;
 
@@ -3683,12 +3677,7 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 	// CLR hook method implementations
 	std::string interopClassThisPtrType;
 	if (isBase)
-	{
-		if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
-			interopClassThisPtrType = "ScriptGUIElementBase";
-		else
-			interopClassThisPtrType = interopBaseClassName;
-	}
+		interopClassThisPtrType = interopBaseClassName;
 	else
 		interopClassThisPtrType = interopClassName;
 
