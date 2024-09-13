@@ -1025,7 +1025,7 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 			{
 				const TypeMappingInformation& typeInfo = TypeLookup::GetNativeToScriptTypeMapping(structInfo.NativeName);
 
-				fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptObject.h");
+				fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptObjectWrapper.h");
 				fileInfo.second.ReferencedHeaderIncludes.push_back(typeInfo.NativeFile);
 			}
 

@@ -3827,21 +3827,21 @@ static std::string GenerateStructDeclaration(const StructInfo& structInfo)
 		output << sEditorDllExportMacro << " ";
 
 	std::string interopClassName = TypeLookup::GetScriptWrapperObjectTypeName(structInfo.NativeName);
-	output << interopClassName << " : public " << "ScriptObject<" << interopClassName << ">";
+	output << interopClassName << " : public " << "TScriptStructWrapper<" << interopClassName << ">";
 
 	output << std::endl;
-	output << "\t{" << std::endl;
-	output << "\tpublic:" << std::endl;
+	output << "\t{\n";
+	output << "\tpublic:\n";
 
-	if (!inEditor)
-		output << "\t\tSCRIPT_OBJ(kEngineAssembly, kEngineNs, \"" << typeMappingInformation.ScriptTypeName << "\")" << std::endl;
+	if(!inEditor)
+		output << "\t\tB3D_SCRIPT_OBJECT_WRAPPER(kEngineAssembly, kEngineNs, \"" << typeMappingInformation.ScriptTypeName << "\")\n";
 	else
-		output << "\t\tSCRIPT_OBJ(kEditorAssembly, kEditorNs, \"" << typeMappingInformation.ScriptTypeName << "\")" << std::endl;
+		output << "\t\tB3D_SCRIPT_OBJECT_WRAPPER(kEditorAssembly, kEditorNs, \"" << typeMappingInformation.ScriptTypeName << "\")\n";
 
-	output << std::endl;
+	output << "\n";
 
-	output << "\t\tstatic MonoObject* Box(const " << structInfo.InteropName << "& value);" << std::endl;
-	output << "\t\tstatic " << structInfo.InteropName << " Unbox(MonoObject* value);" << std::endl;
+	output << "\t\tstatic MonoObject* Box(const " << structInfo.InteropName << "& value);\n";
+	output << "\t\tstatic " << structInfo.InteropName << " Unbox(MonoObject* value);\n";
 
 	if(structInfo.RequiresInteropType)
 	{
@@ -3849,14 +3849,14 @@ static std::string GenerateStructDeclaration(const StructInfo& structInfo)
 		output << "\t\tstatic " << structInfo.InteropName << " ToInterop(const " << structInfo.NativeName << "& value);\n";
 	}
 
-	output << std::endl;
-	output << "\tprivate:" << std::endl;
+	output << "\n";
+	output << "\tprivate:\n";
 
 	// Constructor
-	output << "\t\t" << interopClassName << "(MonoObject* managedInstance);" << std::endl;
-	output << std::endl;
+	output << "\t\t" << interopClassName << "();\n";
+	output << "\n";
 
-	output << "\t};" << std::endl;
+	output << "\t};\n";
 	output << GenerateApiCheckEnd(structInfo.API);
 
 	return output.str();
@@ -3877,29 +3877,23 @@ std::string GenerateStructDefinition(const StructInfo& structInfo)
 	output << GenerateApiCheckBegin(structInfo.API);
 
 	// Constructor
-	output << "\t" << interopClassName << "::" << interopClassName << "(MonoObject* managedInstance)" << std::endl;
-	output << "\t\t:ScriptObject(managedInstance)" << std::endl;
-	output << "\t{ }" << std::endl;
-	output << std::endl;
-
-	// Empty initRuntimeData
-	output << "\tvoid " << interopClassName << "::InitRuntimeData()" << std::endl;
-	output << "\t{ }" << std::endl;
-	output << std::endl;
+	output << "\t" << interopClassName << "::" << interopClassName << "()\n";
+	output << "\t{ }\n";
+	output << "\n";
 
 	// Box
-	output << "\tMonoObject*" << interopClassName << "::Box(const " << structInfo.InteropName << "& value)" << std::endl;
-	output << "\t{" << std::endl;
-	output << "\t\treturn MonoUtil::Box(metaData.ScriptClass->GetInternalClass(), (void*)&value);" << std::endl;
-	output << "\t}" << std::endl;
-	output << std::endl;
+	output << "\tMonoObject* " << interopClassName << "::Box(const " << structInfo.InteropName << "& value)\n";
+	output << "\t{\n";
+	output << "\t\treturn MonoUtil::Box(sInteropMetaData.ScriptClass->GetInternalClass(), (void*)&value);\n";
+	output << "\t}\n";
+	output << "\n";
 
 	// Unbox
-	output << "\t" << structInfo.InteropName << " " << interopClassName << "::Unbox(MonoObject* value)" << std::endl;
-	output << "\t{" << std::endl;
-	output << "\t\treturn *(" << structInfo.InteropName << "*)MonoUtil::Unbox(value);" << std::endl;
-	output << "\t}" << std::endl;
-	output << std::endl;
+	output << "\t" << structInfo.InteropName << " " << interopClassName << "::Unbox(MonoObject* value)\n";
+	output << "\t{\n";
+	output << "\t\treturn *(" << structInfo.InteropName << "*)MonoUtil::Unbox(value);\n";
+	output << "\t}\n";
+	output << "\n";
 
 	if(structInfo.RequiresInteropType)
 	{
