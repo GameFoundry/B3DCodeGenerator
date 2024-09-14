@@ -958,8 +958,13 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 			{
 				const TypeMappingInformation& typeInfo = TypeLookup::GetNativeToScriptTypeMapping(classInfo.NativeName);
 
-				// Forward declare the native type we're generating the wrapper for
-				fileInfo.second.ForwardDeclarations.insert(ForwardDeclarationInformation(classInfo.NativeNameWithoutTemplateArguments, classInfo.Namespace, classInfo.TemplateParameters, classInfo.IsFlagSet(ClassFlags::IsStruct)));
+				// Forward declare the native type we're generating the wrapper for, or if non-reflectable include the type header
+				if(typeInfo.TypeCategory != ExportedClassTypeCategory::Class)
+				{
+					fileInfo.second.ForwardDeclarations.insert(ForwardDeclarationInformation(classInfo.NativeNameWithoutTemplateArguments, classInfo.Namespace, classInfo.TemplateParameters, classInfo.IsFlagSet(ClassFlags::IsStruct)));
+				}
+				else
+					fileInfo.second.ReferencedHeaderIncludes.push_back(typeInfo.NativeFile);
 
 				// Include the script wrapper object root base type
 				if(classInfo.IsFlagSet(ClassFlags::UsesIScriptExportableAPI))
