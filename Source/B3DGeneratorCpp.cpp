@@ -2891,9 +2891,9 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 	if(isUsingIScriptExportableAPI)
 	{
 		if(!inEditor)
-			output << "\t\tB3D_SCRIPT_OBJECT_WRAPPER(kEngineAssembly, kEngineNs, \"" << typeMappingInformation.ScriptTypeName << "\")\n";
+			output << "\t\tB3D_SCRIPT_TYPE_DEFINITION(kEngineAssembly, kEngineNs, \"" << typeMappingInformation.ScriptTypeName << "\")\n";
 		else
-			output << "\t\tB3D_SCRIPT_OBJECT_WRAPPER(kEditorAssembly, kEditorNs, \"" << typeMappingInformation.ScriptTypeName << "\")\n";
+			output << "\t\tB3D_SCRIPT_TYPE_DEFINITION(kEditorAssembly, kEditorNs, \"" << typeMappingInformation.ScriptTypeName << "\")\n";
 	}
 	else
 	{
@@ -2938,6 +2938,10 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 	}
 
 	output << std::endl;
+
+	// SetupScriptBindings()
+	output << "\t\tstatic void SetupScriptBindings();\n";
+	output << "\n";
 
 	if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Class && !isModule && !isUsingIScriptExportableAPI)
 	{
@@ -3834,9 +3838,9 @@ static std::string GenerateStructDeclaration(const StructInfo& structInfo)
 	output << "\tpublic:\n";
 
 	if(!inEditor)
-		output << "\t\tB3D_SCRIPT_OBJECT_WRAPPER(kEngineAssembly, kEngineNs, \"" << typeMappingInformation.ScriptTypeName << "\")\n";
+		output << "\t\tB3D_SCRIPT_TYPE_DEFINITION(kEngineAssembly, kEngineNs, \"" << typeMappingInformation.ScriptTypeName << "\")\n";
 	else
-		output << "\t\tB3D_SCRIPT_OBJECT_WRAPPER(kEditorAssembly, kEditorNs, \"" << typeMappingInformation.ScriptTypeName << "\")\n";
+		output << "\t\tB3D_SCRIPT_TYPE_DEFINITION(kEditorAssembly, kEditorNs, \"" << typeMappingInformation.ScriptTypeName << "\")\n";
 
 	output << "\n";
 
