@@ -3831,7 +3831,7 @@ static std::string GenerateStructDeclaration(const StructInfo& structInfo)
 		output << sEditorDllExportMacro << " ";
 
 	std::string interopClassName = TypeLookup::GetScriptWrapperObjectTypeName(structInfo.NativeName);
-	output << interopClassName << " : public " << "TScriptStructWrapper<" << interopClassName << ">";
+	output << interopClassName << " : public " << "TScriptTypeDefinition<" << interopClassName << ">";
 
 	output << std::endl;
 	output << "\t{\n";
