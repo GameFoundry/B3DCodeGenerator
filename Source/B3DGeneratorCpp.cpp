@@ -148,7 +148,7 @@ static std::string GetParameterQualifiedType(const TypeMappingInformation& typeM
 static std::string GetWrapperTemplatedBaseClass(const TypeMappingInformation& typeMappingInformation, bool isModule)
 {
 	if(isModule)
-		return "TNonInstantiableScriptObjectWrapper";
+		return "TScriptTypeDefinition";
 
 	if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Resource)
 		return "TScriptResourceWrapper";
