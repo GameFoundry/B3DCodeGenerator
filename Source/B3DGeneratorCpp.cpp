@@ -372,7 +372,7 @@ static std::string GetArgumentForInternalToNativeCall(const MethodInfo& methodIn
 
 	if(typeInformation.IsArrayOrVector())
 	{
-		return fnGetPlainArgument(typeInformation.IsOutputParameter());
+		return fnGetPlainArgument(false);
 	}
 
 	switch (typeMappingInformation.TypeCategory)
