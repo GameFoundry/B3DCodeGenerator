@@ -969,20 +969,27 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 				// Include the script wrapper object root base type
 				if(classInfo.IsFlagSet(ClassFlags::UsesIScriptExportableAPI))
 				{
-					if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource)
-						fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptResourceWrapper.h");
-					else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::GameObject)
-						fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptGameObjectWrapper.h");
-					else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::Component)
-						fileInfo.second.ReferencedHeaderIncludes.push_back("Wrappers/BsScriptComponent.h");
-					else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::SceneObject)
-						fileInfo.second.ReferencedHeaderIncludes.push_back("Wrappers/BsScriptSceneObject.h");
-					else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
-						fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptGUIElementWrapper.h");
-					else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
-						fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptReflectableWrapper.h");
-					else // Class
-						fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptNonReflectableWrapper.h");
+					if(classInfo.IsFlagSet(ClassFlags::IsModule))
+						fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptTypeDefinition.h");
+					else
+					{
+						if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource)
+							fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptResourceWrapper.h");
+						else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::GameObject)
+							fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptGameObjectWrapper.h");
+						else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::Component)
+							fileInfo.second.ReferencedHeaderIncludes.push_back("Wrappers/BsScriptComponent.h");
+						else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::SceneObject)
+							fileInfo.second.ReferencedHeaderIncludes.push_back("Wrappers/BsScriptSceneObject.h");
+						else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
+							fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptGUIElementWrapper.h");
+						else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
+							fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptReflectableWrapper.h");
+						else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::Class)
+							fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptNonReflectableWrapper.h");
+						else // Struct or enum
+							fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptTypeDefinition.h");
+					}
 				}
 				else
 				{

@@ -2932,7 +2932,7 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 	else
 	{
 		if(isUsingIScriptExportableAPI)
-			output << "\t\t" << interopClassName << "(MonoObject* scriptObject);" << std::endl; // TODO - Is this even needed for modules?
+			output << "\t\t" << interopClassName << "();\n";
 		else
 			output << "\t\t" << interopClassName << "(MonoObject* managedInstance);" << std::endl;
 	}
@@ -3417,7 +3417,8 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 	// Register any non-static events
 	if(isUsingIScriptExportableAPI)
 	{
-		output << "\t\tRegisterEvents();\n";
+		if(!isModule)
+			output << "\t\tRegisterEvents();\n";
 	}
 	else
 	{
@@ -3674,7 +3675,7 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 	}
 	else
 	{
-		if(hasNonStaticEvents && !isBase)
+		if(hasNonStaticEvents && !isBase && !isModule)
 			fnGenerateRegisterEventsMethodBody(output, typeMappingInformation, classInfo, interopClassName, interopBaseClassName, wrappedDataType);
 	}
 

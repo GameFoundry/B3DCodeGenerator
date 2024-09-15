@@ -1444,7 +1444,10 @@ bool BansheeCodeGeneratorASTVisitor::TryParseDeclarationAsClass(CXXRecordDecl* d
 
 	const bool typeIsBuiltinModuleType = ParserUtility::CheckIsBuiltinModuleType(declaration);
 	if(typeIsBuiltinModuleType)
+	{
 		outClassInfo.ClassFlags |= (int)ClassFlags::IsModule;
+		outClassInfo.ClassFlags |= (int)ClassFlags::UsesIScriptExportableAPI;
+	}
 
 	if(declaration->isStruct())
 		outClassInfo.ClassFlags |= (int)ClassFlags::IsStruct;
