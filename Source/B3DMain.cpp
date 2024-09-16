@@ -204,9 +204,6 @@ int main(int argc, const char** argv)
 	// Note: I could auto-generate C++ wrappers for these types
 	SmallVector<std::string, 4> frameworkNamespace = { sFrameworkCppNs };
 	
-	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "TVector2<float>", "Math/BsVector2.h", "Vector2", "Wrappers/BsScriptVector.h", ExportedClassTypeCategory::Struct);
-	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "TVector3<float>", "Math/BsVector3.h", "Vector3", "Wrappers/BsScriptVector.h", ExportedClassTypeCategory::Struct);
-	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "TVector4<float>", "Math/BsVector4.h", "Vector4", "Wrappers/BsScriptVector.h", ExportedClassTypeCategory::Struct);
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "TSize2<float>", "Utility/BsUtil.h", "Size2", "Wrappers/BsScriptSize.h", ExportedClassTypeCategory::Struct);
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "TSize2<uint32_t>", "Utility/BsUtil.h", "Size2UI", "Wrappers/BsScriptSize.h", ExportedClassTypeCategory::Struct);
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Matrix3", "Math/BsMatrix3.h", "Matrix3", "", ExportedClassTypeCategory::Struct);
