@@ -885,7 +885,8 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 				if(usesIScriptExportableAPI)
 					typeInformation.SetPostProcessFlag(VariablePostProcessFlags::UsesIScriptExportableAPI, true);
 			}
-			else if(typeMappingInformation.TypeCategory == ExportedClassTypeCategory::SceneObject || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GameObject || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Resource)
+			// Handle built-in types
+			else if(typeMappingInformation.TypeCategory == ExportedClassTypeCategory::SceneObject || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GameObject || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Resource || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GUIElement)
 				typeInformation.SetPostProcessFlag(VariablePostProcessFlags::UsesIScriptExportableAPI, true);
 		};
 
@@ -1221,7 +1222,7 @@ void TypeLookup::GatherIncludes(const VariableTypeInformation& typeInformation, 
 	if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Class || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::ReflectableClass ||
 		typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Struct || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GameObject ||
 		typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Component || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::SceneObject ||
-		typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Resource || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Enum)
+		typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Resource || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Enum || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GUIElement)
 	{
 		auto iterFind = output.Includes.find(typeName);
 		if (iterFind == output.Includes.end())
