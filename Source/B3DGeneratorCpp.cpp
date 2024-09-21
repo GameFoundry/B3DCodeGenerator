@@ -163,7 +163,7 @@ static std::string GetWrapperTemplatedBaseClass(const TypeMappingInformation& ty
 }
 
 /** Returns the root base class to use for the script object wrapper implementation. This is the class that root base script interop wrappers should inherit from. */
-static std::string GetWrapperRootBaseClass(const TypeMappingInformation& typeMappingInformation)
+static std::string GetWrapperRootBaseClass(const std::string& nativeClassName, const TypeMappingInformation& typeMappingInformation, bool withTemplateArguments)
 {
 	if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Resource)
 		return "ScriptResourceWrapper";
@@ -174,7 +174,12 @@ static std::string GetWrapperRootBaseClass(const TypeMappingInformation& typeMap
 	else if(typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
 		return "ScriptReflectableWrapper";
 	else // Class
-		return "ScriptObjectWrapper";
+	{
+		if(withTemplateArguments)
+			return "TScriptNonReflectableWrapperBase<" + nativeClassName + ">";
+		else
+			return "TScriptNonReflectableWrapperBase";
+	}
 }
 
 /**
@@ -2801,24 +2806,24 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 			interopBaseClassName = TypeLookup::GetScriptWrapperObjectTypeName(classInfo.NativeName) + "WrapperBase";
 
 			std::string parentBaseClassName;
+			std::string parentBaseClassNameWithoutTemplateArguments;
 			if(isRootBase)
-				parentBaseClassName = GetWrapperRootBaseClass(typeMappingInformation);
+			{
+				parentBaseClassName = GetWrapperRootBaseClass(classInfo.NativeName, typeMappingInformation, true);
+				parentBaseClassNameWithoutTemplateArguments = GetWrapperRootBaseClass(classInfo.NativeName, typeMappingInformation, false);
+			}
 			else
+			{
 				parentBaseClassName = TypeLookup::GetScriptWrapperObjectTypeName(classInfo.BaseClassName) + "WrapperBase";
+				parentBaseClassNameWithoutTemplateArguments = parentBaseClassName;
+			}
 
 			output << "\tclass " << dllExportMacro << " " << interopBaseClassName << " : public " << parentBaseClassName << "\n";
 
 			output << "\t{\n";
 			output << "\tpublic:\n";
-			output << "\t\tusing " << parentBaseClassName << "::" << parentBaseClassName << ";\n";
+			output << "\t\tusing " << parentBaseClassNameWithoutTemplateArguments << "::" << parentBaseClassNameWithoutTemplateArguments << ";\n";
 			output << "\n";
-
-			// Only non-reflectable types need this method, as all other types have a built-in base class that handles this
-			if(isRootBase && typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Class)
-			{
-				output << "\tprivate:\n";
-				output << "\t\tvirtual" << wrappedDataType << " GetBaseNativeObjectAsShared() const = 0;\n";
-			}
 
 			if(hasNonStaticEvents)
 				output << "\t\tvirtual void RegisterEvents();\n";
@@ -3265,7 +3270,7 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 		if(isUsingIScriptExportableAPI)
 		{
 			if(isRootBase)
-				parentBaseClassName = GetWrapperRootBaseClass(typeMappingInformation);
+				parentBaseClassName = GetWrapperRootBaseClass(classInfo.NativeName, typeMappingInformation, true);
 			else
 				parentBaseClassName = TypeLookup::GetScriptWrapperObjectTypeName(classInfo.BaseClassName) + "WrapperBase";
 		}
