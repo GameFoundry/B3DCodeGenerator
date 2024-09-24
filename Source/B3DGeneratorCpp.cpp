@@ -2164,7 +2164,7 @@ static std::string GenerateEventCallbackBodyBlockForArgument(const std::string& 
 
 		preCallActions << "\t\tint arraySize" << name << " = ";
 		if (parameterInformation.TypeInformation.IsArrayOrVector(false))
-			preCallActions << "(int)value." << name << ".size()";
+			preCallActions << "(int)" << name << ".size()";
 		else
 			preCallActions << parameterInformation.TypeInformation.ArraySize;
 		preCallActions << ";\n";
