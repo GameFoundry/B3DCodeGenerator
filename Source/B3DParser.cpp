@@ -82,16 +82,16 @@ static bool MapBuiltinTypeToCSharpType(BuiltinType::Kind kind, std::string& outp
 		output = "byte";
 		return true;
 	case BuiltinType::UShort:
-		output = "short";
+		output = "ushort";
 		return true;
 	case BuiltinType::UInt:
-		output = "int";
+		output = "uint";
 		return true;
 	case BuiltinType::ULong:
-		output = "long";
+		output = "ulong";
 		return true;
 	case BuiltinType::ULongLong:
-		output = "long";
+		output = "ulong";
 		return true;
 	case BuiltinType::Float:
 		output = "float";
@@ -1935,7 +1935,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitEnumDecl(EnumDecl* decl)
 		entryVal.toString(valueStr);
 		entryInfo.Value = valueStr.str().str();
 
-		enumEntry.Entries[(int)entryVal.getExtValue()] = entryInfo;
+		enumEntry.Entries[entryInfo.ScriptName] = entryInfo;
 		++iter;
 	}
 

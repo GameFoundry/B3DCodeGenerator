@@ -761,7 +761,6 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 		if (typeInfo.TypeCategory != ::ExportedClassTypeCategory::Enum)
 			return;
 
-		int enumIdx = atoi(paramInfo.DefaultValue.c_str());
 		const std::string typeName = paramInfo.TypeInformation.GetLastWrappedOrSelfTypeName();
 		EnumInfo *const enumInformation = TypeLookup::FindEnumInformation(typeName);
 		if(enumInformation == nullptr)
@@ -771,15 +770,23 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 			return;
 		}
 
-		auto iterFind = enumInformation->Entries.find(enumIdx);
-		if(iterFind == enumInformation->Entries.end())
+		bool foundEnumEntry = false;
+		for(auto I = enumInformation->Entries.begin(); I != enumInformation->Entries.end(); ++I)
+		{
+			if(I->second.Value == paramInfo.DefaultValue)
+			{
+				paramInfo.DefaultValue = enumInformation->ScriptName + "." + I->second.ScriptName;
+				foundEnumEntry = true;
+				break;
+			}
+		}
+
+		if(!foundEnumEntry)
 		{
 			errs() << "Error: Cannot map default value of \"" + paramInfo.Name + "\" to enum entry for enum type \"" + typeName + "\". Ignoring.";
 			paramInfo.DefaultValue = "";
 			return;
 		}
-
-		paramInfo.DefaultValue = enumInformation->ScriptName + "." + iterFind->second.ScriptName;
 	};
 
 	for (auto& fileInfo : mFilesToGenerate)

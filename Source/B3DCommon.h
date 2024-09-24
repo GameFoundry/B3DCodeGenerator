@@ -298,7 +298,7 @@ struct EnumInfo : GeneratedTypeInformation
 	std::string ScriptName; /**< Name of the enum in script code. */
 
 	std::string ExplicitUnderlyingCSharpType; /**< Explicit underlying type of the enum, as a C# type. */
-	std::unordered_map<int, EnumEntryInfo> Entries; /**< Enum entries. */
+	std::unordered_map<std::string, EnumEntryInfo> Entries; /**< Enum entries. */
 };
 
 /** Information about a forward declaration required for a specific type. */
