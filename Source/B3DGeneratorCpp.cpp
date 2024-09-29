@@ -1479,7 +1479,11 @@ static std::string GenerateMethodBodyBlockForArgument(const std::string& paramet
 			postCallActions << ";\n";
 
 			postCallActions << "\t\tScriptArray " << scriptArrayName;
-			postCallActions << " = " << "ScriptArray::Create<" << arrayEntryTypeName << ">(elementCount" << parameterName << ");" << std::endl;
+			if(parameterTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Enum)
+				postCallActions << " = " << "ScriptArray::Create<u32>(elementCount" << parameterName << ");" << std::endl; // TODO - Handle this more gracefully
+			else
+				postCallActions << " = " << "ScriptArray::Create<" << arrayEntryTypeName << ">(elementCount" << parameterName << ");" << std::endl;
+
 			postCallActions << "\t\tfor(int elementIndex = 0; elementIndex < elementCount" << parameterName << "; elementIndex++)" << std::endl;
 			postCallActions << "\t\t{" << std::endl;
 

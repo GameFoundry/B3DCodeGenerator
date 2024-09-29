@@ -129,8 +129,10 @@ StructInfo* TypeLookup::FindStructInformation(const std::string& typeName)
 	return nullptr;
 }
 
-ClassInfo* TypeLookup::FindClassInformation(const std::string& typeName, bool isEditor)
+ClassInfo* TypeLookup::FindClassInformation(const std::string& typeName, bool preferEditor)
 {
+	ClassInfo* frameworkClassInfo = nullptr;
+	ClassInfo* editorClassInfo = nullptr;
 	for (auto& fileInfo : mFilesToGenerate)
 	{
 		for (auto& classInfo : fileInfo.second.Classes)
@@ -138,15 +140,27 @@ ClassInfo* TypeLookup::FindClassInformation(const std::string& typeName, bool is
 			if (classInfo.NativeName != typeName)
 				continue;
 
-			// Two versions of editor and Framework class migth exist, make sure to pick the right one
-			if((isEditor && classInfo.API == ApiFlags::Framework) || (!isEditor &&  IsAPIEditor(classInfo.API)))
-				continue;
+			if(IsAPIFramework(classInfo.API))
+			{
+				frameworkClassInfo = &classInfo;
 
-			return &classInfo;
+				if(!preferEditor)
+					return frameworkClassInfo;
+			}
+			else if(IsAPIEditor(classInfo.API))
+			{
+				editorClassInfo = &classInfo;
+
+				if(preferEditor)
+					return editorClassInfo;
+			}
 		}
 	}
 
-	return nullptr;
+	if(preferEditor)
+		return frameworkClassInfo; // Editor version was not found (otherwise we would have returned above), but framework one could be, so return it
+
+	return editorClassInfo; // Framework version was not found (otherwise we would have returned above), but framework one could be, so return it
 }
 
 EnumInfo* TypeLookup::FindEnumInformation(const std::string& typeName)
@@ -867,7 +881,7 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 				return;
 
 			const std::string& typeName = typeInformation.GetLastWrappedOrSelfTypeName();
-			ClassInfo *const classInfo = TypeLookup::FindClassInformation(typeName, false);
+			ClassInfo *const classInfo = TypeLookup::FindClassInformation(typeName, true);
 			if (classInfo != nullptr)
 			{
 				const bool isBase = classInfo->IsFlagSet(ClassFlags::IsBase);
@@ -885,7 +899,7 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 				return;
 
 			const std::string& typeName = typeInformation.GetLastWrappedOrSelfTypeName();
-			ClassInfo* const classInfo = TypeLookup::FindClassInformation(typeName, false);
+			ClassInfo* const classInfo = TypeLookup::FindClassInformation(typeName, true);
 			if(classInfo != nullptr)
 			{
 				const bool usesIScriptExportableAPI = classInfo->IsFlagSet(ClassFlags::UsesIScriptExportableAPI);

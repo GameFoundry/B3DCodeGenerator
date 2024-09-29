@@ -109,8 +109,8 @@ public:
 	/** Finds information about a struct with the provided name, if null if not found. */
 	static StructInfo* FindStructInformation(const std::string& typeName);
 
-	/** Finds information about a struct with the provided name, if null if not found. If @p isEditor is true, it will return the editor variant of the class, if two versions exist. */
-	static ClassInfo* FindClassInformation(const std::string& typeName, bool isEditor);
+	/** Finds information about a struct with the provided name, if null if not found. If @p preferEditor is true, it will return the editor variant of the class, if two versions exist. */
+	static ClassInfo* FindClassInformation(const std::string& typeName, bool preferEditor);
 
 	/** Finds information about an enum with the provided name, if null if not found. */
 	static EnumInfo* FindEnumInformation(const std::string& typeName);
