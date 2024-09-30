@@ -14,7 +14,9 @@ enum class ExportFlags
 	InteropOnly = 1 << 6,
 	FrameworkAPI = 1 << 7,
 	EngineAPI = 1 << 8,
-	EditorAPI = 1 << 9
+	EditorAPI = 1 << 9,
+	SingletonClass = 1 << 10, /**< A getter method is provided that can be used for always retrieving an instance of this class. */
+	StaticClass = 1 << 11, /**< An instance of this class is never created, all methods and members are static. */
 };
 
 /** Information used for controlling script export of a particular declaration. */
@@ -27,6 +29,7 @@ struct ScriptExportInformation
 	CSVisibility Visibility = CSVisibility::Public; /**< Visibility of the declaration in generated code. */
 	int ExportFlags = 0; /**< Various flags controlling export. */
 	MemberMetaData MetaData; /**< Additional settings controlling how is the exported declaration API generated. */
+	std::string SingletonGetterName; /**< Name of the singleton getter method, for singleton classes. */
 
 	void SetExportFlag(enum ExportFlags flag) { ExportFlags |= (int)flag; }
 };

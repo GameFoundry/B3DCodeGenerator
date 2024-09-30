@@ -1000,7 +1000,7 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 				// Include the script wrapper object root base type
 				if(classInfo.IsFlagSet(ClassFlags::UsesIScriptExportableAPI))
 				{
-					if(classInfo.IsFlagSet(ClassFlags::IsModule))
+					if(classInfo.HasGlobalSingleInstance())
 						fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptTypeDefinition.h");
 					else
 					{

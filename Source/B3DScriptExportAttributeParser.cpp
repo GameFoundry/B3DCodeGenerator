@@ -180,6 +180,15 @@ void ScriptExportAttributeParser::ParseScriptExportAttributeCommand(const std::s
 	{
 		output.DocumentationGroup = value;
 	}
+	else if(name == "Static")
+	{
+		output.SetExportFlag(ExportFlags::StaticClass);
+	}
+	else if(name == "Singleton")
+	{
+		output.SetExportFlag(ExportFlags::SingletonClass);
+		output.SingletonGetterName = value;
+	}
 	else if (name == "UI")
 	{
 		if (value == "Hide")

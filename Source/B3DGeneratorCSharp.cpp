@@ -376,7 +376,7 @@ static std::string GenerateCSharpEventArguments(const MethodInfo& methodInfo)
  */
 static std::string GenerateCSharpInternalMethodSignature(const ClassInfo& classInformation, const MethodInfo& methodInformation, const TypeMappingInformation& typeMappingInformation)
 {
-	const bool isClassModule = classInformation.IsFlagSet(ClassFlags::IsModule);
+	const bool classHasGlobalSingleInstance = classInformation.HasGlobalSingleInstance();
 	const bool isStatic = methodInformation.IsFlagSet(MethodFlags::Static);
 	const bool isCtor = methodInformation.IsFlagSet(MethodFlags::Constructor);
 
@@ -411,7 +411,7 @@ static std::string GenerateCSharpInternalMethodSignature(const ClassInfo& classI
 		if (methodInformation.Parameters.size() > 0)
 			output << ", ";
 	}
-	else if (!isStatic && !isClassModule)
+	else if (!isStatic && !classHasGlobalSingleInstance)
 	{
 		output << "IntPtr thisPtr";
 
@@ -440,7 +440,7 @@ static std::string GenerateCSharpInternalMethodSignature(const ClassInfo& classI
 static std::string GenerateCSharpClass(const ClassInfo& classInformation)
 {
 	const TypeMappingInformation& typeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(classInformation.NativeName);
-	const bool isModule = classInformation.IsFlagSet(ClassFlags::IsModule);
+	const bool classHasGlobalSingleInstance = classInformation.HasGlobalSingleInstance();
 
 	std::stringstream ctors;
 	std::stringstream properties;
@@ -596,7 +596,7 @@ static std::string GenerateCSharpClass(const ClassInfo& classInformation)
 				else
 					methods << "\t\tpublic ";
 
-				if (isStatic || isModule)
+				if (isStatic || classHasGlobalSingleInstance)
 					methods << "static ";
 
 				methods << returnType << " " << entry.ScriptName << "(" << GenerateCSharpMethodParameters(entry, false) << ")" << std::endl;
@@ -618,7 +618,7 @@ static std::string GenerateCSharpClass(const ClassInfo& classInformation)
 				else
 					methods << "\t\t\tInternal_" << entry.InteropName << "(";
 
-				if (!isStatic && !isModule)
+				if (!isStatic && !classHasGlobalSingleInstance)
 				{
 					methods << "mCachedPtr";
 
@@ -681,7 +681,7 @@ static std::string GenerateCSharpClass(const ClassInfo& classInformation)
 		else
 			properties << "\t\tpublic ";
 
-		if (entry.IsStatic || isModule)
+		if (entry.IsStatic || classHasGlobalSingleInstance)
 			properties << "static ";
 
 		properties << propertyQualifiedTypeName << " " << entry.ScriptName << std::endl;
@@ -693,7 +693,7 @@ static std::string GenerateCSharpClass(const ClassInfo& classInformation)
 			{
 				properties << "\t\t\tget { return Internal_" << entry.GetterName << "(";
 
-				if (!entry.IsStatic && !isModule)
+				if (!entry.IsStatic && !classHasGlobalSingleInstance)
 					properties << "mCachedPtr";
 
 				properties << "); }" << std::endl;
@@ -706,7 +706,7 @@ static std::string GenerateCSharpClass(const ClassInfo& classInformation)
 
 				properties << "\t\t\t\tInternal_" << entry.GetterName << "(";
 
-				if (!entry.IsStatic && !isModule)
+				if (!entry.IsStatic && !classHasGlobalSingleInstance)
 					properties << "mCachedPtr, ";
 
 				properties << "out temp);" << std::endl;
@@ -720,7 +720,7 @@ static std::string GenerateCSharpClass(const ClassInfo& classInformation)
 		{
 			properties << "\t\t\tset { Internal_" << entry.SetterName << "(";
 
-			if (!entry.IsStatic && !isModule)
+			if (!entry.IsStatic && !classHasGlobalSingleInstance)
 				properties << "mCachedPtr, ";
 
 			if(IsStructReference(entry.TypeInformation, propertyTypeMappingInformation))
@@ -755,7 +755,7 @@ static std::string GenerateCSharpClass(const ClassInfo& classInformation)
 				events << "public ";
 		}
 
-		if (isStatic || isModule)
+		if (isStatic || classHasGlobalSingleInstance)
 			events << "static ";
 
 		if (!isCallback && !isInternal)
@@ -784,7 +784,7 @@ static std::string GenerateCSharpClass(const ClassInfo& classInformation)
 
 		interops << "\t\tprivate ";
 
-		if (isStatic || isModule)
+		if (isStatic || classHasGlobalSingleInstance)
 			interops << "static ";
 
 		interops << "void Internal_" << entry.InteropName << "(" << GenerateCSharpMethodParameters(entry, true) << ")" << std::endl;

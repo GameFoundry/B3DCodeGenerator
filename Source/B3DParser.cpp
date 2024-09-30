@@ -1455,6 +1455,17 @@ bool BansheeCodeGeneratorASTVisitor::TryParseDeclarationAsClass(CXXRecordDecl* d
 		outClassInfo.ClassFlags |= (int)ClassFlags::IsModule;
 		outClassInfo.ClassFlags |= (int)ClassFlags::UsesIScriptExportableAPI;
 	}
+	else if((scriptExportInformation.ExportFlags & (int)ExportFlags::StaticClass) != 0)
+	{
+		outClassInfo.ClassFlags |= (int)ClassFlags::IsStatic;
+		outClassInfo.ClassFlags |= (int)ClassFlags::UsesIScriptExportableAPI;
+	}
+	else if((scriptExportInformation.ExportFlags & (int)ExportFlags::SingletonClass) != 0)
+	{
+		outClassInfo.ClassFlags |= (int)ClassFlags::IsSingleton;
+		outClassInfo.ClassFlags |= (int)ClassFlags::UsesIScriptExportableAPI;
+		outClassInfo.SingletonGetterName = scriptExportInformation.SingletonGetterName;
+	}
 
 	if(declaration->isStruct())
 		outClassInfo.ClassFlags |= (int)ClassFlags::IsStruct;

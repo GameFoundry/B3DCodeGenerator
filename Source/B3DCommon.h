@@ -220,6 +220,7 @@ struct GeneratedTypeInformation
 
 	CSVisibility Visibility = CSVisibility::Public; /**< Visibility of the type. */
 	ApiFlags API = ApiFlags::Framework; /**< Determines for which APIs is the type exported. */
+	std::string SingletonGetterName; /**< Name of the global getter method in case the class is a singleton. */
 
 	std::string NativeNameWithoutTemplateArguments; /**< Native name of the type, with template parameters stripped. */
 	SmallVector<TemplateParamInfo, 0> TemplateParameters; /**< Template parameters of the native type, if any. */
@@ -236,7 +237,9 @@ enum class ClassFlags
 	IsTemplateInst = 1 << 2,				/**< Class is an instance of a template. */
 	IsStruct = 1 << 3,						/**< Class is defined as a struct in native code. */
 	HideInInspector = 1 << 4,				/**< Class members will be hidden in the inspector. */
-	UsesIScriptExportableAPI = 1 << 5		/**< Class derives from IScriptExportable and uses the new script export code. */
+	UsesIScriptExportableAPI = 1 << 5,		/**< Class derives from IScriptExportable and uses the new script export code. */
+	IsStatic = 1 << 6,						/**< Class only contains static members and methods, and is never instantiated. */
+	IsSingleton = 1 << 7,					/**< Class is always accessed through a global getter that contains the single class instance. */
 };
 
 /** Information about a generated class. */
@@ -255,6 +258,9 @@ struct ClassInfo : GeneratedTypeInformation
 
 	/** Checks is the provided flag set on the class. */
 	bool IsFlagSet(enum ClassFlags flag) const { return (ClassFlags & (int)flag) != 0; }
+
+	/** Returns true if the class only ever has a globally accessible single instance. i.e. it's a module, generic singleton or purely static class. */
+	bool HasGlobalSingleInstance() const { return IsFlagSet(ClassFlags::IsModule) || IsFlagSet(ClassFlags::IsStatic) || IsFlagSet(ClassFlags::IsSingleton); }
 };
 
 /** Contains a list of methods to inject into a script class, that were not originally defined in their native class. */
