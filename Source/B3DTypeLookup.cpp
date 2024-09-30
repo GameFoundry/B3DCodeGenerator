@@ -388,6 +388,14 @@ TypeMappingInformation TypeLookup::GetNativeToScriptTypeMapping(const VariableTy
 
 		return outType;
 	}
+	case VariableTypeCategory::ConstCharString:
+	{
+		TypeMappingInformation outType;
+		outType.ScriptTypeName = "string";
+		outType.TypeCategory = ExportedClassTypeCategory::ConstCharString;
+
+		return outType;
+	}
 	case VariableTypeCategory::Path:
 	{
 		TypeMappingInformation outType;
@@ -499,6 +507,7 @@ std::string TypeLookup::GetScriptWrapperObjectTypeName(const std::string& typeNa
 		iterFind->second.TypeCategory != ::ExportedClassTypeCategory::Enum &&
 		iterFind->second.TypeCategory != ::ExportedClassTypeCategory::String &&
 		iterFind->second.TypeCategory != ::ExportedClassTypeCategory::WString &&
+		iterFind->second.TypeCategory != ::ExportedClassTypeCategory::ConstCharString &&
 		iterFind->second.TypeCategory != ::ExportedClassTypeCategory::Path;
 
 	if (!isValidInteropType)
@@ -1336,7 +1345,8 @@ void TypeLookup::GatherIncludes(const FieldInfo& fieldInfo, bool isEditor, Inclu
 
 	// These types never require additional includes
 	if (fieldTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Primitive || fieldTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::String ||
-		fieldTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::WString || fieldTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Path)
+		fieldTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::WString || fieldTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::ConstCharString ||
+		fieldTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Path)
 		return;
 
 	// If passed by value, we needs its header in our header

@@ -19,6 +19,7 @@ enum class VariableTypeCategory
 	AsyncOp, /**< AsyncOp<T>. Will also provide an underlying type information for T. */
 	TInlineArray, /**< TArray<T, InlineContainerAllocator<Size>>. Will also provide an underlying type information for T. */
 	TArray, /**< TArray<T>. Will also provide an underlying type information for T. */
+	ConstCharString, /**< const char* treated as a string. */
 };
 
 /** Qualifiers applied to a type in VariableTypeInformation. */

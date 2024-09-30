@@ -19,7 +19,8 @@ enum class ExportedClassTypeCategory
 	String, /**< Builtin String type. */
 	WString, /**< Builtin WString type. */
 	Path, /**< Builtin Path type. */
-	MonoObject /**< Builtin MonoObject type. */
+	MonoObject, /**< Builtin MonoObject type. */
+	ConstCharString, /**< const char* string. */
 };
 
 /**

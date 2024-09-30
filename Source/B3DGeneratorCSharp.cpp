@@ -23,7 +23,7 @@ static std::string GetDefaultValueForType(const VariableTypeInformation& typeInf
 		return "(" + typeMappingInformation.ScriptTypeName + ")0";
 	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Struct)
 		return typeMappingInformation.ScriptTypeName + ".Default()";
-	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::String || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::WString || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Path)
+	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::String || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::WString || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::ConstCharString || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Path)
 		return "\"\"";
 	else // Some class type
 		return "null";

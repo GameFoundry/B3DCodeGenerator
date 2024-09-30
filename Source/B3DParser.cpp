@@ -521,6 +521,13 @@ bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, Variabl
 		if (!ParserUtility::MapBuiltinPrimitiveTypeToCppType(builtinType->getKind(), outType.TypeName))
 			return false;
 
+		// Special case for const char*, we treat this as a separate String category
+		if(builtinType->getKind() == BuiltinType::Char_S && outType.IsQualifierFlagSet(VariableQualifierFlags::IsConst) && outType.IsQualifierFlagSet(VariableQualifierFlags::IsPointer))
+		{
+			outType.TypeCategory = VariableTypeCategory::ConstCharString;
+			return true;
+		}
+
 		outType.TypeCategory = VariableTypeCategory::Primitive;
 		return true;
 	}

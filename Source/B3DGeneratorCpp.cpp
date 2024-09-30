@@ -59,6 +59,7 @@ static std::string GetCppInteropQualifiedTypeName(const VariableTypeInformation&
 		return isGeneratingField ? typeName : typeName + "*";
 	case ExportedClassTypeCategory::String:
 	case ExportedClassTypeCategory::WString:
+	case ExportedClassTypeCategory::ConstCharString:
 	case ExportedClassTypeCategory::Path:
 		return isOutputParameter ? "MonoString**" : "MonoString*";
 	default: // Class, resource, component or ScriptObject
@@ -78,7 +79,7 @@ static std::string GetCppNativeQualifiedTypeName(const VariableTypeInformation& 
 	const std::string& typeName = typeInformation.GetFirstWrappedOrSelfTypeName();
 
 	std::stringstream output;
-	if (!isVariable && typeInformation.IsQualifierFlagSet(VariableQualifierFlags::IsConst))
+	if ((!isVariable || typeInformation.TypeCategory == VariableTypeCategory::ConstCharString) && typeInformation.IsQualifierFlagSet(VariableQualifierFlags::IsConst))
 		output << "const ";
 
 	if (typeInformation.TypeCategory == VariableTypeCategory::Vector)
@@ -106,6 +107,8 @@ static std::string GetCppNativeQualifiedTypeName(const VariableTypeInformation& 
 		output << "String";
 	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::WString)
 		output << "WString";
+	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::ConstCharString)
+		output << "char";
 	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Path)
 		output << "Path";
 	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Enum && typeInformation.TypeCategory == VariableTypeCategory::Flags)
@@ -115,7 +118,7 @@ static std::string GetCppNativeQualifiedTypeName(const VariableTypeInformation& 
 	else
 		output << typeName;
 
-	if (!isVariable)
+	if (!isVariable || typeInformation.TypeCategory == VariableTypeCategory::ConstCharString)
 	{
 		if (typeInformation.IsQualifierFlagSet(VariableQualifierFlags::IsPointer))
 			output << "*";
@@ -394,6 +397,7 @@ static std::string GetArgumentForInternalToNativeCall(const MethodInfo& methodIn
 	case ExportedClassTypeCategory::Path:
 		return fnGetPlainArgument(false);
 	case ExportedClassTypeCategory::GUIElement: // Input type is always a pointer
+	case ExportedClassTypeCategory::ConstCharString:
 		return fnGetPlainArgument(true);
 	case ExportedClassTypeCategory::Component: // Input type is always a handle
 	case ExportedClassTypeCategory::SceneObject:
@@ -451,6 +455,7 @@ static std::string GetArgumentForInteropEventToThunkCall(const MethodInfo& metho
 	case ExportedClassTypeCategory::MonoObject: // Always passed as a pointer, input will always be a pointer (MonoObject*)
 	case ExportedClassTypeCategory::String:
 	case ExportedClassTypeCategory::WString:
+	case ExportedClassTypeCategory::ConstCharString:
 	case ExportedClassTypeCategory::Path:
 	case ExportedClassTypeCategory::GameObject:
 	case ExportedClassTypeCategory::Component:
@@ -494,6 +499,7 @@ static std::string GetReturnValueForNativeCall(const std::string& access, const 
 	}
 	case ExportedClassTypeCategory::MonoObject: // Always passed as a pointer, input must always be a pointer
 	case ExportedClassTypeCategory::GUIElement:
+	case ExportedClassTypeCategory::ConstCharString:
 			return access;
 	case ExportedClassTypeCategory::Component: // Always passed as a handle, input must be a handle
 	{
@@ -736,6 +742,8 @@ static std::string GenerateStringToMonoCall(ExportedClassTypeCategory exportedCl
 			return "MonoUtil::StringToMono(" + argument + ".ToString())";
 		case ExportedClassTypeCategory::String:
 			return "MonoUtil::StringToMono(" + argument + ")";
+		case ExportedClassTypeCategory::ConstCharString:
+			return "MonoUtil::StringToMono(" + argument + ")";
 		case ExportedClassTypeCategory::WString:
 			return "MonoUtil::WstringToMono(" + argument + ")";
 	default:
@@ -750,6 +758,7 @@ static std::string GenerateMonoToStringCall(ExportedClassTypeCategory exportedCl
 	switch (exportedClassTypeCategory)
 	{
 		case ExportedClassTypeCategory::String:
+		case ExportedClassTypeCategory::ConstCharString:
 		case ExportedClassTypeCategory::Path:
 			return "MonoUtil::MonoToString(" + argument + ")";
 		case ExportedClassTypeCategory::WString:
@@ -1263,6 +1272,16 @@ static std::string GenerateMethodBodyBlockForArgument(const std::string& paramet
 				preCallActions << "\t\t" << argumentName << " = " << GenerateMonoToStringCall(parameterTypeMappingInformation.TypeCategory, parameterName) << ";\n";
 		}
 		break;
+		case ExportedClassTypeCategory::ConstCharString:
+		{
+			if (returnValue)
+				postCallActions << "\t\t" << parameterName << " = " << GenerateStringToMonoCall(parameterTypeMappingInformation.TypeCategory, argumentName) << ";\n";
+			else if (isOutputParameter)
+				postCallActions << "\t\tMonoUtil::ReferenceCopy(" << parameterName << ",  (MonoObject*)" << GenerateStringToMonoCall(parameterTypeMappingInformation.TypeCategory, argumentName) << ");\n";
+			else
+				errs() << "Error: const char* type not supported as input. Ignoring. \n";
+		}
+		break;
 		case ExportedClassTypeCategory::MonoObject:
 		{
 			if (returnValue)
@@ -1384,6 +1403,9 @@ static std::string GenerateMethodBodyBlockForArgument(const std::string& paramet
 			case ExportedClassTypeCategory::Path:
 				preCallActions << "\t\t\t\t" << arrayArgumentName << "[elementIndex] = " << scriptArrayName << ".Get<" << arrayEntryTypeName << ">(elementIndex);" << std::endl;
 				break;
+			case ExportedClassTypeCategory::ConstCharString:
+				outs() << "Error: const char* type not supported as input or array element. Ignoring. \n";
+				break;
 			case ExportedClassTypeCategory::MonoObject:
 				outs() << "Error: MonoObject type not supported as input. Ignoring. \n";
 				break;
@@ -1494,6 +1516,9 @@ static std::string GenerateMethodBodyBlockForArgument(const std::string& paramet
 			case ExportedClassTypeCategory::WString:
 			case ExportedClassTypeCategory::Path:
 				postCallActions << "\t\t\t" << scriptArrayName << ".Set(elementIndex, " << arrayArgumentName << "[elementIndex]);" << std::endl;
+				break;
+			case ExportedClassTypeCategory::ConstCharString:
+				outs() << "Error: const char* type not supported as an array element. Ignoring. \n";
 				break;
 			case ExportedClassTypeCategory::Enum:
 			{
@@ -1669,6 +1694,19 @@ static std::string GenerateFieldConvertBlock(const std::string& name, const Vari
 			}
 		}
 		break;
+		case ExportedClassTypeCategory::ConstCharString:
+		{
+			if(toInterop)
+			{
+				preActions << "\t\tMonoString* " << argumentVariableName << ";\n";
+				preActions << "\t\t" << argumentVariableName << " = " << GenerateStringToMonoCall(parameterTypeMappingInformation.TypeCategory, "value." + name) << ";\n";
+			}
+			else
+			{
+				// Not supported, caller should emit a warning
+			}
+		}
+		break;
 		case ExportedClassTypeCategory::MonoObject:
 		{
 			preActions << "\t\tMonoObject* " << argumentVariableName << ";" << std::endl;
@@ -1812,6 +1850,7 @@ static std::string GenerateFieldConvertBlock(const std::string& name, const Vari
 		case ::ExportedClassTypeCategory::Primitive:
 		case ::ExportedClassTypeCategory::String:
 		case ::ExportedClassTypeCategory::WString:
+		case ::ExportedClassTypeCategory::ConstCharString:
 		case ::ExportedClassTypeCategory::Path:
 		case ::ExportedClassTypeCategory::Enum:
 			entryType = arrayElementTypeInformation.GetLastWrappedOrSelfTypeName();
@@ -1855,6 +1894,9 @@ static std::string GenerateFieldConvertBlock(const std::string& name, const Vari
 				break;
 			case ::ExportedClassTypeCategory::MonoObject:
 				outs() << "Error: MonoObject type not supported as input. Ignoring. \n";
+				break;
+			case ::ExportedClassTypeCategory::ConstCharString:
+				outs() << "Error: const char* type not supported as input or array element. Ignoring. \n";
 				break;
 			case ::ExportedClassTypeCategory::Enum:
 			{
@@ -1977,6 +2019,9 @@ static std::string GenerateFieldConvertBlock(const std::string& name, const Vari
 				break;
 			case ::ExportedClassTypeCategory::MonoObject:
 				preActions << "\t\t\t" << scriptArrayName << ".Set(elementIndex, value." << name << "[elementIndex]);" << std::endl;
+				break;
+			case ::ExportedClassTypeCategory::ConstCharString:
+				outs() << "Error: const char* type not supported as array element. Ignoring. \n";
 				break;
 			case ::ExportedClassTypeCategory::Class:
 			case ::ExportedClassTypeCategory::ReflectableClass:
@@ -2108,12 +2153,12 @@ static std::string GenerateEventCallbackBodyBlockForArgument(const std::string& 
 			break;
 		case ExportedClassTypeCategory::String:
 		case ExportedClassTypeCategory::WString:
+		case ExportedClassTypeCategory::ConstCharString:
 		case ExportedClassTypeCategory::Path:
 		{
 			preCallActions << "\t\tMonoString* " << argName << ";" << std::endl;
 			preCallActions << "\t\t" << argName << " = " << GenerateStringToMonoCall(parameterTypeMappingInformation.TypeCategory, name) << ";\n";
 		}
-		break;
 		break;
 		case ExportedClassTypeCategory::MonoObject:
 		{
@@ -2151,6 +2196,7 @@ static std::string GenerateEventCallbackBodyBlockForArgument(const std::string& 
 		case ExportedClassTypeCategory::Primitive:
 		case ExportedClassTypeCategory::String:
 		case ExportedClassTypeCategory::WString:
+		case ExportedClassTypeCategory::ConstCharString:
 		case ExportedClassTypeCategory::Path:
 		case ExportedClassTypeCategory::Enum:
 			entryType = parameterTypeName;
@@ -2186,6 +2232,9 @@ static std::string GenerateEventCallbackBodyBlockForArgument(const std::string& 
 		case ExportedClassTypeCategory::WString:
 		case ExportedClassTypeCategory::Path:
 			preCallActions << "\t\t\t" << scriptArrayName << ".Set(i, " << name << "[i]);" << std::endl;
+			break;
+		case ExportedClassTypeCategory::ConstCharString:
+			outs() << "Error: const char* type not supported an array element. Ignoring. \n";
 			break;
 		case ExportedClassTypeCategory::Enum:
 		{
@@ -3918,6 +3967,12 @@ std::string GenerateStructDefinition(const StructInfo& structInfo)
 		output << "\t\t" << structInfo.NativeName << " output;\n";
 		for (auto& fieldInformation : structInfo.Fields)
 		{
+			if(fieldInformation.TypeInformation.TypeCategory == VariableTypeCategory::ConstCharString)
+			{
+				output << "\t\tB3D_LOG(Error, Script, \"const char* type cannot be assigned from scripting for field '" << fieldInformation.Name << "'. This is not supported for this type.\");\n";
+				continue;
+			}
+
 			// Arrays can be assigned, so copy them entry by entry
 			if(fieldInformation.TypeInformation.TypeCategory == VariableTypeCategory::Array)
 			{

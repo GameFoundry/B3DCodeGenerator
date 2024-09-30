@@ -69,6 +69,7 @@ const std::string& VariableTypeInformation::GetFirstWrappedOrSelfTypeName() cons
 	case VariableTypeCategory::General: 
 	case VariableTypeCategory::Primitive: 
 	case VariableTypeCategory::String: 
+	case VariableTypeCategory::ConstCharString: 
 	case VariableTypeCategory::WString:
 	case VariableTypeCategory::MonoObject: 
 	case VariableTypeCategory::Path:
