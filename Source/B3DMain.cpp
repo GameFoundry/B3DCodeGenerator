@@ -211,7 +211,6 @@ int main(int argc, const char** argv)
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Quaternion", "Math/BsQuaternion.h", "Quaternion", "Wrappers/BsScriptQuaternion.h", ExportedClassTypeCategory::Struct);
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "TRadian<float>", "Math/BsRadian.h", "Radian", "", ExportedClassTypeCategory::Struct);
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "TDegree<float>", "Math/BsDegree.h", "Degree", "", ExportedClassTypeCategory::Struct);
-	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Color", "Image/BsColor.h", "Color", "Wrappers/BsScriptColor.h", ExportedClassTypeCategory::Struct);
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Capsule", "Math/BsCapsule.h", "Capsule", "", ExportedClassTypeCategory::Struct);
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Rect2", "Math/BsRect2.h", "Rect2", "", ExportedClassTypeCategory::Struct);
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Rect2I", "Math/BsRect2I.h", "Rect2I", "", ExportedClassTypeCategory::Struct);
