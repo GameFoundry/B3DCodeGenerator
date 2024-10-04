@@ -82,38 +82,38 @@ static std::string GetCppNativeQualifiedTypeName(const VariableTypeInformation& 
 	if ((!isVariable || typeInformation.TypeCategory == VariableTypeCategory::ConstCharString) && typeInformation.IsQualifierFlagSet(VariableQualifierFlags::IsConst))
 		output << "const ";
 
-	if (typeInformation.TypeCategory == VariableTypeCategory::Vector)
+	if(typeInformation.TypeCategory == VariableTypeCategory::Vector)
 		output << "Vector<" + GetCppNativeQualifiedTypeName(typeInformation.AssertGetUnderlyingType(), typeMappingInformation, false) + ">";
-	else if (typeInformation.TypeCategory == VariableTypeCategory::TInlineArray)
+	else if(typeInformation.TypeCategory == VariableTypeCategory::TInlineArray)
 		output << "TInlineArray<" + GetCppNativeQualifiedTypeName(typeInformation.AssertGetUnderlyingType(), typeMappingInformation, false) + ", " + std::to_string(typeInformation.ArraySize) + ">";
-	else if (typeInformation.TypeCategory == VariableTypeCategory::TArray)
-		output << "TArray<" + GetCppNativeQualifiedTypeName(typeInformation.AssertGetUnderlyingType(), typeMappingInformation, false)  + ">";
-	else if (typeInformation.TypeCategory == VariableTypeCategory::AsyncOp)
+	else if(typeInformation.TypeCategory == VariableTypeCategory::TArray)
+		output << "TArray<" + GetCppNativeQualifiedTypeName(typeInformation.AssertGetUnderlyingType(), typeMappingInformation, false) + ">";
+	else if(typeInformation.TypeCategory == VariableTypeCategory::AsyncOp)
 		output << "TAsyncOp<" + GetCppNativeQualifiedTypeName(typeInformation.AssertGetUnderlyingType(), typeMappingInformation, false) + ">";
-	else if (typeInformation.TypeCategory == VariableTypeCategory::Array || typeInformation.TypeCategory == VariableTypeCategory::ComponentOrActor)
+	else if(typeInformation.TypeCategory == VariableTypeCategory::Array || typeInformation.TypeCategory == VariableTypeCategory::ComponentOrActor)
 		output << GetCppNativeQualifiedTypeName(typeInformation.AssertGetUnderlyingType(), typeMappingInformation, false);
-	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Resource)
+	else if(typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Resource)
 		output << "TResourceHandle<" + typeName + ">";
-	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GameObject || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::SceneObject || typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Component)
+	else if(typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GameObject || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::SceneObject || typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Component)
 		output << "GameObjectHandle<" + typeName + ">";
-	else if (typeMappingInformation.IsClassType())
+	else if(typeMappingInformation.IsClassType())
 	{
-		if (isVariable || typeInformation.TypeCategory == VariableTypeCategory::SharedPointer)
+		if(isVariable || typeInformation.TypeCategory == VariableTypeCategory::SharedPointer)
 			output << "SPtr<" + typeName + ">";
 		else
 			output << typeName;
 	}
-	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::String)
+	else if(typeMappingInformation.TypeCategory == ExportedClassTypeCategory::String)
 		output << "String";
-	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::WString)
+	else if(typeMappingInformation.TypeCategory == ExportedClassTypeCategory::WString)
 		output << "WString";
-	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::ConstCharString)
+	else if(typeMappingInformation.TypeCategory == ExportedClassTypeCategory::ConstCharString)
 		output << "char";
-	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Path)
+	else if(typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Path)
 		output << "Path";
-	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Enum && typeInformation.TypeCategory == VariableTypeCategory::Flags)
+	else if(typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Enum && typeInformation.TypeCategory == VariableTypeCategory::Flags)
 		output << "Flags<" + typeName + ">";
-	else if(typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GUIElement)
+	else if(typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GUIElement || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::MonoObject)
 		output << typeName + "*";
 	else
 		output << typeName;
@@ -390,13 +390,12 @@ static std::string GetArgumentForInternalToNativeCall(const MethodInfo& methodIn
 		return fnGetPlainArgument(typeInformation.IsOutputParameter());
 	case ExportedClassTypeCategory::Struct: // Input type is always a pointer
 		return fnGetPlainArgument(!typeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsStructWrapperUsed));
-	case ExportedClassTypeCategory::MonoObject: // Input type is either a pointer or a pointer to pointer, depending if output or not
-		return fnGetPlainArgument(typeInformation.IsOutputParameter());
 	case ExportedClassTypeCategory::String: // Input type is always a value
 	case ExportedClassTypeCategory::WString:
 	case ExportedClassTypeCategory::Path:
 		return fnGetPlainArgument(false);
 	case ExportedClassTypeCategory::GUIElement: // Input type is always a pointer
+	case ExportedClassTypeCategory::MonoObject:
 	case ExportedClassTypeCategory::ConstCharString:
 		return fnGetPlainArgument(true);
 	case ExportedClassTypeCategory::Component: // Input type is always a handle
@@ -1287,12 +1286,12 @@ static std::string GenerateMethodBodyBlockForArgument(const std::string& paramet
 		break;
 		case ExportedClassTypeCategory::MonoObject:
 		{
-			if (returnValue)
+			if(returnValue)
 				postCallActions << "\t\t" << parameterName << " = " << argumentName << ";" << std::endl;
-			else if (isOutputParameter)
+			else if(isOutputParameter)
 				postCallActions << "\t\tMonoUtil::ReferenceCopy(" << parameterName << ", " << argumentName << ");" << std::endl;
 			else
-				errs() << "Error: MonoObject type not supported as input. Ignoring. \n";
+				preCallActions << "\t\t" << argumentName << " = " << parameterName << ";\n";
 		}
 		break;
 		case ExportedClassTypeCategory::GUIElement:
@@ -1410,7 +1409,7 @@ static std::string GenerateMethodBodyBlockForArgument(const std::string& paramet
 				outs() << "Error: const char* type not supported as an array element. Ignoring. \n"; // TODO - Can be easily added by adding ScriptArray specialization
 				break;
 			case ExportedClassTypeCategory::MonoObject:
-				outs() << "Error: MonoObject type not supported as input. Ignoring. \n";
+				outs() << "Error: Array of MonoObject types not supported as input. Ignoring. \n";
 				break;
 			case ExportedClassTypeCategory::Enum:
 			{
@@ -1896,7 +1895,7 @@ static std::string GenerateFieldConvertBlock(const std::string& name, const Vari
 				preActions << "\t\t\t\t" << argumentVariableName << "[elementIndex] = " << scriptArrayName << ".Get<" << entryType << ">(elementIndex);" << std::endl;
 				break;
 			case ::ExportedClassTypeCategory::MonoObject:
-				outs() << "Error: MonoObject type not supported as input. Ignoring. \n";
+				outs() << "Error: Array of MonoObject types not supported as input. Ignoring. \n";
 				break;
 			case ::ExportedClassTypeCategory::ConstCharString:
 				outs() << "Error: const char* type not supported as input or array element. Ignoring. \n";

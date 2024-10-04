@@ -1994,7 +1994,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* declarati
 			return true; // Already parsed
 
 		// External classes are just containers for external methods, we don't need to process them directly
-		if ((scriptExportInformation.ExportFlags & (int)ExportFlags::ExternalMethod) == 0)
+		if ((scriptExportInformation.ExportFlags & (int)ExportFlags::ExternalClass) == 0)
 		{
 			TypeLookup::RegisterEntryToGenerate(scriptExportInformation.ExportedFileName, classInfo);
 		}

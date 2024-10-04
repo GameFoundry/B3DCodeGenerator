@@ -96,3 +96,17 @@ const std::string& VariableTypeInformation::GetLastWrappedOrSelfTypeName() const
 	return TypeName;
 }
 
+bool VariableTypeInformation::IsOutputParameter() const
+{
+	// Special case for types that are passed as native pointers
+	if(TypeCategory == VariableTypeCategory::MonoObject)
+	{
+		assert(IsQualifierFlagSet(VariableQualifierFlags::IsPointer));
+
+		// Output parameter only if it's a reference to pointer
+		return IsQualifierFlagSet(VariableQualifierFlags::IsReference);
+	}
+
+	return (IsQualifierFlagSet(VariableQualifierFlags::IsPointer) || IsQualifierFlagSet(VariableQualifierFlags::IsReference)) && !IsQualifierFlagSet(VariableQualifierFlags::IsConst);
+}
+

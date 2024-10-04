@@ -67,7 +67,7 @@ struct VariableTypeInformation
 	bool IsEmpty() const { return TypeName.empty(); }
 
 	/** Returns true if the variable type is a non-const pointer or reference, which is recognized as a parameter output. */
-	bool IsOutputParameter() const { return (IsQualifierFlagSet(VariableQualifierFlags::IsPointer) || IsQualifierFlagSet(VariableQualifierFlags::IsReference)) && !IsQualifierFlagSet(VariableQualifierFlags::IsConst); }
+	bool IsOutputParameter() const;
 
 	/** Checks if the type category of the vector a native array, Vector, or TArray. If @p includeNative is false, native arrays won't be counted. */
 	bool IsArrayOrVector(bool includeNative = true) const

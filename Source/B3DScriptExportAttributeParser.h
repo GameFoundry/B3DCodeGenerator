@@ -17,6 +17,7 @@ enum class ExportFlags
 	EditorAPI = 1 << 9,
 	SingletonClass = 1 << 10, /**< A getter method is provided that can be used for always retrieving an instance of this class. */
 	StaticClass = 1 << 11, /**< An instance of this class is never created, all methods and members are static. */
+	ExternalClass = 1 << 12, /**< Signifies that a class only contains external methods and itself should not be exported to script. */
 };
 
 /** Information used for controlling script export of a particular declaration. */

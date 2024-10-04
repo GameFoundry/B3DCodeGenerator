@@ -161,6 +161,11 @@ void ScriptExportAttributeParser::ParseScriptExportAttributeCommand(const std::s
 		output.SetExportFlag(ExportFlags::ExternalMethod);
 		output.ExtensionOfType = value;
 	}
+	else if (name == "ExtensionClassForType")
+	{
+		output.SetExportFlag(ExportFlags::ExternalClass);
+		output.ExtensionOfType = value;
+	}
 	else if (name == "ExtensionConstructorForType")
 	{
 		output.SetExportFlag(ExportFlags::ExternalConstructor);
