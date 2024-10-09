@@ -72,6 +72,7 @@ const std::string& VariableTypeInformation::GetFirstWrappedOrSelfTypeName() cons
 	case VariableTypeCategory::ConstCharString: 
 	case VariableTypeCategory::WString:
 	case VariableTypeCategory::MonoObject: 
+	case VariableTypeCategory::MonoReflectionType:
 	case VariableTypeCategory::Path:
 		return TypeName;
 	case VariableTypeCategory::Vector:
@@ -99,7 +100,7 @@ const std::string& VariableTypeInformation::GetLastWrappedOrSelfTypeName() const
 bool VariableTypeInformation::IsOutputParameter() const
 {
 	// Special case for types that are passed as native pointers
-	if(TypeCategory == VariableTypeCategory::MonoObject)
+	if(TypeCategory == VariableTypeCategory::MonoObject || TypeCategory == VariableTypeCategory::MonoReflectionType)
 	{
 		assert(IsQualifierFlagSet(VariableQualifierFlags::IsPointer));
 

@@ -561,6 +561,20 @@ bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, Variabl
 
 				return true;
 			}
+			// Check for pointer to a managed type
+			if(sourceTypeName == "_MonoReflectionType")
+			{
+				if (!outType.IsQualifierFlagSet(VariableQualifierFlags::IsPointer))
+				{
+					errs() << "Error: Found an object of type MonoReflectionType but not passed by pointer. This is not supported. \n";
+					return false;
+				}
+
+				outType.TypeName = "_MonoReflectionType";
+				outType.TypeCategory = VariableTypeCategory::MonoReflectionType;
+
+				return true;
+			}
 			else if(sourceTypeName == "Path")
 			{
 				outType.TypeName = "Path";

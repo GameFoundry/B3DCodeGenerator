@@ -13,13 +13,14 @@ enum class VariableTypeCategory
 	WString, /**< WString. */
 	Flags, /**< Flags<T>. Will also provide an underlying type information for T. */
 	Array,/**< Array<T>. Will also provide an underlying type information for T. */
-	MonoObject, /**< MonoObject. */
+	MonoObject, /**< MonoObject. Must always be passed as raw pointer. */
 	ComponentOrActor, /**< ComponentOrActor<T>. Will also provide an underlying type information for T. */
 	Path, /**< Path */
 	AsyncOp, /**< AsyncOp<T>. Will also provide an underlying type information for T. */
 	TInlineArray, /**< TArray<T, InlineContainerAllocator<Size>>. Will also provide an underlying type information for T. */
 	TArray, /**< TArray<T>. Will also provide an underlying type information for T. */
 	ConstCharString, /**< const char* treated as a string. */
+	MonoReflectionType, /**< MonoReflectionType. Must always be passed as raw pointer. */
 };
 
 /** Qualifiers applied to a type in VariableTypeInformation. */

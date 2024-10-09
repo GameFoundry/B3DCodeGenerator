@@ -21,6 +21,7 @@ enum class ExportedClassTypeCategory
 	Path, /**< Builtin Path type. */
 	MonoObject, /**< Builtin MonoObject type. */
 	ConstCharString, /**< const char* string. */
+	MonoReflectionType, /**< Builtin MonoReflectionType type. */
 };
 
 /**
@@ -91,6 +92,7 @@ struct IncludesInfo
 	bool RequiresScriptRRef = false; /**< Requires the script resource reference include. */
 	bool RequiresRTTI = false; /**< Requires use of RTTIType. */
 	bool RequiresAsyncOp = false; /**< Requires use of an AsyncOp. */
+	bool RequiresScriptAssemblyManager = false; /**< Requires ScriptAssemblyManager include. */
 	std::unordered_map<std::string, IncludeInfo> Includes;
 	std::unordered_map<std::string, ForwardDeclarationInformation> ForwardDeclarations;
 };

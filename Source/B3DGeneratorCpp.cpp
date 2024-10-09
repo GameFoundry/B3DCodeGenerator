@@ -19,6 +19,7 @@ static bool IsInternalMethodParameterValueType(const VariableTypeInformation& ty
 	case VariableTypeCategory::ResourceHandle: 
 	case VariableTypeCategory::GameObjectHandle:
 	case VariableTypeCategory::MonoObject:
+	case VariableTypeCategory::MonoReflectionType:
 		return false;
 	default: 
 		return true;
@@ -113,7 +114,7 @@ static std::string GetCppNativeQualifiedTypeName(const VariableTypeInformation& 
 		output << "Path";
 	else if(typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Enum && typeInformation.TypeCategory == VariableTypeCategory::Flags)
 		output << "Flags<" + typeName + ">";
-	else if(typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GUIElement || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::MonoObject)
+	else if(typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GUIElement || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::MonoObject || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::MonoReflectionType)
 		output << typeName + "*";
 	else
 		output << typeName;
@@ -396,6 +397,7 @@ static std::string GetArgumentForInternalToNativeCall(const MethodInfo& methodIn
 		return fnGetPlainArgument(false);
 	case ExportedClassTypeCategory::GUIElement: // Input type is always a pointer
 	case ExportedClassTypeCategory::MonoObject:
+	case ExportedClassTypeCategory::MonoReflectionType:
 	case ExportedClassTypeCategory::ConstCharString:
 		return fnGetPlainArgument(true);
 	case ExportedClassTypeCategory::Component: // Input type is always a handle
@@ -452,6 +454,7 @@ static std::string GetArgumentForInteropEventToThunkCall(const MethodInfo& metho
 	}
 	case ExportedClassTypeCategory::Struct: // Always passed as pointer, input will be a pointer (boxed struct as MonoObject*)
 	case ExportedClassTypeCategory::MonoObject: // Always passed as a pointer, input will always be a pointer (MonoObject*)
+	case ExportedClassTypeCategory::MonoReflectionType:
 	case ExportedClassTypeCategory::String:
 	case ExportedClassTypeCategory::WString:
 	case ExportedClassTypeCategory::ConstCharString:
@@ -497,6 +500,7 @@ static std::string GetReturnValueForNativeCall(const std::string& access, const 
 		return access;
 	}
 	case ExportedClassTypeCategory::MonoObject: // Always passed as a pointer, input must always be a pointer
+	case ExportedClassTypeCategory::MonoReflectionType:
 	case ExportedClassTypeCategory::GUIElement:
 	case ExportedClassTypeCategory::ConstCharString:
 			return access;
@@ -1249,6 +1253,7 @@ static std::string GenerateMethodBodyBlockForArgument(const std::string& paramet
 		}
 		break;
 		case ExportedClassTypeCategory::MonoObject:
+		case ExportedClassTypeCategory::MonoReflectionType:
 		{
 			if(returnValue)
 				postCallActions << "\t\t" << parameterName << " = " << argumentName << ";" << std::endl;
@@ -1333,6 +1338,9 @@ static std::string GenerateMethodBodyBlockForArgument(const std::string& paramet
 		case ::ExportedClassTypeCategory::MonoObject:
 			arrayEntryTypeName = "MonoObject*";
 			break;
+		case ::ExportedClassTypeCategory::MonoReflectionType:
+			arrayEntryTypeName = "MonoReflectionType*";
+			break;
 		default: // Some object or struct type
 			arrayEntryTypeName = TypeLookup::GetScriptWrapperObjectTypeName(parameterTypeName, arrayElementTypeInformation.IsParameterFlagSet(ParameterFlags::AsResourceRef));
 			break;
@@ -1366,7 +1374,7 @@ static std::string GenerateMethodBodyBlockForArgument(const std::string& paramet
 			case ExportedClassTypeCategory::Primitive:
 			case ExportedClassTypeCategory::String:
 			case ExportedClassTypeCategory::WString:
-			case ExportedClassTypeCategory::Path:
+			
 				preCallActions << "\t\t\t\t" << arrayArgumentName << "[elementIndex] = " << scriptArrayName << ".Get<" << arrayEntryTypeName << ">(elementIndex);" << std::endl;
 				break;
 			case ExportedClassTypeCategory::ConstCharString:
@@ -1374,6 +1382,9 @@ static std::string GenerateMethodBodyBlockForArgument(const std::string& paramet
 				break;
 			case ExportedClassTypeCategory::MonoObject:
 				outs() << "Error: Array of MonoObject types not supported as input. Ignoring. \n";
+				break;
+			case ExportedClassTypeCategory::MonoReflectionType:
+				outs() << "Error: Array of MonoReflectionType types not supported as input. Ignoring. \n";
 				break;
 			case ExportedClassTypeCategory::Enum:
 			{
@@ -1466,14 +1477,21 @@ static std::string GenerateMethodBodyBlockForArgument(const std::string& paramet
 				postCallActions << parameterInformation.TypeInformation.ArraySize;
 			postCallActions << ";\n";
 
-			postCallActions << "\t\tScriptArray " << scriptArrayName;
-			if(parameterTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Enum)
-				postCallActions << " = " << "ScriptArray::Create<u32>(elementCount" << parameterName << ");" << std::endl; // TODO - Handle this more gracefully
+			if(parameterTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::MonoReflectionType)
+			{
+				postCallActions << "\t\tScriptArray " << scriptArrayName << " = ScriptArray(*ScriptAssemblyManager::Instance().GetBuiltinClasses().SystemTypeClass, elementCount" << parameterName << ");\n";
+			}
 			else
-				postCallActions << " = " << "ScriptArray::Create<" << arrayEntryTypeName << ">(elementCount" << parameterName << ");" << std::endl;
+			{
+				postCallActions << "\t\tScriptArray " << scriptArrayName;
+				if(parameterTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::Enum)
+					postCallActions << " = " << "ScriptArray::Create<u32>(elementCount" << parameterName << ");" << std::endl; // TODO - Handle this more gracefully
+				else
+					postCallActions << " = " << "ScriptArray::Create<" << arrayEntryTypeName << ">(elementCount" << parameterName << ");" << std::endl;
 
-			postCallActions << "\t\tfor(int elementIndex = 0; elementIndex < elementCount" << parameterName << "; elementIndex++)" << std::endl;
-			postCallActions << "\t\t{" << std::endl;
+				postCallActions << "\t\tfor(int elementIndex = 0; elementIndex < elementCount" << parameterName << "; elementIndex++)" << std::endl;
+				postCallActions << "\t\t{" << std::endl;
+			}
 
 			switch (parameterTypeMappingInformation.TypeCategory)
 			{
@@ -1512,6 +1530,7 @@ static std::string GenerateMethodBodyBlockForArgument(const std::string& paramet
 
 				break;
 			case ExportedClassTypeCategory::MonoObject:
+			case ExportedClassTypeCategory::MonoReflectionType:
 				postCallActions << "\t\t\t" << scriptArrayName << ".Set(elementIndex, " << arrayArgumentName << "[elementIndex]);" << std::endl;
 				break;
 			case ExportedClassTypeCategory::Class:
@@ -1675,8 +1694,14 @@ static std::string GenerateFieldConvertBlock(const std::string& name, const Vari
 		break;
 		case ExportedClassTypeCategory::MonoObject:
 		{
-			preActions << "\t\tMonoObject* " << argumentVariableName << ";" << std::endl;
-			preActions << "\t\t" << argumentVariableName << " = " << name << ";" << std::endl;
+			preActions << "\t\tMonoObject* " << argumentVariableName << ";\n";
+			preActions << "\t\t" << argumentVariableName << " = " << name << ";\n";
+		}
+		break;
+		case ExportedClassTypeCategory::MonoReflectionType:
+		{
+			preActions << "\t\tMonoReflectionType* " << argumentVariableName << ";\n";
+			preActions << "\t\t" << argumentVariableName << " = " << name << ";\n";
 		}
 		break;
 		case ExportedClassTypeCategory::GUIElement:
@@ -1824,6 +1849,9 @@ static std::string GenerateFieldConvertBlock(const std::string& name, const Vari
 		case ::ExportedClassTypeCategory::MonoObject:
 			entryType = "MonoObject*";
 			break;
+		case ::ExportedClassTypeCategory::MonoReflectionType:
+			entryType = "MonoReflectionType*";
+			break;
 		default: // Some object or struct type
 			entryType = TypeLookup::GetScriptWrapperObjectTypeName(fieldTypeName, arrayElementTypeInformation.IsParameterFlagSet(ParameterFlags::AsResourceRef));
 			break;
@@ -1860,6 +1888,9 @@ static std::string GenerateFieldConvertBlock(const std::string& name, const Vari
 				break;
 			case ::ExportedClassTypeCategory::MonoObject:
 				outs() << "Error: Array of MonoObject types not supported as input. Ignoring. \n";
+				break;
+			case ::ExportedClassTypeCategory::MonoReflectionType:
+				outs() << "Error: Array of MonoReflectionType types not supported as input. Ignoring. \n";
 				break;
 			case ::ExportedClassTypeCategory::ConstCharString:
 				outs() << "Error: const char* type not supported as input or array element. Ignoring. \n";
@@ -1984,6 +2015,7 @@ static std::string GenerateFieldConvertBlock(const std::string& name, const Vari
 				preActions << ");\n";
 				break;
 			case ::ExportedClassTypeCategory::MonoObject:
+			case ::ExportedClassTypeCategory::MonoReflectionType:
 				preActions << "\t\t\t" << scriptArrayName << ".Set(elementIndex, value." << name << "[elementIndex]);" << std::endl;
 				break;
 			case ::ExportedClassTypeCategory::ConstCharString:
@@ -2131,6 +2163,11 @@ static std::string GenerateEventCallbackBodyBlockForArgument(const std::string& 
 			preCallActions << "\t\tMonoObject* " << argName << " = " << name << ";\n";
 		}
 		break;
+		case ExportedClassTypeCategory::MonoReflectionType:
+		{
+			preCallActions << "\t\tMonoReflectionType* " << argName << " = " << name << ";\n";
+		}
+		break;
 		case ExportedClassTypeCategory::Class:
 		case ExportedClassTypeCategory::ReflectableClass:
 		{
@@ -2169,6 +2206,9 @@ static std::string GenerateEventCallbackBodyBlockForArgument(const std::string& 
 			break;
 		case ExportedClassTypeCategory::MonoObject:
 			entryType = "MonoObject*";
+			break;
+		case ExportedClassTypeCategory::MonoReflectionType:
+			entryType = "MonoReflectionType*";
 			break;
 		default: // Some object or struct type
 			entryType = TypeLookup::GetScriptWrapperObjectTypeName(parameterTypeName, arrayElementTypeInformation.IsParameterFlagSet(ParameterFlags::AsResourceRef));
@@ -2227,6 +2267,7 @@ static std::string GenerateEventCallbackBodyBlockForArgument(const std::string& 
 			preCallActions << ");\n";
 			break;
 		case ExportedClassTypeCategory::MonoObject:
+		case ExportedClassTypeCategory::MonoReflectionType:
 			preCallActions << "\t\t\t\t" << scriptArrayName << ".Set(i, " << name << "[i]);" << std::endl;
 			break;
 		case ExportedClassTypeCategory::Class:

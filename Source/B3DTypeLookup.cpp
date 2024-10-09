@@ -412,6 +412,14 @@ TypeMappingInformation TypeLookup::GetNativeToScriptTypeMapping(const VariableTy
 
 		return outType;
 	}
+	case VariableTypeCategory::MonoReflectionType:
+	{
+		TypeMappingInformation outType;
+		outType.ScriptTypeName = "Type";
+		outType.TypeCategory = ExportedClassTypeCategory::MonoReflectionType;
+
+		return outType;
+	}
 	case VariableTypeCategory::AsyncOp:
 	{
 		TypeMappingInformation underlyingTypeMapping;
@@ -1084,6 +1092,9 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 			if(includesInfo.RequiresRTTI)
 				fileInfo.second.ReferencedSourceIncludes.push_back("Reflection/BsRTTIType.h");
 
+			if(includesInfo.RequiresScriptAssemblyManager)
+				fileInfo.second.ReferencedSourceIncludes.push_back("Serialization/BsScriptAssemblyManager.h");
+
 			for (auto& entry : includesInfo.Includes)
 			{
 				uint32_t originFlags = (uint32_t)entry.second.NativeIncludeFlags;
@@ -1305,7 +1316,6 @@ void TypeLookup::GatherIncludes(const VariableTypeInformation& typeInformation, 
 
 	if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Resource)
 	{
-
 		if(underlyingTypeInformation.IsParameterFlagSet(ParameterFlags::AsResourceRef))
 		{
 			output.RequiresScriptRRef = true;
@@ -1315,6 +1325,9 @@ void TypeLookup::GatherIncludes(const VariableTypeInformation& typeInformation, 
 
 	if (underlyingTypeInformation.TypeCategory == VariableTypeCategory::AsyncOp)
 		output.RequiresAsyncOp = true;
+
+	if(underlyingTypeInformation.TypeCategory == VariableTypeCategory::MonoReflectionType && typeInformation.IsArrayOrVector())
+		output.RequiresScriptAssemblyManager = true;
 }
 
 void TypeLookup::GatherIncludes(const MethodInfo& methodInfo, bool isEditor, IncludesInfo& output)
@@ -1394,6 +1407,9 @@ void TypeLookup::GatherIncludes(const FieldInfo& fieldInfo, bool isEditor, Inclu
 		if (underlyingTypeInformation.TypeCategory == VariableTypeCategory::AsyncOp)
 			output.RequiresAsyncOp = true;
 	}
+
+	if(underlyingTypeInformation.TypeCategory == VariableTypeCategory::MonoReflectionType && fieldInfo.TypeInformation.IsArrayOrVector())
+		output.RequiresScriptAssemblyManager = true;
 }
 
 void TypeLookup::GatherIncludes(const ClassInfo& classInfo, IncludesInfo& output)
