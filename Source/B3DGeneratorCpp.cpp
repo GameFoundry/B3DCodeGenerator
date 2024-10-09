@@ -831,56 +831,20 @@ static std::string GenerateNativeClassToMonoObject(const VariableTypeInformation
 	std::stringstream output;
 
 	const bool isUsingIScriptExportableAPI = typeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::UsesIScriptExportableAPI);
-	auto fnGenerateCreateLine = [&output, &outputVariableName, performReferenceCopy, isUsingIScriptExportableAPI](const std::string& scriptType, const std::string& inputVariableName, const std::string& indent)
+	if(isUsingIScriptExportableAPI)
 	{
-		if(isUsingIScriptExportableAPI)
-		{
-			if(performReferenceCopy)
-				output << indent << "MonoUtil::ReferenceCopy(" << outputVariableName << ", " << scriptType << "::GetOrCreateScriptObject(" << inputVariableName << "));\n";
-			else
-				output << indent << outputVariableName << " = " << scriptType << "::GetOrCreateScriptObject(" << inputVariableName << ");\n";
-		}
+		if(performReferenceCopy)
+			output << indent << "MonoUtil::ReferenceCopy(" << outputVariableName << ", " << scriptType << "::GetOrCreateScriptObject(" << inputVariableName << "));\n";
 		else
-		{
-			if(performReferenceCopy)
-				output << indent << "MonoUtil::ReferenceCopy(" << outputVariableName << ", " << scriptType << "::Create(" << inputVariableName << "));\n";
-			else
-				output << indent << outputVariableName << " = " << scriptType << "::Create(" << inputVariableName << ");\n";
-		}
-	};
-
-	if(typeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsReferencingBaseClass))
-	{
-		std::vector<std::string> derivedClasses;
-		TypeLookup::GetDerivedClasses(typeInformation.GetLastWrappedOrSelfTypeName(), derivedClasses);
-
-		if(!derivedClasses.empty())
-		{
-			output << indent << "if(" << inputVariableName << ")\n";
-			output << indent << "{\n";
-
-			output << indent << "\tif(B3DRTTIIsOfType<" << derivedClasses[0] << ">(" << inputVariableName << "))\n";
-			fnGenerateCreateLine(TypeLookup::GetScriptWrapperObjectTypeName(derivedClasses[0]), "std::static_pointer_cast<" + derivedClasses[0] + ">(" + inputVariableName + ")", indent + "\t\t");
-
-			for(uint32_t i = 1; i < (uint32_t)derivedClasses.size(); i++)
-			{
-				output << indent << "\telse if(B3DRTTIIsOfType<" << derivedClasses[i] << ">(" << inputVariableName << "))\n";
-				fnGenerateCreateLine(TypeLookup::GetScriptWrapperObjectTypeName(derivedClasses[i]), "std::static_pointer_cast<" + derivedClasses[i] + ">(" + inputVariableName + ")", indent + "\t\t");
-			}
-
-			output << indent << "\telse\n";
-			fnGenerateCreateLine(scriptType, inputVariableName, indent + "\t\t");
-
-
-			output << indent << "}\n";
-			output << indent << "else\n";
-			fnGenerateCreateLine(scriptType, inputVariableName, indent + "\t");
-
-			return output.str();
-		}
+			output << indent << outputVariableName << " = " << scriptType << "::GetOrCreateScriptObject(" << inputVariableName << ");\n";
 	}
 	else
-		fnGenerateCreateLine(scriptType, inputVariableName, indent);
+	{
+		if(performReferenceCopy)
+			output << indent << "MonoUtil::ReferenceCopy(" << outputVariableName << ", " << scriptType << "::Create(" << inputVariableName << "));\n";
+		else
+			output << indent << outputVariableName << " = " << scriptType << "::Create(" << inputVariableName << ");\n";
+	}
 
 	return output.str();
 }
