@@ -1374,6 +1374,7 @@ static std::string GenerateMethodBodyBlockForArgument(const std::string& paramet
 			case ExportedClassTypeCategory::Primitive:
 			case ExportedClassTypeCategory::String:
 			case ExportedClassTypeCategory::WString:
+			case ExportedClassTypeCategory::Path:
 			
 				preCallActions << "\t\t\t\t" << arrayArgumentName << "[elementIndex] = " << scriptArrayName << ".Get<" << arrayEntryTypeName << ">(elementIndex);" << std::endl;
 				break;
