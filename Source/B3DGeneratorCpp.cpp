@@ -63,6 +63,8 @@ static std::string GetCppInteropQualifiedTypeName(const VariableTypeInformation&
 	case ExportedClassTypeCategory::ConstCharString:
 	case ExportedClassTypeCategory::Path:
 		return isOutputParameter ? "MonoString**" : "MonoString*";
+	case ExportedClassTypeCategory::MonoReflectionType:
+		return isOutputParameter ? "MonoReflectionType**" : "MonoReflectionType*";
 	default: // Class, resource, component or ScriptObject
 		return isOutputParameter ? "MonoObject**" : "MonoObject*";
 	}
