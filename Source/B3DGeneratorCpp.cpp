@@ -1249,8 +1249,7 @@ static std::string GenerateMethodBodyBlockForArgument(const std::string& paramet
 				postCallActions << "\t\tMonoUtil::ReferenceCopy(" << parameterName << ",  (MonoObject*)" << GenerateStringToMonoCall(parameterTypeMappingInformation.TypeCategory, argumentName) << ");\n";
 			else
 			{
-				preCallActions << "\t\tString tempString" << argumentName << " = " << GenerateMonoToStringCall(parameterTypeMappingInformation.TypeCategory, parameterName) << ";\n";
-				preCallActions << "\t\t" << argumentName << " = tempString" << argumentName << ".c_str();\n";
+				errs() << "Error: const char* type not supported as input or array element. Ignoring. \n";
 			}
 		}
 		break;
@@ -1381,13 +1380,13 @@ static std::string GenerateMethodBodyBlockForArgument(const std::string& paramet
 				preCallActions << "\t\t\t\t" << arrayArgumentName << "[elementIndex] = " << scriptArrayName << ".Get<" << arrayEntryTypeName << ">(elementIndex);" << std::endl;
 				break;
 			case ExportedClassTypeCategory::ConstCharString:
-				outs() << "Error: const char* type not supported as an array element. Ignoring. \n"; // TODO - Can be easily added by adding ScriptArray specialization
+				errs() << "Error: const char* type not supported as an array element or input. Ignoring. \n";
 				break;
 			case ExportedClassTypeCategory::MonoObject:
-				outs() << "Error: Array of MonoObject types not supported as input. Ignoring. \n";
+				errs() << "Error: Array of MonoObject types not supported as input. Ignoring. \n";
 				break;
 			case ExportedClassTypeCategory::MonoReflectionType:
-				outs() << "Error: Array of MonoReflectionType types not supported as input. Ignoring. \n";
+				errs() << "Error: Array of MonoReflectionType types not supported as input. Ignoring. \n";
 				break;
 			case ExportedClassTypeCategory::Enum:
 			{
@@ -1505,7 +1504,7 @@ static std::string GenerateMethodBodyBlockForArgument(const std::string& paramet
 				postCallActions << "\t\t\t" << scriptArrayName << ".Set(elementIndex, " << arrayArgumentName << "[elementIndex]);" << std::endl;
 				break;
 			case ExportedClassTypeCategory::ConstCharString:
-				outs() << "Error: const char* type not supported as an array element. Ignoring. \n";// TODO - Can be easily added by adding ScriptArray specialization
+				errs() << "Error: const char* type not supported as an array element. Ignoring. \n";// TODO - Can be easily added by adding ScriptArray specialization
 				break;
 			case ExportedClassTypeCategory::Enum:
 			{
@@ -1890,13 +1889,13 @@ static std::string GenerateFieldConvertBlock(const std::string& name, const Vari
 				preActions << "\t\t\t\t" << argumentVariableName << "[elementIndex] = " << scriptArrayName << ".Get<" << entryType << ">(elementIndex);" << std::endl;
 				break;
 			case ::ExportedClassTypeCategory::MonoObject:
-				outs() << "Error: Array of MonoObject types not supported as input. Ignoring. \n";
+				errs() << "Error: Array of MonoObject types not supported as input. Ignoring. \n";
 				break;
 			case ::ExportedClassTypeCategory::MonoReflectionType:
-				outs() << "Error: Array of MonoReflectionType types not supported as input. Ignoring. \n";
+				errs() << "Error: Array of MonoReflectionType types not supported as input. Ignoring. \n";
 				break;
 			case ::ExportedClassTypeCategory::ConstCharString:
-				outs() << "Error: const char* type not supported as input or array element. Ignoring. \n";
+				errs() << "Error: const char* type not supported as input or array element. Ignoring. \n";
 				break;
 			case ::ExportedClassTypeCategory::Enum:
 			{
@@ -2022,7 +2021,7 @@ static std::string GenerateFieldConvertBlock(const std::string& name, const Vari
 				preActions << "\t\t\t" << scriptArrayName << ".Set(elementIndex, value." << name << "[elementIndex]);" << std::endl;
 				break;
 			case ::ExportedClassTypeCategory::ConstCharString:
-				outs() << "Error: const char* type not supported as array element. Ignoring. \n";
+				errs() << "Error: const char* type not supported as array element. Ignoring. \n";
 				break;
 			case ::ExportedClassTypeCategory::Class:
 			case ::ExportedClassTypeCategory::ReflectableClass:
