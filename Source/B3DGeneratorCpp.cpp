@@ -1268,8 +1268,10 @@ static std::string GenerateMethodBodyBlockForArgument(const std::string& paramet
 		{
 			const std::string scriptObjectWrapperType = TypeLookup::GetScriptWrapperObjectTypeName(parameterTypeName);
 
-			if(returnValue || isOutputParameter)
-				errs() << "Error: GUIElement cannot be used as parameter outputs or return values. Ignoring. \n";
+			if (returnValue)
+				postCallActions << GenerateNativeClassToMonoObject(parameterInformation.TypeInformation, parameterName, scriptObjectWrapperType, argumentName);
+			else if (isOutputParameter)
+				postCallActions << GenerateNativeClassToMonoObject(parameterInformation.TypeInformation, parameterName, scriptObjectWrapperType, argumentName, true);
 			else
 			{
 				const std::string scriptName = "scriptObjectWrapper" + parameterName;
@@ -1537,6 +1539,7 @@ static std::string GenerateMethodBodyBlockForArgument(const std::string& paramet
 				break;
 			case ExportedClassTypeCategory::Class:
 			case ExportedClassTypeCategory::ReflectableClass:
+			case ExportedClassTypeCategory::GUIElement:
 			{
 				const std::string arrayElementName = "arrayElement" + parameterName;
 
@@ -1581,9 +1584,6 @@ static std::string GenerateMethodBodyBlockForArgument(const std::string& paramet
 				postCallActions << "\t\t\t" << scriptArrayName << ".Set(elementIndex, " << arrayElementName << ");" << std::endl;
 				break;
 			}
-			case ExportedClassTypeCategory::GUIElement:
-				outs() << "Error: GUIElement cannot be used as parameter outputs or return values. Ignoring. \n";
-				break;
 			default: // Some resource or game object type
 			{
 				postCallActions << GenerateNativeHandleToMonoObject(arrayElementTypeInformation, parameterTypeMappingInformation, arrayArgumentName, "elementIndex", "scriptObjectWrapper" + parameterName, scriptArrayName, false, "\t\t\t");
