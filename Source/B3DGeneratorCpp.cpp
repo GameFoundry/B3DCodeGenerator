@@ -2872,7 +2872,7 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 	}
 	else
 	{
-		if(isBase)
+		if(isBase && !classHasGlobalSingleInstance)
 		{
 			interopBaseClassName = TypeLookup::GetScriptWrapperObjectTypeName(classInfo.NativeName) + "WrapperBase";
 
