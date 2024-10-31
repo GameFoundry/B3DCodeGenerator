@@ -44,7 +44,7 @@ static std::string GetScriptQualifiedType(const VariableTypeInformation& typeInf
 {
 	std::stringstream output;
 
-	if (useOutputParameterPrefix && typeInformation.IsOutputParameter())
+	if (useOutputParameterPrefix && typeInformation.IsOutputParameter(typeMappingInformation))
 		output << "out ";
 	else if (forceStructAsReference && (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Struct && !typeInformation.IsArrayOrVector()))
 		output << "ref ";
@@ -274,7 +274,7 @@ static std::string GenerateCSharpMethodArguments(const MethodInfo& methodInfo, b
 		const VariableInformation& parameterInformation = *I;
 		const TypeMappingInformation parameterTypeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(parameterInformation.TypeInformation);
 
-		if (parameterInformation.TypeInformation.IsOutputParameter())
+		if (parameterInformation.TypeInformation.IsOutputParameter(parameterTypeMappingInformation))
 			output << "out ";
 		else if (forInternalMethod && IsStructReference(parameterInformation.TypeInformation, parameterTypeMappingInformation))
 			output << "ref ";
@@ -921,7 +921,7 @@ static std::string GenerateCSharpStruct(const StructInfo& input)
 			const VariableInformation& parameterInformation = *I;
 			const TypeMappingInformation parameterTypeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(parameterInformation.TypeInformation);
 
-			if (parameterInformation.TypeInformation.IsOutputParameter())
+			if (parameterInformation.TypeInformation.IsOutputParameter(parameterTypeMappingInformation))
 			{
 				// We report the error during field generation, as it checks for the same condition
 				continue;
@@ -967,7 +967,7 @@ static std::string GenerateCSharpStruct(const StructInfo& input)
 		{
 			const VariableInformation& fieldInformation = *I;
 			const TypeMappingInformation fieldTypeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(fieldInformation.TypeInformation);
-			if (fieldInformation.TypeInformation.IsOutputParameter())
+			if (fieldInformation.TypeInformation.IsOutputParameter(fieldTypeMappingInformation))
 			{
 				// We report the error during field generation, as it checks for the same condition
 				continue;
@@ -1058,7 +1058,7 @@ static std::string GenerateCSharpStruct(const StructInfo& input)
 		const FieldInfo& fieldInformation = *I;
 		const TypeMappingInformation fieldTypeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(fieldInformation.TypeInformation);
 
-		if (fieldInformation.TypeInformation.IsOutputParameter())
+		if (fieldInformation.TypeInformation.IsOutputParameter(fieldTypeMappingInformation))
 		{
 			outs() << "Error: Invalid field type found in struct \"" << scriptName << "\" for field \"" << fieldInformation.Name << "\". Skipping.\n";
 			continue;

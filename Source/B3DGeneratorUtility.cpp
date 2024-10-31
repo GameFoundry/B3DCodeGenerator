@@ -99,7 +99,7 @@ const std::string& GeneratorUtility::EscapeXML(const std::string& data)
 
 bool GeneratorUtility::CanBeReturned(const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation)
 {
-	if (typeInformation.IsOutputParameter())
+	if (typeInformation.IsOutputParameter(typeMappingInformation))
 		return false;
 
 	if (typeInformation.IsArrayOrVector())

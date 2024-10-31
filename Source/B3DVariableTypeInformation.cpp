@@ -1,6 +1,8 @@
 #include "B3DCommon.h"
 #include "B3DVariableTypeInformation.h"
 
+#include "B3DTypeLookup.h"
+
 VariableTypeInformation::VariableTypeInformation(const VariableTypeInformation& other)
 {
 	TypeCategory = other.TypeCategory;
@@ -97,7 +99,7 @@ const std::string& VariableTypeInformation::GetLastWrappedOrSelfTypeName() const
 	return TypeName;
 }
 
-bool VariableTypeInformation::IsOutputParameter() const
+bool VariableTypeInformation::IsOutputParameter(const TypeMappingInformation& typeMappingInformation) const
 {
 	// Special case for types that are passed as native pointers
 	if(TypeCategory == VariableTypeCategory::MonoObject || TypeCategory == VariableTypeCategory::MonoReflectionType)
@@ -106,6 +108,11 @@ bool VariableTypeInformation::IsOutputParameter() const
 
 		// Output parameter only if it's a reference to pointer
 		return IsQualifierFlagSet(VariableQualifierFlags::IsReference);
+	}
+	else if(typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GUIElement)
+	{
+		// GUIElements are passed as raw pointers, so don't consider a non-const pointer an output
+		return IsQualifierFlagSet(VariableQualifierFlags::IsReference) && !IsQualifierFlagSet(VariableQualifierFlags::IsConst);
 	}
 
 	return (IsQualifierFlagSet(VariableQualifierFlags::IsPointer) || IsQualifierFlagSet(VariableQualifierFlags::IsReference)) && !IsQualifierFlagSet(VariableQualifierFlags::IsConst);

@@ -221,6 +221,7 @@ int main(int argc, const char** argv)
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Resource", "Resources/BsResource.h", "Resource", "BsScriptResourceWrapper.h", ExportedClassTypeCategory::Resource);
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Any", "Utility/BsAny.h", "Any", "", ExportedClassTypeCategory::Class);
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "GUIElement", "GUI/BsGUIElement.h", "GUIElement", "Wrappers/GUI/BsScriptGUIElement.h", ExportedClassTypeCategory::GUIElement);
+	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "GUIPanel", "GUI/BsGUIPanel.h", "GUIPanel", "Wrappers/GUI/BsScriptGUILayout.h", ExportedClassTypeCategory::GUIElement);
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Prefab", "Scene/BsPrefab.h", "Prefab", "Wrappers/BsScriptPrefab.h", ExportedClassTypeCategory::Resource);
 
 	// Parse C++ into an easy to read format

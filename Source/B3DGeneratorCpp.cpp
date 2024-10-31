@@ -35,7 +35,7 @@ static bool IsInternalMethodParameterValueType(const VariableTypeInformation& ty
  */
 static std::string GetCppInteropQualifiedTypeName(const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation, bool isGeneratingField = false)
 {
-	const bool isOutputParameter = typeInformation.IsOutputParameter() && !isGeneratingField;
+	const bool isOutputParameter = typeInformation.IsOutputParameter(typeMappingInformation) && !isGeneratingField;
 	if (typeInformation.IsArrayOrVector())
 		return isOutputParameter ? "MonoArray**" : "MonoArray*";
 
@@ -233,7 +233,7 @@ static std::string GetInteropThunkSignatureQualifiedTypeName(const VariableTypeI
 	if (typeInformation.IsArrayOrVector())
 		output << "[]";
 
-	if (typeInformation.IsOutputParameter() || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Struct)
+	if (typeInformation.IsOutputParameter(typeMappingInformation) || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Struct)
 		output << "&";
 
 	return output.str();
@@ -390,7 +390,7 @@ static std::string GetArgumentForInternalToNativeCall(const MethodInfo& methodIn
 	{
 	case ExportedClassTypeCategory::Primitive:
 	case ExportedClassTypeCategory::Enum: // Input type is either value or pointer depending if output or not
-		return fnGetPlainArgument(typeInformation.IsOutputParameter());
+		return fnGetPlainArgument(typeInformation.IsOutputParameter(typeMappingInformation));
 	case ExportedClassTypeCategory::Struct: // Input type is always a pointer
 		return fnGetPlainArgument(!typeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsStructWrapperUsed));
 	case ExportedClassTypeCategory::String: // Input type is always a value
@@ -996,7 +996,7 @@ static std::string GenerateMethodBodyBlockForArgument(const std::string& paramet
 	{
 		const VariableTypeInformation& asyncOpUnderlyingTypeInformation = parameterInformation.TypeInformation.AssertGetUnderlyingType();
 
-		if (!parameterInformation.TypeInformation.IsOutputParameter() && !returnValue)
+		if (!parameterInformation.TypeInformation.IsOutputParameter(parameterTypeMappingInformation) && !returnValue)
 		{
 			outs() << "Error: AsyncOp type not supported as input parameter. \n";
 			return "";
@@ -1151,7 +1151,7 @@ static std::string GenerateMethodBodyBlockForArgument(const std::string& paramet
 	};
 
 	const std::string parameterTypeName = parameterInformation.TypeInformation.GetLastWrappedOrSelfTypeName();
-	const bool isOutputParameter = parameterInformation.TypeInformation.IsOutputParameter();
+	const bool isOutputParameter = parameterInformation.TypeInformation.IsOutputParameter(parameterTypeMappingInformation);
 
 	// Handle non-array types
 	if (!parameterInformation.TypeInformation.IsArrayOrVector())
