@@ -1465,19 +1465,12 @@ bool BansheeCodeGeneratorASTVisitor::TryParseDeclarationAsClass(CXXRecordDecl* d
 
 	const bool typeIsBuiltinModuleType = ParserUtility::CheckIsBuiltinModuleType(declaration);
 	if(typeIsBuiltinModuleType)
-	{
 		outClassInfo.ClassFlags |= (int)ClassFlags::IsModule;
-		outClassInfo.ClassFlags |= (int)ClassFlags::UsesIScriptExportableAPI;
-	}
 	else if((scriptExportInformation.ExportFlags & (int)ExportFlags::StaticClass) != 0)
-	{
 		outClassInfo.ClassFlags |= (int)ClassFlags::IsStatic;
-		outClassInfo.ClassFlags |= (int)ClassFlags::UsesIScriptExportableAPI;
-	}
 	else if((scriptExportInformation.ExportFlags & (int)ExportFlags::SingletonClass) != 0)
 	{
 		outClassInfo.ClassFlags |= (int)ClassFlags::IsSingleton;
-		outClassInfo.ClassFlags |= (int)ClassFlags::UsesIScriptExportableAPI;
 		outClassInfo.SingletonGetterName = scriptExportInformation.SingletonGetterName;
 	}
 
@@ -1486,8 +1479,10 @@ bool BansheeCodeGeneratorASTVisitor::TryParseDeclarationAsClass(CXXRecordDecl* d
 
 	::ExportedClassTypeCategory classType = DetermineExportedTypeCategory(declaration);
 
-	if(ParserUtility::HasIScriptExportableBaseClass(declaration))
-		outClassInfo.ClassFlags |= (int)ClassFlags::UsesIScriptExportableAPI;
+	if(!ParserUtility::HasIScriptExportableBaseClass(declaration))
+	{
+		errs() << "Warning: Generating script bindings for class \"" << sourceClassName << "\", but class doesn't derive from IScriptExportable.";
+	}
 
 	std::string declFile = astContext->getSourceManager().getFilename(declaration->getSourceRange().getBegin()).str();
 	TypeLookup::RegisterNativeToScriptTypeMapping(outClassInfo.Namespace, sourceClassName, declFile, scriptExportInformation.ExportedTypeName, scriptExportInformation.ExportedFileName, outClassInfo.API, classType);

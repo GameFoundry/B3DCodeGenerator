@@ -909,30 +909,10 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 			}
 		};
 
-		auto fnMarkUsingIScriptExportable = [](VariableTypeInformation& typeInformation)
-		{
-			const TypeMappingInformation typeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(typeInformation);
-			if(!typeMappingInformation.IsClassType() && !typeMappingInformation.IsHandleType() && typeMappingInformation.TypeCategory != ExportedClassTypeCategory::GUIElement)
-				return;
-
-			const std::string& typeName = typeInformation.GetLastWrappedOrSelfTypeName();
-			ClassInfo* const classInfo = TypeLookup::FindClassInformation(typeName, true);
-			if(classInfo != nullptr)
-			{
-				const bool usesIScriptExportableAPI = classInfo->IsFlagSet(ClassFlags::UsesIScriptExportableAPI);
-				if(usesIScriptExportableAPI)
-					typeInformation.SetPostProcessFlag(VariablePostProcessFlags::UsesIScriptExportableAPI, true);
-			}
-			// Handle built-in types
-			else if(typeMappingInformation.TypeCategory == ExportedClassTypeCategory::SceneObject || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GameObject || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Resource || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GUIElement)
-				typeInformation.SetPostProcessFlag(VariablePostProcessFlags::UsesIScriptExportableAPI, true);
-		};
-
-		auto fnMarkParameter = [&fnMarkComplexType, &fnMarkBaseType, &fnMarkUsingIScriptExportable](VariableInformation& paramInfo)
+		auto fnMarkParameter = [&fnMarkComplexType, &fnMarkBaseType](VariableInformation& paramInfo)
 		{
 			fnMarkComplexType(paramInfo.TypeInformation);
 			fnMarkBaseType(paramInfo.TypeInformation);
-			fnMarkUsingIScriptExportable(paramInfo.TypeInformation);
 		};
 
 		for (auto& classInfo : fileInfo.second.Classes)
@@ -946,7 +926,6 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 				{
 					fnMarkComplexType(methodInfo.ReturnValue.TypeInformation);
 					fnMarkBaseType(methodInfo.ReturnValue.TypeInformation);
-					fnMarkUsingIScriptExportable(methodInfo.ReturnValue.TypeInformation);
 				}
 			}
 
@@ -1006,46 +985,26 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 					fileInfo.second.ReferencedHeaderIncludes.push_back(typeInfo.NativeFile);
 
 				// Include the script wrapper object root base type
-				if(classInfo.IsFlagSet(ClassFlags::UsesIScriptExportableAPI))
-				{
-					if(classInfo.HasGlobalSingleInstance())
-						fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptTypeDefinition.h");
-					else
-					{
-						if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource)
-							fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptResourceWrapper.h");
-						else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::GameObject)
-							fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptGameObjectWrapper.h");
-						else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::Component)
-							fileInfo.second.ReferencedHeaderIncludes.push_back("Wrappers/BsScriptComponent.h");
-						else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::SceneObject)
-							fileInfo.second.ReferencedHeaderIncludes.push_back("Wrappers/BsScriptSceneObject.h");
-						else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
-							fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptGUIElementWrapper.h");
-						else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
-							fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptReflectableWrapper.h");
-						else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::Class)
-							fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptNonReflectableWrapper.h");
-						else // Struct or enum
-							fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptTypeDefinition.h");
-					}
-				}
+				if(classInfo.HasGlobalSingleInstance())
+					fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptTypeDefinition.h");
 				else
 				{
 					if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource)
-						fileInfo.second.ReferencedHeaderIncludes.push_back("Wrappers/BsScriptResource.h");
+						fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptResourceWrapper.h");
 					else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::GameObject)
-						fileInfo.second.ReferencedHeaderIncludes.push_back("Wrappers/BsScriptGameObject.h");
+						fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptGameObjectWrapper.h");
 					else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::Component)
 						fileInfo.second.ReferencedHeaderIncludes.push_back("Wrappers/BsScriptComponent.h");
 					else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::SceneObject)
 						fileInfo.second.ReferencedHeaderIncludes.push_back("Wrappers/BsScriptSceneObject.h");
 					else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
-						fileInfo.second.ReferencedHeaderIncludes.push_back("Wrappers/GUI/BsScriptGUIElement.h");
+						fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptGUIElementWrapper.h");
 					else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
-						fileInfo.second.ReferencedHeaderIncludes.push_back("Wrappers/BsScriptReflectable.h");
-					else // Class
-						fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptObject.h");
+						fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptReflectableWrapper.h");
+					else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::Class)
+						fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptNonReflectableWrapper.h");
+					else // Struct or enum
+						fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptTypeDefinition.h");
 				}
 
 				// If class has a base type, include its script object wrapper file

@@ -237,9 +237,8 @@ enum class ClassFlags
 	IsTemplateInst = 1 << 2,				/**< Class is an instance of a template. */
 	IsStruct = 1 << 3,						/**< Class is defined as a struct in native code. */
 	HideInInspector = 1 << 4,				/**< Class members will be hidden in the inspector. */
-	UsesIScriptExportableAPI = 1 << 5,		/**< Class derives from IScriptExportable and uses the new script export code. */
-	IsStatic = 1 << 6,						/**< Class only contains static members and methods, and is never instantiated. */
-	IsSingleton = 1 << 7,					/**< Class is always accessed through a global getter that contains the single class instance. */
+	IsStatic = 1 << 5,						/**< Class only contains static members and methods, and is never instantiated. */
+	IsSingleton = 1 << 6,					/**< Class is always accessed through a global getter that contains the single class instance. */
 };
 
 /** Information about a generated class. */
