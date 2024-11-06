@@ -1479,9 +1479,9 @@ bool BansheeCodeGeneratorASTVisitor::TryParseDeclarationAsClass(CXXRecordDecl* d
 
 	::ExportedClassTypeCategory classType = DetermineExportedTypeCategory(declaration);
 
-	if(!ParserUtility::HasIScriptExportableBaseClass(declaration))
+	if(!outClassInfo.HasGlobalSingleInstance() && !outClassInfo.IsFlagSet(ClassFlags::IsStruct) && scriptExportInformation.ExtensionOfType.empty() && !ParserUtility::HasIScriptExportableBaseClass(declaration))
 	{
-		errs() << "Warning: Generating script bindings for class \"" << sourceClassName << "\", but class doesn't derive from IScriptExportable.";
+		errs() << "Warning: Generating script bindings for class \"" << sourceClassName << "\", but class doesn't derive from IScriptExportable.\n";
 	}
 
 	std::string declFile = astContext->getSourceManager().getFilename(declaration->getSourceRange().getBegin()).str();
