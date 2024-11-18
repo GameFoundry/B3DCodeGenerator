@@ -141,14 +141,6 @@ static std::string GetCppNativeQualifiedTypeName(const std::string& typeName, co
 	return GetCppNativeQualifiedTypeName(typeInformation, typeMappingInformation, wrapClassTypesInSharedPointer);
 }
 
-/** Returns the default value that can be used for initializing a variable of the specified type. */
-static std::string GetDefaultValueForType(const VariableTypeInformation& typeInformation)
-{
-
-
-	
-}
-
 /** Wraps the provided type in const& if necessary. Primarily required when passing the type as parameter or return value. @p type is returned by GetCppNativeQualifiedTypeName(). */
 static std::string GetParameterQualifiedType(const TypeMappingInformation& typeMappingInformation, const std::string& type)
 {
@@ -548,6 +540,41 @@ static std::string GenerateApiCheckEnd(ApiFlags api)
 		return "#endif\n";
 
 	return "";
+}
+
+/** Generates code that checks for native object validity, and if invalid returns from the method. */
+static std::string GenerateNativeObjectValidityCheck(const ClassInfo& classInfo, const MethodInfo& methodInfo, const char* indent = "\t\t")
+{
+	const bool isModule = classInfo.IsFlagSet(ClassFlags::IsModule);
+	const bool isSingleton = classInfo.IsFlagSet(ClassFlags::IsSingleton);
+	const bool isStatic = methodInfo.IsFlagSet(MethodFlags::Static);
+	const bool isCtor = methodInfo.IsFlagSet(MethodFlags::Constructor);
+
+	std::stringstream output;
+	if(!isCtor && !isStatic && !isSingleton && !isModule)
+	{
+		output << indent << "if(!self->IsNativeObjectValid())\n";
+
+		if(!methodInfo.ReturnValue.TypeInformation.IsEmpty())
+		{
+			TypeMappingInformation returnTypeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(methodInfo.ReturnValue.TypeInformation);
+			const bool returnAsParameter = !GeneratorUtility::CanBeReturned(methodInfo.ReturnValue.TypeInformation, returnTypeMappingInformation);
+
+			if(!returnAsParameter)
+				output << indent << "\treturn {};\n\n";
+			else
+			{
+				output << indent << "\t{\n";
+				output << indent << "\t\t__output = {};\n";
+				output << indent << "\t\treturn;\n";
+				output << indent << "\t}\n\n";
+			}
+		}
+		else
+			output << indent << "\treturn;\n\n";
+	}
+
+	return output.str();
 }
 
 /**
@@ -2278,26 +2305,7 @@ static std::string GenerateInternalMethodBody(const ClassInfo& classInfo, const 
 		}
 	}
 
-	// Early exit if native object is no longer valid
-	if(!isCtor && !isStatic && !isSingleton && !isModule)
-	{
-		preCallActions << "\t\tif(!self->IsNativeObjectValid())\n";
-
-		if(!methodInfo.ReturnValue.TypeInformation.IsEmpty())
-		{
-			if(!returnAsParameter)
-				preCallActions << "\t\t\treturn {};\n\n";
-			else
-			{
-				preCallActions << "\t\t\t{\n";
-				preCallActions << "\t\t\t\t__output = {};\n";
-				preCallActions << "\t\t\treturn;\n";
-				preCallActions << "\t\t\t}\n\n";
-			}
-		}
-		else
-			preCallActions << "\t\t\treturn;\n\n";
-	}
+	preCallActions << GenerateNativeObjectValidityCheck(classInfo, methodInfo);
 
 	for (auto I = methodInfo.Parameters.begin(); I != methodInfo.Parameters.end(); ++I)
 	{
@@ -2478,6 +2486,8 @@ static std::string GenerateInternalFieldGetterBody(const ClassInfo& classInfo, c
 		returnAssignment = argumentName + " = ";
 	}
 
+	preCallActions << GenerateNativeObjectValidityCheck(classInfo, methodInfo);
+
 	std::stringstream output;
 	output << "\t{" << std::endl;
 	output << preCallActions.str();
@@ -2540,6 +2550,8 @@ static std::string GenerateInternalFieldSetterBody(const ClassInfo& classInfo, c
 	const bool isModule = classInfo.IsFlagSet(ClassFlags::IsModule);
 	const bool isSingleton = classInfo.IsFlagSet(ClassFlags::IsSingleton);
 	const bool isStatic = methodInfo.IsFlagSet(MethodFlags::Static);
+
+	preCallActions << GenerateNativeObjectValidityCheck(classInfo, methodInfo);
 
 	const VariableInformation& parameterInformation = methodInfo.Parameters[0];
 	const std::string argumentName = GenerateMethodBodyBlockForArgument(parameterInformation.Name, parameterInformation, false, false, preCallActions, postCallActions);
