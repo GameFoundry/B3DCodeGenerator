@@ -564,10 +564,10 @@ static std::string GenerateNativeObjectValidityCheck(const ClassInfo& classInfo,
 				output << indent << "\treturn {};\n\n";
 			else
 			{
-				output << indent << "\t{\n";
-				output << indent << "\t\t__output = {};\n";
-				output << indent << "\t\treturn;\n";
-				output << indent << "\t}\n\n";
+				output << indent << "{\n";
+				output << indent << "\t*__output = {};\n";
+				output << indent << "\treturn;\n";
+				output << indent << "}\n\n";
 			}
 		}
 		else
