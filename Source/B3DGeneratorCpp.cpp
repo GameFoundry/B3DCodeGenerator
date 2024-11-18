@@ -141,6 +141,14 @@ static std::string GetCppNativeQualifiedTypeName(const std::string& typeName, co
 	return GetCppNativeQualifiedTypeName(typeInformation, typeMappingInformation, wrapClassTypesInSharedPointer);
 }
 
+/** Returns the default value that can be used for initializing a variable of the specified type. */
+static std::string GetDefaultValueForType(const VariableTypeInformation& typeInformation)
+{
+
+
+	
+}
+
 /** Wraps the provided type in const& if necessary. Primarily required when passing the type as parameter or return value. @p type is returned by GetCppNativeQualifiedTypeName(). */
 static std::string GetParameterQualifiedType(const TypeMappingInformation& typeMappingInformation, const std::string& type)
 {
@@ -2261,13 +2269,34 @@ static std::string GenerateInternalMethodBody(const ClassInfo& classInfo, const 
 		else
 		{
 			std::string returnType = GetCppInteropQualifiedTypeName(methodInfo.ReturnValue.TypeInformation, returnTypeMappingInformation);
-			postCallActions << "\t\t" << returnType << " __output;" << std::endl;
+			postCallActions << "\t\t" << returnType << " __output;\n";
 
 			std::string argName = GenerateMethodBodyBlockForArgument("__output", methodInfo.ReturnValue, true, true, preCallActions, postCallActions);
 
 			returnAssignment = argName + " = ";
 			returnStmt = "\t\treturn __output;";
 		}
+	}
+
+	// Early exit if native object is no longer valid
+	if(!isCtor && !isStatic && !isSingleton && !isModule)
+	{
+		preCallActions << "\t\tif(!self->IsNativeObjectValid())\n";
+
+		if(!methodInfo.ReturnValue.TypeInformation.IsEmpty())
+		{
+			if(!returnAsParameter)
+				preCallActions << "\t\t\treturn {};\n\n";
+			else
+			{
+				preCallActions << "\t\t\t{\n";
+				preCallActions << "\t\t\t\t__output = {};\n";
+				preCallActions << "\t\t\treturn;\n";
+				preCallActions << "\t\t\t}\n\n";
+			}
+		}
+		else
+			preCallActions << "\t\t\treturn;\n\n";
 	}
 
 	for (auto I = methodInfo.Parameters.begin(); I != methodInfo.Parameters.end(); ++I)
