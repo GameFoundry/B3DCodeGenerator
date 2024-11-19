@@ -983,6 +983,13 @@ std::string BansheeCodeGeneratorASTVisitor::ParseTemplateArguments(const std::st
 			if(outTemplateArgumentInformation != nullptr)
 				outTemplateArgumentInformation->push_back({ variableInformation.TypeInformation.GetLastWrappedOrSelfTypeName() });
 		}
+		else if(tmplArg.getKind() == TemplateArgument::Integral)
+		{
+			tmplArgsStream << tmplArg.getAsIntegral().getExtValue();
+
+			if(outTemplateArgumentInformation != nullptr)
+				outTemplateArgumentInformation->push_back({ std::to_string(tmplArg.getAsIntegral().getExtValue()) });
+		}
 		else
 		{
 			outs() << "Error: Cannot parse template argument for type: \"" << className << "\". \n";
