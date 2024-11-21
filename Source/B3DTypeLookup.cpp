@@ -1258,15 +1258,7 @@ void TypeLookup::GatherIncludes(const VariableTypeInformation& typeInformation, 
 		{
 			const bool isBase = underlyingTypeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsReferencingBaseClass);
 			if (isBase)
-			{
-				std::vector<std::string> derivedClasses;
-				GetDerivedClasses(typeName, derivedClasses);
-
-				for (auto& entry : derivedClasses)
-					output.Includes[entry] = IncludeInfo(entry, TypeLookup::GetNativeToScriptTypeMapping(entry), IncludeType::IncludeInImplementation, IncludeType::IncludeInImplementation, false, isEditor);
-
 				output.RequiresRTTI = true;
-			}
 		}
 	}
 
