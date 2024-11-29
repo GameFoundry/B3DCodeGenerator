@@ -106,7 +106,7 @@ bool TypeMappingInformation::IsHandleType() const
 
 bool TypeMappingInformation::IsClassType() const
 {
-	return TypeCategory == ExportedClassTypeCategory::Class || TypeCategory == ExportedClassTypeCategory::ReflectableClass;
+	return TypeCategory == ExportedClassTypeCategory::Class || TypeCategory == ExportedClassTypeCategory::ReflectableClass || TypeCategory == ExportedClassTypeCategory::IReflectable;
 }
 
 
@@ -412,6 +412,14 @@ TypeMappingInformation TypeLookup::GetNativeToScriptTypeMapping(const VariableTy
 
 		return outType;
 	}
+	case VariableTypeCategory::IReflectable:
+	{
+		TypeMappingInformation outType;
+		outType.ScriptTypeName = "object";
+		outType.TypeCategory = ExportedClassTypeCategory::IReflectable;
+
+		return outType;
+	}
 	case VariableTypeCategory::MonoReflectionType:
 	{
 		TypeMappingInformation outType;
@@ -509,7 +517,10 @@ std::string TypeLookup::GetScriptWrapperObjectTypeName(const std::string& typeNa
 {
 	auto iterFind = mNativeToScriptTypeMap.find(typeName);
 	if (iterFind == mNativeToScriptTypeMap.end())
+	{
 		outs() << "Warning: Type \"" << typeName << "\" referenced as a script interop type, but no script interop mapping found. Assuming default type name.\n";
+		return "";
+	}
 
 	bool isValidInteropType = iterFind->second.TypeCategory != ::ExportedClassTypeCategory::Primitive &&
 		iterFind->second.TypeCategory != ::ExportedClassTypeCategory::Enum &&
@@ -999,7 +1010,7 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 						fileInfo.second.ReferencedHeaderIncludes.push_back("Wrappers/BsScriptSceneObject.h");
 					else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
 						fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptGUIElementWrapper.h");
-					else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass)
+					else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass || typeInfo.TypeCategory == ::ExportedClassTypeCategory::IReflectable)
 						fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptReflectableWrapper.h");
 					else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::Class)
 						fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptNonReflectableWrapper.h");
@@ -1344,15 +1355,7 @@ void TypeLookup::GatherIncludes(const FieldInfo& fieldInfo, bool isEditor, Inclu
 		{
 			const bool isBase = underlyingTypeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsReferencingBaseClass);
 			if (isBase)
-			{
-				std::vector<std::string> derivedClasses;
-				GetDerivedClasses(fieldTypeName, derivedClasses);
-
-				for (auto& entry : derivedClasses)
-					output.Includes[entry] = IncludeInfo(entry, TypeLookup::GetNativeToScriptTypeMapping(entry), IncludeType::IncludeInImplementation, IncludeType::IncludeInImplementation, false, isEditor);
-
 				output.RequiresRTTI = true;
-			}
 		}
 
 		if (underlyingTypeInformation.TypeCategory == VariableTypeCategory::AsyncOp)

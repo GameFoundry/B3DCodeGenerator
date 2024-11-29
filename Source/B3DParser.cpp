@@ -575,6 +575,13 @@ bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, Variabl
 
 				return true;
 			}
+			else if(sourceTypeName == "IReflectable")
+			{
+				outType.TypeName = "IReflectable";
+				outType.TypeCategory = VariableTypeCategory::IReflectable;
+
+				return true;
+			}
 			else if(sourceTypeName == "Path")
 			{
 				outType.TypeName = "Path";

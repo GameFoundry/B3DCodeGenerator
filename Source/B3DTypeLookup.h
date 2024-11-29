@@ -22,6 +22,7 @@ enum class ExportedClassTypeCategory
 	MonoObject, /**< Builtin MonoObject type. */
 	ConstCharString, /**< const char* string. */
 	MonoReflectionType, /**< Builtin MonoReflectionType type. */
+	IReflectable, /**< Type inheriting from IReflectable interface. */
 };
 
 /**

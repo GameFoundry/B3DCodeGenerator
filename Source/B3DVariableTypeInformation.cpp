@@ -76,6 +76,7 @@ const std::string& VariableTypeInformation::GetFirstWrappedOrSelfTypeName() cons
 	case VariableTypeCategory::MonoObject: 
 	case VariableTypeCategory::MonoReflectionType:
 	case VariableTypeCategory::Path:
+	case VariableTypeCategory::IReflectable:
 		return TypeName;
 	case VariableTypeCategory::Vector:
 	case VariableTypeCategory::TInlineArray:

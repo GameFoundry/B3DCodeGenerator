@@ -23,6 +23,7 @@ enum class VariableTypeCategory
 	TArray, /**< TArray<T>. Will also provide an underlying type information for T. */
 	ConstCharString, /**< const char* treated as a string. */
 	MonoReflectionType, /**< MonoReflectionType. Must always be passed as raw pointer. */
+	IReflectable, /**< Generic type inheriting from IReflectable interface. C# passed to native code will be serialized and converted to IReflectable. */
 };
 
 /** Qualifiers applied to a type in VariableTypeInformation. */
