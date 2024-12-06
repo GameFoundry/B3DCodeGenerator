@@ -813,6 +813,12 @@ bool BansheeCodeGeneratorASTVisitor::TryEvaluateExpression(Expr* expression, std
 			outEvaluatedValueType = "";
 			return true;
 		}
+		else if(name == (sFrameworkCppNs + "::Path::kBlank"))
+		{
+			outEvaluatedValue = "\"\"";
+			outEvaluatedValueType = "";
+			return true;
+		}
 		else if(name == (sFrameworkCppNs + "::UUID::kEmpty"))
 		{
 			outEvaluatedValue = "";
