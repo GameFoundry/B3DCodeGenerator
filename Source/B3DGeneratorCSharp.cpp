@@ -834,7 +834,7 @@ static std::string GenerateCSharpClass(const ClassInfo& classInformation)
 	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Component)
 		baseType = "Component";
 	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GUIElement)
-		baseType = "GUIInteractable";
+		baseType = "GUIElement";
 	else
 		baseType = "ScriptObject";
 

@@ -13,7 +13,7 @@ const char *const kBuiltinComponentType = "Component";
 const char *const kBuiltinSceneObjectType = "SceneObject";
 const char *const kBuiltinResourceType = "Resource";
 const char *const kBuiltinModuleType = "Module";
-const char *const kBuiltinGUIElementType = "GUIInteractable";
+const char *const kBuiltinGUIElementType = "GUIElement";
 const char *const kBuiltinReflectableType = "IReflectable";
 const char *const kBuiltinIScriptExportableType = "IScriptExportable";
 
@@ -204,11 +204,8 @@ int main(int argc, const char** argv)
 	// Note: I could auto-generate C++ wrappers for these types
 	SmallVector<std::string, 4> frameworkNamespace = { sFrameworkCppNs };
 	
-	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "TSize2<float>", "Utility/BsUtil.h", "Size2", "Wrappers/BsScriptSize.h", ExportedClassTypeCategory::Struct);
-	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "TSize2<uint32_t>", "Utility/BsUtil.h", "Size2UI", "Wrappers/BsScriptSize.h", ExportedClassTypeCategory::Struct);
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Matrix3", "Math/BsMatrix3.h", "Matrix3", "", ExportedClassTypeCategory::Struct);
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Matrix4", "Math/BsMatrix4.h", "Matrix4", "", ExportedClassTypeCategory::Struct);
-	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Quaternion", "Math/BsQuaternion.h", "Quaternion", "Wrappers/BsScriptQuaternion.h", ExportedClassTypeCategory::Struct);
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "TRadian<float>", "Math/BsRadian.h", "Radian", "", ExportedClassTypeCategory::Struct);
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "TDegree<float>", "Math/BsDegree.h", "Degree", "", ExportedClassTypeCategory::Struct);
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Capsule", "Math/BsCapsule.h", "Capsule", "", ExportedClassTypeCategory::Struct);
@@ -223,6 +220,7 @@ int main(int argc, const char** argv)
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "GUIElement", "GUI/BsGUIElement.h", "GUIElement", "Wrappers/GUI/BsScriptGUIElement.h", ExportedClassTypeCategory::GUIElement);
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "GUIPanel", "GUI/BsGUIPanel.h", "GUIPanel", "Wrappers/GUI/BsScriptGUILayout.h", ExportedClassTypeCategory::GUIElement);
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Prefab", "Scene/BsPrefab.h", "Prefab", "Wrappers/BsScriptPrefab.h", ExportedClassTypeCategory::Resource);
+	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "GUIContextMenu", "GUI/BsGUIContextMenu.h", "ContextMenu", "Wrappers/BsScriptContextMenu.h", ExportedClassTypeCategory::Class);
 
 	// Parse C++ into an easy to read format
 	const std::unique_ptr<BansheeCodeGeneratorFrontendActionFactory> factory = std::unique_ptr<BansheeCodeGeneratorFrontendActionFactory>(new BansheeCodeGeneratorFrontendActionFactory);
