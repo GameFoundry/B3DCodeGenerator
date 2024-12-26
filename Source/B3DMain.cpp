@@ -221,6 +221,7 @@ int main(int argc, const char** argv)
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "GUIPanel", "GUI/BsGUIPanel.h", "GUIPanel", "Wrappers/GUI/BsScriptGUILayout.h", ExportedClassTypeCategory::GUIElement);
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Prefab", "Scene/BsPrefab.h", "Prefab", "Wrappers/BsScriptPrefab.h", ExportedClassTypeCategory::Resource);
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "GUIContextMenu", "GUI/BsGUIContextMenu.h", "ContextMenu", "Wrappers/BsScriptContextMenu.h", ExportedClassTypeCategory::Class);
+	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "ModalWindow", "EditorWindow/BsModalWindow.h", "ModalWindow", "Wrappers/BsScriptModalWindow.h", ExportedClassTypeCategory::Class);
 
 	// Parse C++ into an easy to read format
 	const std::unique_ptr<BansheeCodeGeneratorFrontendActionFactory> factory = std::unique_ptr<BansheeCodeGeneratorFrontendActionFactory>(new BansheeCodeGeneratorFrontendActionFactory);
