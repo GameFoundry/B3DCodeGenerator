@@ -34,7 +34,6 @@ elseif(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
 			string(TOUPPER ${config} configUppercase)
 
 			string(REPLACE "/RTC1" "" CMAKE_CXX_FLAGS_${configUppercase} ${CMAKE_CXX_FLAGS_${configUppercase}})
-			string(REPLACE "/MDd" "/MD" CMAKE_CXX_FLAGS_${configUppercase} ${CMAKE_CXX_FLAGS_${configUppercase}})
 			string(REPLACE "/Od" "/O2" CMAKE_CXX_FLAGS_${configUppercase} ${CMAKE_CXX_FLAGS_${configUppercase}})
 			string(REPLACE "/Ob0" "/Ob2" CMAKE_CXX_FLAGS_${configUppercase} ${CMAKE_CXX_FLAGS_${configUppercase}})
 		endforeach ()
@@ -48,6 +47,10 @@ source_group("" FILES ${INCLUDE_FILES} ${SOURCE_FILES})
 
 add_executable(BansheeCodeGenerator ${SOURCE_FILES} ${INCLUDE_FILES})
 target_link_libraries(BansheeCodeGenerator PUBLIC ${clang_LIBRARIES})
+
+if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+	set_property(TARGET BansheeCodeGenerator PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
+endif()
 
 if(WIN32)
 	target_link_libraries(BansheeCodeGenerator PUBLIC "version.lib")
