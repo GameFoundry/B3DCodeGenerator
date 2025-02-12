@@ -34,13 +34,13 @@ struct TypeMappingInformation
 {
 	TypeMappingInformation() {}
 
-	TypeMappingInformation(SmallVector<std::string, 4> nativeNamespace, const std::string& scriptName, ::ExportedClassTypeCategory typeCategory, const std::string& nativeFile, const std::string& destFile)
-		:NativeNamespace(std::move(nativeNamespace)), ScriptTypeName(scriptName), TypeCategory(typeCategory), NativeFile(nativeFile), InteropFile(destFile), EditorInteropFile(destFile)
+	TypeMappingInformation(SmallVector<std::string, 4> nativeNamespace, const std::string& scriptName, const std::string& scriptInteropTypeName, ::ExportedClassTypeCategory typeCategory, const std::string& nativeFile, const std::string& destFile)
+		:NativeNamespace(std::move(nativeNamespace)), ScriptTypeName(scriptName), ScriptInteropTypeName(scriptInteropTypeName), TypeCategory(typeCategory), NativeFile(nativeFile), InteropFile(destFile), EditorInteropFile(destFile)
 	{ }
 
-	TypeMappingInformation(SmallVector<std::string, 4> nativeNamespace, const std::string& scriptName, ::ExportedClassTypeCategory typeCategory, const std::string& nativeFile, const std::string& destFile,
+	TypeMappingInformation(SmallVector<std::string, 4> nativeNamespace, const std::string& scriptName, const std::string& scriptInteropTypeName, ::ExportedClassTypeCategory typeCategory, const std::string& nativeFile, const std::string& destFile,
 		const std::string& destFileEditor)
-		:NativeNamespace(std::move(nativeNamespace)), ScriptTypeName(scriptName), TypeCategory(typeCategory), NativeFile(nativeFile), InteropFile(destFile), EditorInteropFile(destFileEditor)
+		:NativeNamespace(std::move(nativeNamespace)), ScriptTypeName(scriptName), ScriptInteropTypeName(scriptInteropTypeName), TypeCategory(typeCategory), NativeFile(nativeFile), InteropFile(destFile), EditorInteropFile(destFileEditor)
 	{ }
 
 	bool IsInt64() const;
@@ -49,6 +49,7 @@ struct TypeMappingInformation
 	bool IsHandleType() const;
 	bool IsClassType() const;
 
+	std::string ScriptInteropTypeName;
 	std::string ScriptTypeName; /**< Name of the type in the script code. */
 	SmallVector<std::string, 4> NativeNamespace; /**< Namespace in which the native type is located in. Used for e.g. forward declares in generated native interop code. */
 	std::string NativeFile; /**< File in which the native type is defined in. Used for resolving includes. */
@@ -138,12 +139,13 @@ public:
 	 * @param nativeName			Type name of the native type.
 	 * @param nativeFilePath		Path to the file in which the native type is declared in.
 	 * @param scriptName			Type name of the script type the native type maps to.
+	 * @param scriptInteropName		Type name of the script interop class, excluding the prefix.
 	 * @param scriptFileName		Name of the file (without extension) in which the script type will be generated in.
 	 * @param api					API to export the script type into.
 	 * @param typeCategory			Type category that describes the type being mapped.
 	 * @param enumUnderlyingType	Underlying storage type, if the type category is an enum.
 	 */
-	static void RegisterNativeToScriptTypeMapping(const SmallVector<std::string, 4>& nameSpace, const std::string& nativeName, const std::string& nativeFilePath, const std::string& scriptName, const std::string& scriptFileName, ApiFlags api, ExportedClassTypeCategory typeCategory, BuiltinType::Kind enumUnderlyingType = BuiltinType::NullPtr);
+	static void RegisterNativeToScriptTypeMapping(const SmallVector<std::string, 4>& nameSpace, const std::string& nativeName, const std::string& nativeFilePath, const std::string& scriptName, const std::string& scriptInteropName, const std::string& scriptFileName, ApiFlags api, ExportedClassTypeCategory typeCategory, BuiltinType::Kind enumUnderlyingType = BuiltinType::NullPtr);
 
 	/** Same as RegisterNativeToScriptTypeMapping, except the script file is provided as an explicit path rather than a file name. Useful for types that have custom interop wrappers. */
 	static void RegisterNativeToScriptTypeMappingWithExplicitPath(const SmallVector<std::string, 4>& nameSpace, const std::string& nativeName, const std::string& nativeFilePath, const std::string& scriptName, const std::string& scriptFilePath, ExportedClassTypeCategory typeCategory, BuiltinType::Kind enumUnderlyingType = BuiltinType::NullPtr);
@@ -197,7 +199,7 @@ private:
 	};
 
 	/** Maps a C++ primitive type such as int uint32_t or int8_t, to C# type. */
-	static std::string MapCppPrimitiveTypeToCSharpType(const std::string& cppType);
+	static bool MapCppPrimitiveTypeToCSharpType(const std::string& cppType, std::string& outCsharpType);
 
 	/** Splits a method with default parameters into multiple methods, if some of the parameter default values cannot be parsed. */
 	template<class T>

@@ -258,3 +258,63 @@ bool ParserUtility::MapBuiltinPrimitiveTypeToCppType(BuiltinType::Kind kind, std
 	errs() << "Unrecognized builtin type found.\n";
 	return false;
 }
+
+std::string ParserUtility::ConvertToPascalCase(const std::string& name)
+{
+	std::string output = name;
+
+	if (!output.empty())
+	{
+		// Camel case to pascal case
+		if(islower(output[0]))
+			output[0] = toupper(output[0]);
+		else
+		{
+			// Screaming snake case to pascal case
+			bool isScreamingSnakeCase = true;
+			std::stringstream caseOutput;
+			bool nextUpper = true;
+			for(size_t i = 0; i < output.size(); i++)
+			{
+				if (isalpha(output[i]))
+				{
+					if(islower(output[i]))
+					{
+						isScreamingSnakeCase = false;
+						break;
+					}
+					else
+					{
+						if(!nextUpper)
+							caseOutput << (char)tolower(output[i]);
+						else
+						{
+							caseOutput << output[i];
+							nextUpper = false;
+						}
+					}
+				}
+				else if(output[i] == '_')
+					nextUpper = true;
+				else
+					caseOutput << output[i];
+			}
+
+			if(isScreamingSnakeCase)
+				output = caseOutput.str();
+		}
+	}
+
+	return output;
+}
+
+std::string ParserUtility::ReplaceInvalidTypeNameCharacters(const std::string& name)
+{
+	std::string output = name;
+
+	std::replace(output.begin(), output.end(), '<', '_');
+	std::replace(output.begin(), output.end(), '>', '_');
+
+	return output;
+}
+

@@ -23,7 +23,7 @@ enum class ExportFlags
 /** Information used for controlling script export of a particular declaration. */
 struct ScriptExportInformation
 {
-	std::string ExportedTypeName; /**< Name to export as to scripting. */
+	std::string ExportedTypeName; /**< Name to export as to scripting, if explicitly provided. */
 	std::string ExportedFileName; /**< Explicit file to export to. */
 	std::string ExtensionOfType; /**< If the declaration is acting as an extension for some other class, this tells us for which class is the declaration an extension of. */
 	std::string DocumentationGroup; /**< Name of the documentation group to wrap the generated code in. */

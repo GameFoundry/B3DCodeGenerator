@@ -932,7 +932,7 @@ bool BansheeCodeGeneratorASTVisitor::TryParseEvent(ValueDecl* decl, const std::s
 		eventFlags |= (int)MethodFlags::Callback;
 
 	outEventInformation.NativeName = sourceFieldName.str();
-	outEventInformation.ScriptName = parsedEventInfo.ExportedTypeName;
+	outEventInformation.ScriptName = parsedEventInfo.ExportedTypeName.empty() ? ParserUtility::ConvertToPascalCase(sourceFieldName.str()) : parsedEventInfo.ExportedTypeName;
 	outEventInformation.MethodFlags = eventFlags;
 	outEventInformation.ExternalClass = className;
 	outEventInformation.Visibility = parsedEventInfo.Visibility;
@@ -959,7 +959,7 @@ bool BansheeCodeGeneratorASTVisitor::TryParseEvent(ValueDecl* decl, const std::s
 	return true;
 }
 
-std::string BansheeCodeGeneratorASTVisitor::ParseTemplateArguments(const std::string& className, const TemplateArgument* arguments, uint32_t argumentCount, SmallVector<TemplateParamInfo, 0>* outTemplateArgumentInformation)
+std::string BansheeCodeGeneratorASTVisitor::ParseTemplateArguments(const std::string& className, const TemplateArgument* arguments, uint32_t argumentCount, std::vector<TemplateParameterInformation>* outTemplateArgumentInformation)
 {
 	std::stringstream tmplArgsStream;
 	tmplArgsStream << "<";
@@ -974,10 +974,11 @@ std::string BansheeCodeGeneratorASTVisitor::ParseTemplateArguments(const std::st
 			VariableBase variableInformation;
 			ParseTypeInformation(tmplArg.getAsType(), variableInformation.TypeInformation);
 
-			tmplArgsStream << variableInformation.TypeInformation.GetLastWrappedOrSelfTypeName();
+			const std::string& typeName = variableInformation.TypeInformation.GetLastWrappedOrSelfTypeName();
+			tmplArgsStream << typeName;
 
 			if(outTemplateArgumentInformation != nullptr)
-				outTemplateArgumentInformation->push_back({ "class" });
+				outTemplateArgumentInformation->push_back(TemplateParameterInformation("typename", typeName));
 		}
 		else if(tmplArg.getKind() == TemplateArgument::Expression)
 		{
@@ -985,23 +986,23 @@ std::string BansheeCodeGeneratorASTVisitor::ParseTemplateArguments(const std::st
 			if (!TryEvaluateExpression(tmplArg.getAsExpr(), tmplArgExprValue, exprType))
 			{
 				outs() << "Error: Template argument for type \"" << className << "\" cannot be constantly evaluated, ignoring it.\n";
-				tmplArgsStream << "unknown";
+				tmplArgExprValue = "unknown";
 			}
-			else
-				tmplArgsStream << tmplArgExprValue;
+
+			tmplArgsStream << tmplArgExprValue;
 
 			VariableBase variableInformation;
 			ParseTypeInformation(tmplArg.getAsExpr()->getType(), variableInformation.TypeInformation);
 
 			if(outTemplateArgumentInformation != nullptr)
-				outTemplateArgumentInformation->push_back({ variableInformation.TypeInformation.GetLastWrappedOrSelfTypeName() });
+				outTemplateArgumentInformation->push_back(TemplateParameterInformation(variableInformation.TypeInformation.GetLastWrappedOrSelfTypeName(), tmplArgExprValue));
 		}
 		else if(tmplArg.getKind() == TemplateArgument::Integral)
 		{
 			tmplArgsStream << tmplArg.getAsIntegral().getExtValue();
 
 			if(outTemplateArgumentInformation != nullptr)
-				outTemplateArgumentInformation->push_back({ std::to_string(tmplArg.getAsIntegral().getExtValue()) });
+				outTemplateArgumentInformation->push_back(TemplateParameterInformation("int", std::to_string(tmplArg.getAsIntegral().getExtValue())));
 		}
 		else
 		{
@@ -1009,7 +1010,7 @@ std::string BansheeCodeGeneratorASTVisitor::ParseTemplateArguments(const std::st
 			tmplArgsStream << "unknown";
 
 			if(outTemplateArgumentInformation != nullptr)
-				outTemplateArgumentInformation->push_back({ "unknown" });
+				outTemplateArgumentInformation->push_back(TemplateParameterInformation("unknown", "unknown"));
 		}
 	}
 
@@ -1025,7 +1026,7 @@ bool BansheeCodeGeneratorASTVisitor::TryParseDeclarationAsStruct(CXXRecordDecl* 
 	// If a template specialization append template params to its name
 	ClassTemplateSpecializationDecl* specializationDeclaration = dyn_cast<ClassTemplateSpecializationDecl>(declaration);
 	CXXRecordDecl* templatedDeclaration = declaration;
-	SmallVector<TemplateParamInfo, 0> templateParameters;
+	std::vector<TemplateParameterInformation> templateParameters;
 	if(specializationDeclaration != nullptr)
 	{
 		auto& templateInstantiationArguments = specializationDeclaration->getTemplateInstantiationArgs();
@@ -1042,13 +1043,34 @@ bool BansheeCodeGeneratorASTVisitor::TryParseDeclarationAsStruct(CXXRecordDecl* 
 	outStructInfo.Visibility = scriptExportInformation.Visibility;
 	outStructInfo.RequiresInteropType = declaration->isPolymorphic();
 	outStructInfo.DocumentationGroup = scriptExportInformation.DocumentationGroup;
-	outStructInfo.IsTemplateInstatiation = specializationDeclaration != nullptr;
 	outStructInfo.TemplateParameters = templateParameters;
 	outStructInfo.API = ParserUtility::ParseAPIFromExportFlags(scriptExportInformation.ExportFlags);
 
 	mCommentParser.ParseComments(templatedDeclaration, outStructInfo.Documentation);
 	ParseNamespace(declaration, outStructInfo.Namespace);
 	CommentParser::ClearParameterReferenceComments(outStructInfo.Documentation);
+
+	// If struct is a template and we haven't specified an export name, export the struct as a template. Otherwise export only the specialization of the
+	// template using the provided export name.
+	if(specializationDeclaration != nullptr && scriptExportInformation.ExportedTypeName.empty())
+		outStructInfo.StructFlags |= (int)StructFlags::IsTemplate;
+
+	std::string declarationFile = astContext->getSourceManager().getFilename(declaration->getSourceRange().getBegin()).str();
+
+	std::string scriptExportName;
+	std::string scriptInteropExportName;
+	if(!scriptExportInformation.ExportedTypeName.empty())
+	{
+		scriptExportName = scriptExportInformation.ExportedTypeName;
+		scriptInteropExportName = scriptExportInformation.ExportedTypeName;
+	}
+	else
+	{
+		scriptExportName = ParserUtility::ConvertToPascalCase(sourceClassName);
+		scriptInteropExportName = ParserUtility::ReplaceInvalidTypeNameCharacters(scriptExportName);
+	}
+
+	TypeLookup::RegisterNativeToScriptTypeMapping(outStructInfo.Namespace, outStructInfo.NativeName, declarationFile, scriptExportName, scriptInteropExportName, scriptExportInformation.ExportedFileName, outStructInfo.API, ExportedClassTypeCategory::Struct);
 
 	std::unordered_map<FieldDecl*, std::pair<std::string, std::string>> defaultFieldValues;
 
@@ -1357,6 +1379,19 @@ bool BansheeCodeGeneratorASTVisitor::TryParseDeclarationAsStruct(CXXRecordDecl* 
 			FieldInfo fieldInfo;
 			fieldInfo.Name = fieldDecl->getName().str();
 
+			// If this a templated class, check if the field type depends on one of the template parameters
+			const ClassTemplateSpecializationDecl* const templateSpecializationDeclaration = llvm::dyn_cast<ClassTemplateSpecializationDecl>(declaration);
+			if(templateSpecializationDeclaration != nullptr)
+			{
+				const SubstTemplateTypeParmType* substitutedTemplateType = fieldDecl->getType().getTypePtr()->getAs<SubstTemplateTypeParmType>();
+				if(substitutedTemplateType != nullptr)
+				{
+					const TemplateTypeParmType* templatedParameterType = substitutedTemplateType->getReplacedParameter();
+					if(templatedParameterType != nullptr)
+						fieldInfo.TemplateParameterIndex = templatedParameterType->getIndex();
+				}
+			}
+
 			ScriptExportInformation parsedFieldInfo;
 			if (ScriptExportAttributeParser::ParseExportAttribute(fieldDecl, sourceClassName, parsedFieldInfo))
 			{
@@ -1453,7 +1488,7 @@ bool BansheeCodeGeneratorASTVisitor::TryParseDeclarationAsClass(CXXRecordDecl* d
 	// If a template specialization append template params to its name
 	ClassTemplateSpecializationDecl* specializationDeclaration = dyn_cast<ClassTemplateSpecializationDecl>(declaration);
 	CXXRecordDecl* templatedDeclaration = declaration;
-	SmallVector<TemplateParamInfo, 0> templateParameters;
+	std::vector<TemplateParameterInformation> templateParameters;
 	if(specializationDeclaration != nullptr)
 	{
 		auto& templateInstantiationArguments = specializationDeclaration->getTemplateInstantiationArgs();
@@ -1480,8 +1515,10 @@ bool BansheeCodeGeneratorASTVisitor::TryParseDeclarationAsClass(CXXRecordDecl* d
 	if((scriptExportInformation.MetaData.Flags & (int)MetaDataFlags::ForceHideInInspector) != 0)
 		outClassInfo.ClassFlags |= (int)ClassFlags::HideInInspector;
 
-	if(specializationDeclaration != nullptr)
-		outClassInfo.ClassFlags |= (int)ClassFlags::IsTemplateInst;
+	// If class is a template and we haven't specified an export name, export the class as a template. Otherwise export only the specialization of the
+	// template using the provided export name.
+	if(specializationDeclaration != nullptr && scriptExportInformation.ExportedTypeName.empty())
+		outClassInfo.ClassFlags |= (int)ClassFlags::IsTemplate;
 
 	const bool typeIsBuiltinModuleType = ParserUtility::CheckIsBuiltinModuleType(declaration);
 	if(typeIsBuiltinModuleType)
@@ -1504,8 +1541,22 @@ bool BansheeCodeGeneratorASTVisitor::TryParseDeclarationAsClass(CXXRecordDecl* d
 		errs() << "Warning: Generating script bindings for class \"" << sourceClassName << "\", but class doesn't derive from IScriptExportable.\n";
 	}
 
-	std::string declFile = astContext->getSourceManager().getFilename(declaration->getSourceRange().getBegin()).str();
-	TypeLookup::RegisterNativeToScriptTypeMapping(outClassInfo.Namespace, sourceClassName, declFile, scriptExportInformation.ExportedTypeName, scriptExportInformation.ExportedFileName, outClassInfo.API, classType);
+	std::string declarationFile = astContext->getSourceManager().getFilename(declaration->getSourceRange().getBegin()).str();
+
+	std::string scriptExportName;
+	std::string scriptInteropExportName;
+	if(!scriptExportInformation.ExportedTypeName.empty())
+	{
+		scriptExportName = scriptExportInformation.ExportedTypeName;
+		scriptInteropExportName = scriptExportInformation.ExportedTypeName;
+	}
+	else
+	{
+		scriptExportName = ParserUtility::ConvertToPascalCase(sourceClassName);
+		scriptInteropExportName = ParserUtility::ReplaceInvalidTypeNameCharacters(scriptExportName);
+	}
+
+	TypeLookup::RegisterNativeToScriptTypeMapping(outClassInfo.Namespace, sourceClassName, declarationFile, scriptExportName, scriptInteropExportName, scriptExportInformation.ExportedFileName, outClassInfo.API, classType);
 
 	std::stack<const CXXRecordDecl*> todo;
 	todo.push(declaration);
@@ -1639,7 +1690,7 @@ bool BansheeCodeGeneratorASTVisitor::TryParseDeclarationAsClass(CXXRecordDecl* d
 
 			MethodInfo methodInfo;
 			methodInfo.NativeName = sourceMethodName.str();
-			methodInfo.ScriptName = parsedMethodInfo.ExportedTypeName;
+			methodInfo.ScriptName = parsedMethodInfo.ExportedTypeName.empty() ? ParserUtility::ConvertToPascalCase(sourceMethodName.str()) : parsedMethodInfo.ExportedTypeName;
 			methodInfo.MethodFlags = methodFlags;
 			methodInfo.ExternalClass = sourceClassName;
 			methodInfo.Visibility = parsedMethodInfo.Visibility;
@@ -1826,7 +1877,7 @@ bool BansheeCodeGeneratorASTVisitor::TryParseDeclarationAsClass(CXXRecordDecl* d
 				// Register wrapper methods, this way we can re-use much of the same logic for method/property generation
 				MethodInfo getterInfo;
 				getterInfo.NativeName = "Get" + fieldInfo.Name;
-				getterInfo.ScriptName = parsedFieldInfo.ExportedTypeName;
+				getterInfo.ScriptName = parsedFieldInfo.ExportedTypeName.empty() ? ParserUtility::ConvertToPascalCase(fieldInfo.Name) : parsedFieldInfo.ExportedTypeName;
 				getterInfo.Visibility = parsedFieldInfo.Visibility;
 				getterInfo.API = ParserUtility::ParseAPIFromExportFlags(parsedFieldInfo.ExportFlags);
 				getterInfo.MethodFlags = (int)MethodFlags::PropertyGetter | (int)MethodFlags::FieldWrapper;
@@ -1846,7 +1897,7 @@ bool BansheeCodeGeneratorASTVisitor::TryParseDeclarationAsClass(CXXRecordDecl* d
 
 				MethodInfo setterInfo;
 				setterInfo.NativeName = "Set" + fieldInfo.Name;
-				setterInfo.ScriptName = parsedFieldInfo.ExportedTypeName;
+				setterInfo.ScriptName = parsedFieldInfo.ExportedTypeName.empty() ? ParserUtility::ConvertToPascalCase(fieldInfo.Name) : parsedFieldInfo.ExportedTypeName;
 				setterInfo.Documentation = fieldInfo.Documentation;
 				setterInfo.Parameters.push_back(paramInfo);
 				setterInfo.Visibility = parsedFieldInfo.Visibility;
@@ -1910,13 +1961,12 @@ bool BansheeCodeGeneratorASTVisitor::VisitEnumDecl(EnumDecl* decl)
 		return true;
 
 	StringRef sourceClassName = decl->getName();
-	ScriptExportInformation parsedEnumInfo;
-	parsedEnumInfo.ExportedTypeName = sourceClassName.str();
+	ScriptExportInformation scriptExportInformation;
 
-	if (!ScriptExportAttributeParser::ParseExportAttribute(attr, sourceClassName, parsedEnumInfo))
+	if (!ScriptExportAttributeParser::ParseExportAttribute(attr, sourceClassName, scriptExportInformation))
 		return true;
 
-	if (TypeLookup::FindEnumInformationInFile(parsedEnumInfo.ExportedFileName, sourceClassName.str()) != nullptr)
+	if (TypeLookup::FindEnumInformationInFile(scriptExportInformation.ExportedFileName, sourceClassName.str()) != nullptr)
 		return true; // Already parsed
 
 	QualType underlyingType = decl->getIntegerType();
@@ -1926,12 +1976,14 @@ bool BansheeCodeGeneratorASTVisitor::VisitEnumDecl(EnumDecl* decl)
 		return true;
 	}
 
+	const std::string scriptName = scriptExportInformation.ExportedTypeName.empty() ? ParserUtility::ConvertToPascalCase(sourceClassName.str()) : scriptExportInformation.ExportedTypeName;
+
 	EnumInfo enumEntry;
 	enumEntry.NativeName = sourceClassName.str();
-	enumEntry.ScriptName = parsedEnumInfo.ExportedTypeName;
-	enumEntry.Visibility = parsedEnumInfo.Visibility;
-	enumEntry.API = ParserUtility::ParseAPIFromExportFlags(parsedEnumInfo.ExportFlags);
-	enumEntry.DocumentationGroup = parsedEnumInfo.DocumentationGroup;
+	enumEntry.ScriptName = scriptName;
+	enumEntry.Visibility = scriptExportInformation.Visibility;
+	enumEntry.API = ParserUtility::ParseAPIFromExportFlags(scriptExportInformation.ExportFlags);
+	enumEntry.DocumentationGroup = scriptExportInformation.DocumentationGroup;
 	mCommentParser.ParseComments(decl, enumEntry.Documentation);
 	CommentParser::ClearParameterReferenceComments(enumEntry.Documentation);
 
@@ -1944,27 +1996,26 @@ bool BansheeCodeGeneratorASTVisitor::VisitEnumDecl(EnumDecl* decl)
 		MapBuiltinTypeToCSharpType(builtinType->getKind(), enumEntry.ExplicitUnderlyingCSharpType);
 
 	std::string declFile = astContext->getSourceManager().getFilename(decl->getSourceRange().getBegin()).str();
-	std::string destFile = "BsScript" + parsedEnumInfo.ExportedFileName + ".generated.h";
-	std::string destFileEditor = "BsScript" + parsedEnumInfo.ExportedFileName + ".editor.generated.h";
+	std::string destFile = "BsScript" + scriptExportInformation.ExportedFileName + ".generated.h";
+	std::string destFileEditor = "BsScript" + scriptExportInformation.ExportedFileName + ".editor.generated.h";
 
-	TypeLookup::RegisterNativeToScriptTypeMapping(enumEntry.Namespace, sourceClassName.str(), declFile, parsedEnumInfo.ExportedTypeName, parsedEnumInfo.ExportedFileName, enumEntry.API, ExportedClassTypeCategory::Enum, builtinType->getKind());
+	TypeLookup::RegisterNativeToScriptTypeMapping(enumEntry.Namespace, sourceClassName.str(), declFile, scriptName, scriptName, scriptExportInformation.ExportedFileName, enumEntry.API, ExportedClassTypeCategory::Enum, builtinType->getKind());
 
 	auto iter = decl->enumerator_begin();
 	while (iter != decl->enumerator_end())
 	{
 		EnumConstantDecl* constDecl = *iter;
 
-		ScriptExportInformation parsedEnumEntryInfo;
+		ScriptExportInformation entryScriptExportInformation;
 		AnnotateAttr* enumAttr = constDecl->getAttr<AnnotateAttr>();
 
 		StringRef entryName = constDecl->getName();
-		parsedEnumEntryInfo.ExportedTypeName = entryName.str();
-		parsedEnumEntryInfo.ExportFlags = 0;
+		entryScriptExportInformation.ExportFlags = 0;
 
 		if (enumAttr != nullptr)
-			ScriptExportAttributeParser::ParseExportAttribute(enumAttr, entryName, parsedEnumEntryInfo);
+			ScriptExportAttributeParser::ParseExportAttribute(enumAttr, entryName, entryScriptExportInformation);
 
-		if ((parsedEnumEntryInfo.ExportFlags & (int)ExportFlags::Exclude) != 0)
+		if ((entryScriptExportInformation.ExportFlags & (int)ExportFlags::Exclude) != 0)
 		{
 			++iter;
 			continue;
@@ -1974,7 +2025,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitEnumDecl(EnumDecl* decl)
 
 		EnumEntryInfo entryInfo;
 		entryInfo.NativeName = entryName.str();
-		entryInfo.ScriptName = parsedEnumEntryInfo.ExportedTypeName;
+		entryInfo.ScriptName = entryScriptExportInformation.ExportedTypeName.empty() ? entryName.str() : entryScriptExportInformation.ExportedTypeName;
 		mCommentParser.ParseComments(constDecl, entryInfo.Documentation);
 		CommentParser::ClearParameterReferenceComments(entryInfo.Documentation);
 
@@ -1986,7 +2037,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitEnumDecl(EnumDecl* decl)
 		++iter;
 	}
 
-	TypeLookup::RegisterEntryToGenerate(parsedEnumInfo.ExportedFileName, enumEntry);
+	TypeLookup::RegisterEntryToGenerate(scriptExportInformation.ExportedFileName, enumEntry);
 	return true;
 }
 
@@ -2001,8 +2052,6 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* declarati
 	StringRef declarationName = declaration->getName();
 
 	ScriptExportInformation scriptExportInformation;
-	scriptExportInformation.ExportedTypeName = declarationName.str();
-
 	if (!ScriptExportAttributeParser::ParseExportAttribute(annotateAttribute, declarationName, scriptExportInformation))
 		return true;
 
@@ -2012,8 +2061,6 @@ bool BansheeCodeGeneratorASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* declarati
 		if(!TryParseDeclarationAsStruct(declaration, scriptExportInformation, structInfo))
 			return true; // Already parsed
 
-		std::string declarationFile = astContext->getSourceManager().getFilename(declaration->getSourceRange().getBegin()).str();
-		TypeLookup::RegisterNativeToScriptTypeMapping(structInfo.Namespace, structInfo.NativeName, declarationFile, scriptExportInformation.ExportedTypeName, scriptExportInformation.ExportedFileName, structInfo.API, ExportedClassTypeCategory::Struct);
 		TypeLookup::RegisterEntryToGenerate(scriptExportInformation.ExportedFileName, structInfo);
 	}
 	else

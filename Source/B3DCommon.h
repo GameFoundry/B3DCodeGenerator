@@ -152,12 +152,18 @@ struct FieldInfo : VariableInformation
 {
 	CommentEntry Documentation; /**< Documentation comments for the field. */
 	MemberMetaData MetaData; /**< Additional meta-data to associate with the field. */
+	uint32_t TemplateParameterIndex = ~0u; /**< If the field type is a class template argument (e.g. T), index of that template argument. */
 };
 
 /** Information about a template parameter. */
-struct TemplateParamInfo
+struct TemplateParameterInformation
 {
-	std::string TypeName;
+	TemplateParameterInformation(const std::string& kind, const std::string& value)
+		:Kind(kind), Value(value)
+	{ }
+
+	std::string Kind; /**< Kind of the template parameter, e.g. 'typename', 'int', 'bool' etc. */
+	std::string Value; /**< Value of the template parameter, if the template is instantiated. e.g. 'float', '1', 'false', etc. */
 };
 
 /** Flags that describe how is a method exported. */
@@ -223,7 +229,7 @@ struct GeneratedTypeInformation
 	std::string SingletonGetterName; /**< Name of the global getter method in case the class is a singleton. */
 
 	std::string NativeNameWithoutTemplateArguments; /**< Native name of the type, with template parameters stripped. */
-	SmallVector<TemplateParamInfo, 0> TemplateParameters; /**< Template parameters of the native type, if any. */
+	std::vector<TemplateParameterInformation> TemplateParameters; /**< Template parameters of the native type, if any. */
 	
 	CommentEntry Documentation; /**< Documentation comments for the type. */
 	std::string DocumentationGroup; /**< Documentation group in which to place the generated type. */
@@ -234,11 +240,19 @@ enum class ClassFlags
 {
 	IsBase = 1 << 0,						/**< Class represents a base class. */
 	IsModule = 1 << 1,						/**< Class is a module and only has a single instance. */
-	IsTemplateInst = 1 << 2,				/**< Class is an instance of a template. */
+	IsTemplate = 1 << 2,					/**< Class is a template. */
 	IsStruct = 1 << 3,						/**< Class is defined as a struct in native code. */
 	HideInInspector = 1 << 4,				/**< Class members will be hidden in the inspector. */
 	IsStatic = 1 << 5,						/**< Class only contains static members and methods, and is never instantiated. */
 	IsSingleton = 1 << 6,					/**< Class is always accessed through a global getter that contains the single class instance. */
+	SkipGeneratingCSharp = 1 << 7,			/**< Skips generating CSharp code for the class. Can be useful if a class is a generic with multiple exported specializations. */
+};
+
+/** Flags that describe how is a struct exported. */
+enum class StructFlags
+{
+	IsTemplate = 1 << 0,					/**< Struct is a template. */
+	SkipGeneratingCSharp = 1 << 1,			/**< Skips generating CSharp code for the struct. Can be useful if the struct is a generic with multiple exported specializations. */
 };
 
 /** Information about a generated class. */
@@ -280,12 +294,16 @@ struct StructConstructorInfo
 /** Information about a generated struct. */
 struct StructInfo : GeneratedTypeInformation
 {
+	int StructFlags = 0; /**< Assigned flags, of StructFlags type. */
+
 	std::string InteropName; /**< Name of the struct in the interop code. This will be the same as native struct name if interop type is not required. */
 
 	std::vector<StructConstructorInfo> Constructors;
 	std::vector<FieldInfo> Fields;
 	bool RequiresInteropType = false; /**< If true, the struct contains some types that cannot be memcpyed into script, and requires an intermediate struct to which we first to the translation from native, and then memcpy the intermediate struct. */
-	bool IsTemplateInstatiation = false; /**< If true, struct is a template instantiation. */
+
+	/** Checks is the provided flag set on the class. */
+	bool IsFlagSet(enum StructFlags flag) const { return (StructFlags & (int)flag) != 0; }
 };
 
 /** Information about a single entry within an enum. */
@@ -310,7 +328,7 @@ struct EnumInfo : GeneratedTypeInformation
 struct ForwardDeclarationInformation
 {
 	ForwardDeclarationInformation() = default;
-	ForwardDeclarationInformation(const std::string& typeName, const SmallVector<std::string, 4>& nameSpace, const SmallVector<TemplateParamInfo, 0>& templateParameters = {}, bool isStruct = false)
+	ForwardDeclarationInformation(const std::string& typeName, const SmallVector<std::string, 4>& nameSpace, const std::vector<TemplateParameterInformation>& templateParameters = {}, bool isStruct = false)
 		:TypeName(typeName), Namespace(nameSpace), TemplateParameters(templateParameters), IsStruct(isStruct)
 	{ }
 
@@ -321,7 +339,7 @@ struct ForwardDeclarationInformation
 
 	std::string TypeName; /**< Name of the type. */
 	SmallVector<std::string, 4> Namespace; /**< Namespace the type is in. */
-	SmallVector<TemplateParamInfo, 0> TemplateParameters; /**< Template parameters for the type, if any. */
+	std::vector<TemplateParameterInformation> TemplateParameters; /**< Template parameters for the type, if any. E.g. this will be 'typename' or e.g. 'int', 'bool', etc. */
 	bool IsStruct = false; /**< True if the type is a struct, false if it a class. */
 };
 

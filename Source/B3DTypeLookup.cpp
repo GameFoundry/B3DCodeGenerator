@@ -321,7 +321,7 @@ void TypeLookup::RegisterEntryToGenerate(const std::string& fileName, EnumInfo e
 	}
 }
 
-void TypeLookup::RegisterNativeToScriptTypeMapping(const SmallVector<std::string, 4>& nameSpace, const std::string& nativeName, const std::string& nativeFilePath, const std::string& scriptName, const std::string& scriptFileName, ApiFlags api, ExportedClassTypeCategory typeCategory, BuiltinType::Kind enumUnderlyingType)
+void TypeLookup::RegisterNativeToScriptTypeMapping(const SmallVector<std::string, 4>& nameSpace, const std::string& nativeName, const std::string& nativeFilePath, const std::string& scriptName, const std::string& scriptInteropName, const std::string& scriptFileName, ApiFlags api, ExportedClassTypeCategory typeCategory, BuiltinType::Kind enumUnderlyingType)
 {
 	const std::string destinationFile = "BsScript" + scriptFileName + ".generated.h";
 	std::string destinationFileEditor = destinationFile;
@@ -330,7 +330,7 @@ void TypeLookup::RegisterNativeToScriptTypeMapping(const SmallVector<std::string
 	if (IsAPIEditor(api) && IsAPIFramework(api))
 		destinationFileEditor = "BsScript" + scriptFileName + ".editor.generated.h";
 
-	TypeMappingInformation typeMappingInformation = TypeMappingInformation(nameSpace, scriptName, typeCategory, nativeFilePath, destinationFile, destinationFileEditor);
+	TypeMappingInformation typeMappingInformation = TypeMappingInformation(nameSpace, scriptName, scriptInteropName, typeCategory, nativeFilePath, destinationFile, destinationFileEditor);
 	typeMappingInformation.EnumUnderlyingType = enumUnderlyingType;
 
 	mNativeToScriptTypeMap[nativeName] = typeMappingInformation;
@@ -338,7 +338,7 @@ void TypeLookup::RegisterNativeToScriptTypeMapping(const SmallVector<std::string
 
 void TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(const SmallVector<std::string, 4>& nameSpace, const std::string& nativeName, const std::string& nativeFilePath, const std::string& scriptName, const std::string& scriptFilePath, ExportedClassTypeCategory typeCategory, BuiltinType::Kind enumUnderlyingType)
 {
-	TypeMappingInformation typeMappingInformation = TypeMappingInformation(nameSpace, scriptName, typeCategory, nativeFilePath, scriptFilePath);
+	TypeMappingInformation typeMappingInformation = TypeMappingInformation(nameSpace, scriptName, scriptName, typeCategory, nativeFilePath, scriptFilePath);
 	typeMappingInformation.EnumUnderlyingType = enumUnderlyingType;
 
 	mNativeToScriptTypeMap[nativeName] = typeMappingInformation;
@@ -350,10 +350,14 @@ TypeMappingInformation TypeLookup::GetNativeToScriptTypeMapping(const std::strin
 	if (iterFind == mNativeToScriptTypeMap.end())
 	{
 		TypeMappingInformation outType;
-		outType.ScriptTypeName = MapCppPrimitiveTypeToCSharpType(typeName);
 		outType.TypeCategory = ExportedClassTypeCategory::Primitive;
 
-		errs() << "Unable to map type \"" << typeName << "\". Assuming same name as source.\n";
+		if(!MapCppPrimitiveTypeToCSharpType(typeName, outType.ScriptTypeName))
+		{
+			outType.ScriptTypeName = typeName;
+			errs() << "Unable to map type \"" << typeName << "\". Assuming same name as source.\n";
+		}
+
 		return outType;
 	}
 	
@@ -367,8 +371,13 @@ TypeMappingInformation TypeLookup::GetNativeToScriptTypeMapping(const VariableTy
 	case VariableTypeCategory::Primitive:
 	{
 		TypeMappingInformation outType;
-		outType.ScriptTypeName = MapCppPrimitiveTypeToCSharpType(typeInformation.TypeName);
 		outType.TypeCategory = ExportedClassTypeCategory::Primitive;
+
+		if(!MapCppPrimitiveTypeToCSharpType(typeInformation.TypeName, outType.ScriptTypeName))
+		{
+			outType.ScriptTypeName = typeInformation.TypeName;
+			errs() << "Unable to map type \"" << typeInformation.TypeName << "\". Assuming same name as source.\n";
+		}
 
 		return outType;
 	}
@@ -532,8 +541,6 @@ std::string TypeLookup::GetScriptWrapperObjectTypeName(const std::string& typeNa
 	if (!isValidInteropType)
 		outs() << "Error: Type \"" << typeName << "\" referenced as a script interop type, but script interop object cannot be generated for this object type.\n";
 
-	std::string cleanName = iterFind->second.ScriptTypeName;
-
 	if(isResourceReference)
 	{
 		if(iterFind->second.TypeCategory != ::ExportedClassTypeCategory::Resource)
@@ -541,46 +548,103 @@ std::string TypeLookup::GetScriptWrapperObjectTypeName(const std::string& typeNa
 
 		return "ScriptRRefBase";
 	}
-	
-	return "Script" + cleanName;
+
+	return "Script" + iterFind->second.ScriptInteropTypeName;
 }
 
-std::string TypeLookup::MapCppPrimitiveTypeToCSharpType(const std::string& cppType)
+bool TypeLookup::MapCppPrimitiveTypeToCSharpType(const std::string& cppType, std::string& outCsharpType)
 {
-	if (cppType == "int8_t")
-		return "sbyte";
+	if(cppType == "bool")
+	{
+		outCsharpType = "bool";
+		return true;
+	}
 
-	if (cppType == "uint8_t")
-		return "byte";
-
-	if (cppType == "int16_t")
-		return "short";
-
-	if (cppType == "uint16_t")
-		return "ushort";
+	if (cppType == "float")
+	{
+		outCsharpType = "float";
+		return true;
+	}
 
 	if (cppType == "int32_t")
-		return "int";
+	{
+		outCsharpType = "int";
+		return true;
+	}
 
 	if (cppType == "uint32_t")
-		return "int";
+	{
+		outCsharpType = "int"; // TODO - Keeping this for legacy reasons, but make this uint eventually
+		return true;
+	}
+
+	if (cppType == "double")
+	{
+		outCsharpType = "double";
+		return true;
+	}
+
+	if (cppType == "char")
+	{
+		outCsharpType = "char";
+		return true;
+	}
+
+	if (cppType == "int8_t")
+	{
+		outCsharpType = "sbyte";
+		return true;
+	}
+
+	if (cppType == "uint8_t")
+	{
+		outCsharpType = "byte";
+		return true;
+	}
+
+	if (cppType == "int16_t")
+	{
+		outCsharpType = "short";
+		return true;
+	}
+
+	if (cppType == "uint16_t")
+	{
+		outCsharpType = "ushort";
+		return true;
+	}
 
 	if (cppType == "int64_t")
-		return "long";
+	{
+		outCsharpType = "long";
+		return true;
+	}
 
 	if (cppType == "uint64_t")
-		return "ulong";
+	{
+		outCsharpType = "ulong";
+		return true;
+	}
 
 	if (cppType == "wchar_t")
-		return "char";
+	{
+		outCsharpType = "char";
+		return true;
+	}
 
 	if (cppType == "char16_t")
-		return "ushort";
+	{
+		outCsharpType = "ushort";
+		return true;
+	}
 
 	if (cppType == "char32_t")
-		return "uint";
+	{
+		outCsharpType = "uint";
+		return true;
+	}
 
-	return cppType;
+	return false;
 }
 
 void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
@@ -957,6 +1021,54 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 		{
 			for(auto& fieldInfo : structInfo.Fields)
 				fnMarkParameter(fieldInfo);
+		}
+	}
+
+	// Generate correct script type names for templates, also only ensure a single C# class gets generated
+	{
+		std::unordered_set<std::string> processedTemplatedTypes;
+
+		for (auto& fileInfo : mFilesToGenerate)
+		{
+			// TODO - This should be done in order, so those with least nested template parameters are parsed first
+			auto fnGenerateTemplateScriptName = [&processedTemplatedTypes](GeneratedTypeInformation& typeInfo)
+			{
+				std::stringstream stream;
+				stream << typeInfo.NativeNameWithoutTemplateArguments << "<";
+
+				for(const auto& templateParameter : typeInfo.TemplateParameters)
+					stream << GetNativeToScriptTypeMapping(templateParameter.Value).ScriptTypeName;
+
+				stream << ">";
+
+				auto found = mNativeToScriptTypeMap.find(typeInfo.NativeName);
+				if(found != mNativeToScriptTypeMap.end())
+					found->second.ScriptTypeName = stream.str();
+			};
+
+			for (auto& classInfo : fileInfo.second.Classes)
+			{
+				if(!classInfo.IsFlagSet(ClassFlags::IsTemplate))
+					continue;
+
+				auto insertResult = processedTemplatedTypes.insert(classInfo.NativeNameWithoutTemplateArguments);
+				if(!insertResult.second)
+					classInfo.ClassFlags |= (int)ClassFlags::SkipGeneratingCSharp;
+
+				fnGenerateTemplateScriptName(classInfo);
+			}
+
+			for(auto& structInfo : fileInfo.second.Structs)
+			{
+				if(!structInfo.IsFlagSet(StructFlags::IsTemplate))
+					continue;
+
+				auto insertResult = processedTemplatedTypes.insert(structInfo.NativeNameWithoutTemplateArguments);
+				if(!insertResult.second)
+					structInfo.StructFlags |= (int)StructFlags::SkipGeneratingCSharp;
+
+				fnGenerateTemplateScriptName(structInfo);
+			}
 		}
 	}
 

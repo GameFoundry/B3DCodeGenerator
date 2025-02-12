@@ -3612,7 +3612,7 @@ void GenerateCpp(StringRef engineOutputFolder, StringRef editorOutputFolder, boo
 					if (i != 0)
 						output << ", ";
 
-					output << decl.TemplateParameters[i].TypeName << " T" << std::to_string(i);
+					output << decl.TemplateParameters[i].Kind << " T" << std::to_string(i);
 				}
 
 				output << "> ";

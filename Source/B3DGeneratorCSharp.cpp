@@ -889,167 +889,196 @@ static std::string GenerateCSharpStruct(const StructInfo& input)
 	else
 		output << "\t";
 
-	std::string scriptName = TypeLookup::GetNativeToScriptTypeMapping(input.NativeName).ScriptTypeName;
+	const TypeMappingInformation& typeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(input.NativeName);
+	std::string scriptName;
+	if(input.IsFlagSet(StructFlags::IsTemplate))
+	{
+		std::stringstream scriptNameStream;
+		scriptNameStream << input.NativeNameWithoutTemplateArguments << "<";
+
+		for(uint32_t templateParameterIndex = 0; templateParameterIndex < (uint32_t)input.TemplateParameters.size(); ++templateParameterIndex)
+		{
+			scriptNameStream << "T";
+
+			if(templateParameterIndex > 0)
+				scriptNameStream << templateParameterIndex;
+
+			if((templateParameterIndex + 1) < (uint32_t)input.TemplateParameters.size())
+				scriptNameStream << ", ";
+
+			templateParameterIndex++;
+		}
+
+		scriptNameStream << ">";
+
+		scriptName = scriptNameStream.str();
+	}
+	else
+		scriptName = typeMappingInformation.ScriptTypeName;
+
 	output << "partial struct " << scriptName;
 
 	output << std::endl;
 	output << "\t{" << std::endl;
 
-	for (auto& entry : input.Constructors)
+	if(!input.IsFlagSet(StructFlags::IsTemplate))
 	{
-		bool isParameterless = entry.Parameters.size() == 0;
-		bool isStaticMethod = !entry.StaticMethodName.empty() || isParameterless;
-		if(!entry.StaticMethodName.empty())
+		for (auto& entry : input.Constructors)
 		{
-			output << XMLCommentGenerator::GenerateXMLComment(entry.Documentation, "\t\t");
-			output << "\t\tpublic static " << scriptName << " " << entry.StaticMethodName << "(";
-		}
-		else if (isParameterless) // Parameterless constructors not supported on C# structs
-		{
-			output << "\t\t/// <summary>Initializes the struct with default values.</summary>" << std::endl;
-			output << "\t\tpublic static " << scriptName << " Default(";
-		}
-		else
-		{
-			output << XMLCommentGenerator::GenerateXMLComment(entry.Documentation, "\t\t");
-			output << "\t\tpublic " << scriptName << "(";
-		}
-
-		std::vector<std::string> skippedParameters;
-		for (auto I = entry.Parameters.begin(); I != entry.Parameters.end(); ++I)
-		{
-			const VariableInformation& parameterInformation = *I;
-			const TypeMappingInformation parameterTypeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(parameterInformation.TypeInformation);
-
-			if (parameterInformation.TypeInformation.IsOutputParameter(parameterTypeMappingInformation))
+			bool isParameterless = entry.Parameters.size() == 0;
+			bool isStaticMethod = !entry.StaticMethodName.empty() || isParameterless;
+			if(!entry.StaticMethodName.empty())
 			{
-				// We report the error during field generation, as it checks for the same condition
-				continue;
+				output << XMLCommentGenerator::GenerateXMLComment(entry.Documentation, "\t\t");
+				output << "\t\tpublic static " << scriptName << " " << entry.StaticMethodName << "(";
+			}
+			else if (isParameterless) // Parameterless constructors not supported on C# structs
+			{
+				output << "\t\t/// <summary>Initializes the struct with default values.</summary>" << std::endl;
+				output << "\t\tpublic static " << scriptName << " Default(";
+			}
+			else
+			{
+				output << XMLCommentGenerator::GenerateXMLComment(entry.Documentation, "\t\t");
+				output << "\t\tpublic " << scriptName << "(";
 			}
 
-			if(!parameterInformation.DefaultValueType.empty() && parameterInformation.TypeInformation.TypeCategory != VariableTypeCategory::Flags)
+			std::vector<std::string> skippedParameters;
+			for (auto I = entry.Parameters.begin(); I != entry.Parameters.end(); ++I)
 			{
-				// We don't generate parameters that have complex default values (as they're not supported in C#).
-				// Instead the post-processor has generated different versions of this method, so we can just skip
-				// such parameters
-				skippedParameters.push_back(parameterInformation.Name);
-				continue;
-			}
+				const VariableInformation& parameterInformation = *I;
+				const TypeMappingInformation parameterTypeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(parameterInformation.TypeInformation);
 
-			const std::string qualifiedType = GetScriptQualifiedType(parameterInformation.TypeInformation, parameterTypeMappingInformation, true, false);
-
-			bool isLastParameter = (I + 1) == entry.Parameters.end();
-			if (parameterInformation.TypeInformation.IsParameterFlagSet(ParameterFlags::VarParams) && isLastParameter)
-				output << "params ";
-
-			output << qualifiedType << " " << parameterInformation.Name;
-
-			if (!parameterInformation.DefaultValue.empty())
-				output << " = " << GenerateCSharpDefaultValueAssignment(parameterInformation);
-
-			if ((I + 1) != entry.Parameters.end())
-				output << ", ";
-		}
-
-		output << ")" << std::endl;
-		output << "\t\t{" << std::endl;
-
-		std::string thisPtr;
-		if (isStaticMethod)
-		{
-			output << "\t\t\t" << scriptName << " value = new " << scriptName << "();" << std::endl;
-			thisPtr = "value";
-		}
-		else
-			thisPtr = "this";
-
-		for (auto I = input.Fields.begin(); I != input.Fields.end(); ++I)
-		{
-			const VariableInformation& fieldInformation = *I;
-			const TypeMappingInformation fieldTypeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(fieldInformation.TypeInformation);
-			if (fieldInformation.TypeInformation.IsOutputParameter(fieldTypeMappingInformation))
-			{
-				// We report the error during field generation, as it checks for the same condition
-				continue;
-			}
-
-			std::string fieldName = fieldInformation.Name;
-
-			bool foundFieldAssignment = false;
-			auto iterFind = entry.FieldAssignments.find(fieldInformation.Name);
-			if (iterFind != entry.FieldAssignments.end())
-			{
-				const std::string& parameterName = iterFind->second;
-				auto itFoundSkippedParameter = std::find(skippedParameters.begin(), skippedParameters.end(), parameterName);
-				if(itFoundSkippedParameter == skippedParameters.end())
+				if (parameterInformation.TypeInformation.IsOutputParameter(parameterTypeMappingInformation))
 				{
-					output << "\t\t\t" << thisPtr << "." << fieldName << " = " << parameterName << ";" << std::endl;
-					foundFieldAssignment = true;
+					// We report the error during field generation, as it checks for the same condition
+					continue;
+				}
+
+				if(!parameterInformation.DefaultValueType.empty() && parameterInformation.TypeInformation.TypeCategory != VariableTypeCategory::Flags)
+				{
+					// We don't generate parameters that have complex default values (as they're not supported in C#).
+					// Instead the post-processor has generated different versions of this method, so we can just skip
+					// such parameters
+					skippedParameters.push_back(parameterInformation.Name);
+					continue;
+				}
+
+				const std::string qualifiedType = GetScriptQualifiedType(parameterInformation.TypeInformation, parameterTypeMappingInformation, true, false);
+
+				bool isLastParameter = (I + 1) == entry.Parameters.end();
+				if (parameterInformation.TypeInformation.IsParameterFlagSet(ParameterFlags::VarParams) && isLastParameter)
+					output << "params ";
+
+				output << qualifiedType << " " << parameterInformation.Name;
+
+				if (!parameterInformation.DefaultValue.empty())
+					output << " = " << GenerateCSharpDefaultValueAssignment(parameterInformation);
+
+				if ((I + 1) != entry.Parameters.end())
+					output << ", ";
+			}
+
+			output << ")" << std::endl;
+			output << "\t\t{" << std::endl;
+
+			std::string thisPtr;
+			if (isStaticMethod)
+			{
+				output << "\t\t\t" << scriptName << " value = new " << scriptName << "();" << std::endl;
+				thisPtr = "value";
+			}
+			else
+				thisPtr = "this";
+
+			for (auto I = input.Fields.begin(); I != input.Fields.end(); ++I)
+			{
+				const VariableInformation& fieldInformation = *I;
+				const TypeMappingInformation fieldTypeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(fieldInformation.TypeInformation);
+				if (fieldInformation.TypeInformation.IsOutputParameter(fieldTypeMappingInformation))
+				{
+					// We report the error during field generation, as it checks for the same condition
+					continue;
+				}
+
+				std::string fieldName = fieldInformation.Name;
+
+				bool foundFieldAssignment = false;
+				auto iterFind = entry.FieldAssignments.find(fieldInformation.Name);
+				if (iterFind != entry.FieldAssignments.end())
+				{
+					const std::string& parameterName = iterFind->second;
+					auto itFoundSkippedParameter = std::find(skippedParameters.begin(), skippedParameters.end(), parameterName);
+					if(itFoundSkippedParameter == skippedParameters.end())
+					{
+						output << "\t\t\t" << thisPtr << "." << fieldName << " = " << parameterName << ";" << std::endl;
+						foundFieldAssignment = true;
+					}
+				}
+
+				if(!foundFieldAssignment)
+				{
+					std::string defaultValue;
+					if (!fieldInformation.DefaultValue.empty())
+						defaultValue = GenerateCSharpDefaultValueAssignment(fieldInformation);
+					else
+						defaultValue = GetDefaultValueForType(fieldInformation.TypeInformation, fieldTypeMappingInformation);
+
+					output << "\t\t\t" << thisPtr << "." << fieldName << " = " << defaultValue << ";" << std::endl;
 				}
 			}
 
-			if(!foundFieldAssignment)
+			if (isParameterless)
 			{
-				std::string defaultValue;
-				if (!fieldInformation.DefaultValue.empty())
-					defaultValue = GenerateCSharpDefaultValueAssignment(fieldInformation);
-				else
-					defaultValue = GetDefaultValueForType(fieldInformation.TypeInformation, fieldTypeMappingInformation);
-
-				output << "\t\t\t" << thisPtr << "." << fieldName << " = " << defaultValue << ";" << std::endl;
+				output << std::endl;
+				output << "\t\t\treturn value;" << std::endl;
 			}
-		}
 
-		if (isParameterless)
-		{
+			output << "\t\t}" << std::endl;
 			output << std::endl;
-			output << "\t\t\treturn value;" << std::endl;
 		}
 
-		output << "\t\t}" << std::endl;
-		output << std::endl;
-	}
-
-	if(!input.BaseClassName.empty())
-	{
-		TypeMappingInformation baseTypeInfo = TypeLookup::GetNativeToScriptTypeMapping(input.BaseClassName);
-		StructInfo* baseStructInfo = TypeLookup::FindStructInformation(input.BaseClassName);
-		if (baseStructInfo != nullptr)
+		if(!input.BaseClassName.empty())
 		{
-			// GetBase()
-			output << "\t\t///<summary>\n";
-			output << "\t\t/// Returns a subset of this struct. This subset usually contains common fields shared with another struct.\n";
-			output << "\t\t///</summary>\n";
-			output << "\t\tpublic " << baseTypeInfo.ScriptTypeName << " GetBase()\n";
-			output << "\t\t{\n";
-			output << "\t\t\t" << baseTypeInfo.ScriptTypeName << " value;\n";
-
-			for (auto I = baseStructInfo->Fields.begin(); I != baseStructInfo->Fields.end(); ++I)
+			TypeMappingInformation baseTypeInfo = TypeLookup::GetNativeToScriptTypeMapping(input.BaseClassName);
+			StructInfo* baseStructInfo = TypeLookup::FindStructInformation(input.BaseClassName);
+			if (baseStructInfo != nullptr)
 			{
-				const FieldInfo& fieldInfo = *I;
-				output << "\t\t\tvalue." << fieldInfo.Name << " = " << fieldInfo.Name << ";\n";
+				// GetBase()
+				output << "\t\t///<summary>\n";
+				output << "\t\t/// Returns a subset of this struct. This subset usually contains common fields shared with another struct.\n";
+				output << "\t\t///</summary>\n";
+				output << "\t\tpublic " << baseTypeInfo.ScriptTypeName << " GetBase()\n";
+				output << "\t\t{\n";
+				output << "\t\t\t" << baseTypeInfo.ScriptTypeName << " value;\n";
+
+				for (auto I = baseStructInfo->Fields.begin(); I != baseStructInfo->Fields.end(); ++I)
+				{
+					const FieldInfo& fieldInfo = *I;
+					output << "\t\t\tvalue." << fieldInfo.Name << " = " << fieldInfo.Name << ";\n";
+				}
+
+				output << "\t\t\treturn value;\n";
+				output << "\t\t}\n";
+				output << "\n";
+
+				// SetBase()
+				output << "\t\t///<summary>\n";
+				output << "\t\t/// Assigns values to a subset of fields of this struct. This subset usually contains common field shared with \n";
+				output << "\t\t/// another struct.\n";
+				output << "\t\t///</summary>\n";
+				output << "\t\tpublic void SetBase(" << baseTypeInfo.ScriptTypeName << " value)\n";
+				output << "\t\t{\n";
+
+				for (auto I = baseStructInfo->Fields.begin(); I != baseStructInfo->Fields.end(); ++I)
+				{
+					const FieldInfo& fieldInfo = *I;
+					output << "\t\t\t" << fieldInfo.Name << " = value." << fieldInfo.Name << ";\n";
+				}
+
+				output << "\t\t}\n";
+				output << "\n";
 			}
-
-			output << "\t\t\treturn value;\n";
-			output << "\t\t}\n";
-			output << "\n";
-
-			// SetBase()
-			output << "\t\t///<summary>\n";
-			output << "\t\t/// Assigns values to a subset of fields of this struct. This subset usually contains common field shared with \n";
-			output << "\t\t/// another struct.\n";
-			output << "\t\t///</summary>\n";
-			output << "\t\tpublic void SetBase(" << baseTypeInfo.ScriptTypeName << " value)\n";
-			output << "\t\t{\n";
-
-			for (auto I = baseStructInfo->Fields.begin(); I != baseStructInfo->Fields.end(); ++I)
-			{
-				const FieldInfo& fieldInfo = *I;
-				output << "\t\t\t" << fieldInfo.Name << " = value." << fieldInfo.Name << ";\n";
-			}
-
-			output << "\t\t}\n";
-			output << "\n";
 		}
 	}
 
@@ -1068,21 +1097,30 @@ static std::string GenerateCSharpStruct(const StructInfo& input)
 		output << GenerateCSharpMetaDataAttributes(fieldInformation.MetaData, fieldInformation.TypeInformation, fieldTypeMappingInformation, true);
 
 		if ((fieldInformation.MetaData.Flags & (int)MetaDataFlags::ForceHideInInspector) != 0)
-			output << "\t\t[HideInInspector]" << std::endl;
+			output << "\t\t[HideInInspector]\n";
 
 		output << "\t\tpublic ";
 
-		output << fieldTypeMappingInformation.ScriptTypeName;
+		if(input.IsFlagSet(StructFlags::IsTemplate) && fieldInformation.TemplateParameterIndex != ~0u)
+		{
+			output << "T";
+
+			if(fieldInformation.TemplateParameterIndex > 0)
+				output << fieldInformation.TemplateParameterIndex;
+		}
+		else
+			output << fieldTypeMappingInformation.ScriptTypeName;
+
 		if (fieldInformation.TypeInformation.IsArrayOrVector())
 			output << "[]";
 
 		output << " ";
 		output << fieldInformation.Name;
 
-		output << ";" << std::endl;
+		output << ";\n";
 	}
 
-	output << "\t}" << std::endl;
+	output << "\t}\n";
 
 	if(!input.DocumentationGroup.empty())
 	{
@@ -1176,6 +1214,9 @@ void GenerateCSharp(StringRef engineOutputFolder, StringRef editorOutputFolder, 
 
 		for (auto I = classInfos.begin(); I != classInfos.end(); ++I)
 		{
+			if(I->IsFlagSet(ClassFlags::SkipGeneratingCSharp))
+				continue;
+
 			body << GenerateCSharpClass(*I);
 
 			if ((I + 1) != classInfos.end() || !structInfos.empty() || !enumInfos.empty())
@@ -1184,6 +1225,9 @@ void GenerateCSharp(StringRef engineOutputFolder, StringRef editorOutputFolder, 
 
 		for (auto I = structInfos.begin(); I != structInfos.end(); ++I)
 		{
+			if(I->IsFlagSet(StructFlags::SkipGeneratingCSharp))
+				continue;
+
 			body << GenerateCSharpStruct(*I);
 
 			if ((I + 1) != structInfos.end() || !enumInfos.empty())

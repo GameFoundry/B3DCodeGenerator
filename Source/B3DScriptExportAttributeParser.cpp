@@ -359,50 +359,6 @@ bool ScriptExportAttributeParser::ParseExportAttribute(AnnotateAttr* attr, Strin
 
 	StringRef annotation = attr->getAnnotation();
 
-	output.ExportedTypeName = sourceName.str();
-	
-	if (!output.ExportedTypeName.empty())
-	{
-		// Camel case to pascal case
-		if(islower(output.ExportedTypeName[0]))
-			output.ExportedTypeName[0] = toupper(output.ExportedTypeName[0]);
-		else
-		{
-			// Screaming snake case to pascal case
-			bool isScreamingSnakeCase = true;
-			std::stringstream caseOutput;
-			bool nextUpper = true;
-			for(size_t i = 0; i < output.ExportedTypeName.size(); i++)
-			{
-				if (isalpha(output.ExportedTypeName[i]))
-				{
-					if(islower(output.ExportedTypeName[i]))
-					{
-						isScreamingSnakeCase = false;
-						break;
-					}
-					else
-					{
-						if(!nextUpper)
-							caseOutput << (char)tolower(output.ExportedTypeName[i]);
-						else
-						{
-							caseOutput << output.ExportedTypeName[i];
-							nextUpper = false;
-						}
-					}
-				}
-				else if(output.ExportedTypeName[i] == '_')
-					nextUpper = true;
-				else
-					caseOutput << output.ExportedTypeName[i];
-			}
-
-			if(isScreamingSnakeCase)
-				output.ExportedTypeName = caseOutput.str();
-		}
-	}
-
 	output.ExportedFileName = sourceName.str();
 	output.Visibility = CSVisibility::Public;
 	output.ExportFlags = 0;
