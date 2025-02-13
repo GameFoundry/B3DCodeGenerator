@@ -215,10 +215,29 @@ static std::string GetInteropThunkSignatureQualifiedTypeName(const VariableTypeI
 	else if (leftBracketIdx != StringRef::npos && rightBracketIdx != StringRef::npos)
 	{
 		StringRef templateType = inputStr.substr(0, leftBracketIdx);
-		StringRef templateArgs = inputStr.substr(leftBracketIdx + 1, rightBracketIdx - leftBracketIdx - 1);
-		const size_t templateArgumentCount = templateArgs.count(',') + 1;
+		StringRef combinedTemplateArgs = inputStr.substr(leftBracketIdx + 1, rightBracketIdx - leftBracketIdx - 1);
 
-		typeName = templateType.str() + "`" + std::to_string(templateArgumentCount) + "<" + templateArgs.str() + ">";
+		SmallVector<StringRef, 4> templateArgs;
+		SplitString(combinedTemplateArgs, templateArgs, ",");
+
+		const size_t templateArgumentCount = templateArgs.size();
+
+		std::stringstream typeNameStream;
+		typeNameStream << templateType.str() << "`" << templateArgumentCount << "<";
+
+		for(uint32_t templateArgumentIndex = 0; templateArgumentIndex < (uint32_t)templateArgs.size(); ++templateArgumentIndex)
+		{
+			if(templateArgs[templateArgumentIndex] == "float")
+				typeNameStream << "single";
+			else
+				typeNameStream << templateArgs[templateArgumentIndex].str();
+
+			if((templateArgumentIndex + 1) < (uint32_t)templateArgs.size())
+				typeNameStream << ",";
+		}
+
+		typeNameStream << ">";
+		typeName = typeNameStream.str();
 	}
 	else
 		typeName = typeMappingInformation.ScriptTypeName;
