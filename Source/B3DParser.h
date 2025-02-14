@@ -71,12 +71,11 @@ private:
 	 * Parses provided template arguments and returns a string containing the parsed argument values, as well as information about argument types.
 	 *
 	 * @param className							Name of the class we're parsing the template arguments for.
-	 * @param arguments							Array of template arguments.
-	 * @param argumentCount						Number of template arguments in @p arguments.
+	 * @param specializationDeclaration			Template specialization declaration to parse.
 	 * @param outTemplateArgumentInformation	Output information about types of each template argument. This will be 'class' if the argument represents a type, or expression type if it represents an expression.
 	 * @return									Template arguments surrounded by <>, separate by commas. e.g. <Vector3, 4>
 	 */
-	std::string ParseTemplateArguments(const std::string& className, const TemplateArgument* arguments, uint32_t argumentCount, std::vector<TemplateParameterInformation>* outTemplateArgumentInformation);
+	std::string ParseTemplateArguments(const std::string& className, const ClassTemplateSpecializationDecl* specializationDeclaration, std::vector<TemplateParameterInformation>* outTemplateArgumentInformation);
 
 	/**
 	 * Tries to parse the provided declaration as a struct. If declaration has already been parsed, returns false.

@@ -1031,13 +1031,18 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 		for (auto& fileInfo : mFilesToGenerate)
 		{
 			// TODO - This should be done in order, so those with least nested template parameters are parsed first
-			auto fnGenerateTemplateScriptName = [&processedTemplatedTypes](GeneratedTypeInformation& typeInfo)
+			auto fnGenerateTemplateScriptName = [](GeneratedTypeInformation& typeInfo)
 			{
 				std::stringstream stream;
 				stream << typeInfo.NativeNameWithoutTemplateArguments << "<";
 
-				for(const auto& templateParameter : typeInfo.TemplateParameters)
-					stream << GetNativeToScriptTypeMapping(templateParameter.Value).ScriptTypeName;
+				for(size_t templateParameterIndex = 0; templateParameterIndex < typeInfo.TemplateParameters.size(); ++templateParameterIndex)
+				{
+					if(templateParameterIndex != 0)
+						stream << ",";
+
+					stream << GetNativeToScriptTypeMapping(typeInfo.TemplateParameters[templateParameterIndex].Value).ScriptTypeName;
+				}
 
 				stream << ">";
 

@@ -158,11 +158,12 @@ struct FieldInfo : VariableInformation
 /** Information about a template parameter. */
 struct TemplateParameterInformation
 {
-	TemplateParameterInformation(const std::string& kind, const std::string& value)
-		:Kind(kind), Value(value)
+	TemplateParameterInformation(const std::string& kind, const std::string& name, const std::string& value)
+		:Kind(kind), Name(name), Value(value)
 	{ }
 
 	std::string Kind; /**< Kind of the template parameter, e.g. 'typename', 'int', 'bool' etc. */
+	std::string Name; /**< Name of the template parameter, e.g. 'T'. */
 	std::string Value; /**< Value of the template parameter, if the template is instantiated. e.g. 'float', '1', 'false', etc. */
 };
 

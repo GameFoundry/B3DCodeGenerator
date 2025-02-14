@@ -542,8 +542,7 @@ bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, Variabl
 		const ClassTemplateSpecializationDecl* const specDecl = dyn_cast<ClassTemplateSpecializationDecl>(recordDecl);
 		if (specDecl != nullptr)
 		{
-			auto& templateInstantiationArguments = specDecl->getTemplateInstantiationArgs();
-			sourceTypeName += ParseTemplateArguments(sourceTypeName, templateInstantiationArguments.data(), templateInstantiationArguments.size(), nullptr);
+			sourceTypeName += ParseTemplateArguments(sourceTypeName, specDecl, nullptr);
 		}
 		else
 		{
@@ -959,14 +958,28 @@ bool BansheeCodeGeneratorASTVisitor::TryParseEvent(ValueDecl* decl, const std::s
 	return true;
 }
 
-std::string BansheeCodeGeneratorASTVisitor::ParseTemplateArguments(const std::string& className, const TemplateArgument* arguments, uint32_t argumentCount, std::vector<TemplateParameterInformation>* outTemplateArgumentInformation)
+__pragma(optimize("", off))
+std::string BansheeCodeGeneratorASTVisitor::ParseTemplateArguments(const std::string& className, const ClassTemplateSpecializationDecl* specializationDeclaration, std::vector<TemplateParameterInformation>* outTemplateArgumentInformation)
 {
+	const TemplateArgumentList& arguments = specializationDeclaration->getTemplateInstantiationArgs();
+
+	ClassTemplateDecl* const specializedTemplate = specializationDeclaration->getSpecializedTemplate();
+	TemplateParameterList* const templateParameterList = specializedTemplate != nullptr ? specializedTemplate->getTemplateParameters() : nullptr;
+
 	std::stringstream tmplArgsStream;
 	tmplArgsStream << "<";
-	for(unsigned i = 0; i < argumentCount; i++)
+	for(uint32_t i = 0; i < arguments.size(); i++)
 	{
 		if (i != 0)
 			tmplArgsStream << ", ";
+
+		std::string templateArgumentName;
+		if(templateParameterList != nullptr)
+		{
+			NamedDecl* templateParameterDecl = templateParameterList->getParam(i);
+			if(templateParameterDecl != nullptr)
+				templateArgumentName = templateParameterDecl->getName().str();
+		}
 
 		auto& tmplArg = arguments[i];
 		if(tmplArg.getKind() == TemplateArgument::Type)
@@ -978,7 +991,7 @@ std::string BansheeCodeGeneratorASTVisitor::ParseTemplateArguments(const std::st
 			tmplArgsStream << typeName;
 
 			if(outTemplateArgumentInformation != nullptr)
-				outTemplateArgumentInformation->push_back(TemplateParameterInformation("typename", typeName));
+				outTemplateArgumentInformation->push_back(TemplateParameterInformation("typename", templateArgumentName, typeName));
 		}
 		else if(tmplArg.getKind() == TemplateArgument::Expression)
 		{
@@ -995,14 +1008,14 @@ std::string BansheeCodeGeneratorASTVisitor::ParseTemplateArguments(const std::st
 			ParseTypeInformation(tmplArg.getAsExpr()->getType(), variableInformation.TypeInformation);
 
 			if(outTemplateArgumentInformation != nullptr)
-				outTemplateArgumentInformation->push_back(TemplateParameterInformation(variableInformation.TypeInformation.GetLastWrappedOrSelfTypeName(), tmplArgExprValue));
+				outTemplateArgumentInformation->push_back(TemplateParameterInformation(variableInformation.TypeInformation.GetLastWrappedOrSelfTypeName(), templateArgumentName, tmplArgExprValue));
 		}
 		else if(tmplArg.getKind() == TemplateArgument::Integral)
 		{
 			tmplArgsStream << tmplArg.getAsIntegral().getExtValue();
 
 			if(outTemplateArgumentInformation != nullptr)
-				outTemplateArgumentInformation->push_back(TemplateParameterInformation("int", std::to_string(tmplArg.getAsIntegral().getExtValue())));
+				outTemplateArgumentInformation->push_back(TemplateParameterInformation("int", templateArgumentName, std::to_string(tmplArg.getAsIntegral().getExtValue())));
 		}
 		else
 		{
@@ -1010,13 +1023,14 @@ std::string BansheeCodeGeneratorASTVisitor::ParseTemplateArguments(const std::st
 			tmplArgsStream << "unknown";
 
 			if(outTemplateArgumentInformation != nullptr)
-				outTemplateArgumentInformation->push_back(TemplateParameterInformation("unknown", "unknown"));
+				outTemplateArgumentInformation->push_back(TemplateParameterInformation("unknown", templateArgumentName, "unknown"));
 		}
 	}
 
 	tmplArgsStream << ">";
 	return tmplArgsStream.str();
 }
+__pragma(optimize("", on))
 
 bool BansheeCodeGeneratorASTVisitor::TryParseDeclarationAsStruct(CXXRecordDecl* declaration, const ScriptExportInformation& scriptExportInformation, StructInfo& outStructInfo)
 {
@@ -1029,8 +1043,7 @@ bool BansheeCodeGeneratorASTVisitor::TryParseDeclarationAsStruct(CXXRecordDecl* 
 	std::vector<TemplateParameterInformation> templateParameters;
 	if(specializationDeclaration != nullptr)
 	{
-		auto& templateInstantiationArguments = specializationDeclaration->getTemplateInstantiationArgs();
-		sourceClassName += ParseTemplateArguments(sourceClassName, templateInstantiationArguments.data(), templateInstantiationArguments.size(), &templateParameters);
+		sourceClassName += ParseTemplateArguments(sourceClassName, specializationDeclaration, &templateParameters);
 		templatedDeclaration = specializationDeclaration->getSpecializedTemplate()->getTemplatedDecl();
 	}
 
@@ -1491,8 +1504,7 @@ bool BansheeCodeGeneratorASTVisitor::TryParseDeclarationAsClass(CXXRecordDecl* d
 	std::vector<TemplateParameterInformation> templateParameters;
 	if(specializationDeclaration != nullptr)
 	{
-		auto& templateInstantiationArguments = specializationDeclaration->getTemplateInstantiationArgs();
-		sourceClassName += ParseTemplateArguments(sourceClassName, templateInstantiationArguments.data(), templateInstantiationArguments.size(), &templateParameters);
+		sourceClassName += ParseTemplateArguments(sourceClassName, specializationDeclaration, &templateParameters);
 		templatedDeclaration = specializationDeclaration->getSpecializedTemplate()->getTemplatedDecl();
 	}
 

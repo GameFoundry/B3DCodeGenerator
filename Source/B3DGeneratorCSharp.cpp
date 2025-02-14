@@ -898,15 +898,10 @@ static std::string GenerateCSharpStruct(const StructInfo& input)
 
 		for(uint32_t templateParameterIndex = 0; templateParameterIndex < (uint32_t)input.TemplateParameters.size(); ++templateParameterIndex)
 		{
-			scriptNameStream << "T";
-
-			if(templateParameterIndex > 0)
-				scriptNameStream << templateParameterIndex;
+			scriptNameStream << input.TemplateParameters[templateParameterIndex].Name;
 
 			if((templateParameterIndex + 1) < (uint32_t)input.TemplateParameters.size())
 				scriptNameStream << ", ";
-
-			templateParameterIndex++;
 		}
 
 		scriptNameStream << ">";
@@ -1103,10 +1098,8 @@ static std::string GenerateCSharpStruct(const StructInfo& input)
 
 		if(input.IsFlagSet(StructFlags::IsTemplate) && fieldInformation.TemplateParameterIndex != ~0u)
 		{
-			output << "T";
-
-			if(fieldInformation.TemplateParameterIndex > 0)
-				output << fieldInformation.TemplateParameterIndex;
+			if(fieldInformation.TemplateParameterIndex < input.TemplateParameters.size())
+				output << input.TemplateParameters[fieldInformation.TemplateParameterIndex].Name;
 		}
 		else
 			output << fieldTypeMappingInformation.ScriptTypeName;

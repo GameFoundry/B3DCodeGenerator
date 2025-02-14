@@ -314,6 +314,8 @@ std::string ParserUtility::ReplaceInvalidTypeNameCharacters(const std::string& n
 
 	std::replace(output.begin(), output.end(), '<', '_');
 	std::replace(output.begin(), output.end(), '>', '_');
+	std::replace(output.begin(), output.end(), ',', '_');
+	std::replace(output.begin(), output.end(), ' ', '_');
 
 	return output;
 }
