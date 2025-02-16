@@ -1024,43 +1024,20 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 		}
 	}
 
-	// Generate correct script type names for templates, also only ensure a single C# class gets generated
+	// Ensure only a single C# generic class gets generated
 	{
-		std::unordered_set<std::string> processedTemplatedTypes;
+		std::unordered_set<std::string> processedTemplateEntries;
 
 		for (auto& fileInfo : mFilesToGenerate)
 		{
-			// TODO - This should be done in order, so those with least nested template parameters are parsed first
-			auto fnGenerateTemplateScriptName = [](GeneratedTypeInformation& typeInfo)
-			{
-				std::stringstream stream;
-				stream << typeInfo.NativeNameWithoutTemplateArguments << "<";
-
-				for(size_t templateParameterIndex = 0; templateParameterIndex < typeInfo.TemplateParameters.size(); ++templateParameterIndex)
-				{
-					if(templateParameterIndex != 0)
-						stream << ",";
-
-					stream << GetNativeToScriptTypeMapping(typeInfo.TemplateParameters[templateParameterIndex].Value).ScriptTypeName;
-				}
-
-				stream << ">";
-
-				auto found = mNativeToScriptTypeMap.find(typeInfo.NativeName);
-				if(found != mNativeToScriptTypeMap.end())
-					found->second.ScriptTypeName = stream.str();
-			};
-
 			for (auto& classInfo : fileInfo.second.Classes)
 			{
 				if(!classInfo.IsFlagSet(ClassFlags::IsTemplate))
 					continue;
 
-				auto insertResult = processedTemplatedTypes.insert(classInfo.NativeNameWithoutTemplateArguments);
-				if(!insertResult.second)
+				auto result = processedTemplateEntries.insert(classInfo.NativeNameWithoutTemplateArguments);
+				if(!result.second)
 					classInfo.ClassFlags |= (int)ClassFlags::SkipGeneratingCSharp;
-
-				fnGenerateTemplateScriptName(classInfo);
 			}
 
 			for(auto& structInfo : fileInfo.second.Structs)
@@ -1068,12 +1045,123 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 				if(!structInfo.IsFlagSet(StructFlags::IsTemplate))
 					continue;
 
-				auto insertResult = processedTemplatedTypes.insert(structInfo.NativeNameWithoutTemplateArguments);
-				if(!insertResult.second)
+				auto result = processedTemplateEntries.insert(structInfo.NativeNameWithoutTemplateArguments);
+				if(!result.second)
 					structInfo.StructFlags |= (int)StructFlags::SkipGeneratingCSharp;
-
-				fnGenerateTemplateScriptName(structInfo);
 			}
+		}
+	}
+
+	// Generate correct script type names for types containing template arguments (Translate template arguments from C++ to C# types)
+	{
+		struct TemplateEntryToProcess
+		{
+			TemplateEntryToProcess(GeneratedTypeInformation* typeInformation)
+				:TypeInformation(typeInformation)
+			{ }
+
+			GeneratedTypeInformation* TypeInformation = nullptr;
+			std::string NewScriptTypeName;
+			std::string NewScriptTypeNameWithExplicitNamespace;
+			bool IsProcessed = false;
+		};
+
+		std::unordered_map<std::string, TemplateEntryToProcess> entriesToProcess;
+
+		for (auto& fileInfo : mFilesToGenerate)
+		{
+			for (auto& classInfo : fileInfo.second.Classes)
+			{
+				if(!classInfo.IsFlagSet(ClassFlags::IsTemplate))
+					continue;
+
+				const std::string& scriptTypeName = GetNativeToScriptTypeMapping(classInfo.NativeName).ScriptTypeName;
+				entriesToProcess.insert(std::make_pair(scriptTypeName, TemplateEntryToProcess(&classInfo)));
+			}
+
+			for(auto& structInfo : fileInfo.second.Structs)
+			{
+				if(!structInfo.IsFlagSet(StructFlags::IsTemplate))
+					continue;
+
+				const std::string& scriptTypeName = GetNativeToScriptTypeMapping(structInfo.NativeName).ScriptTypeName;
+				entriesToProcess.insert(std::make_pair(scriptTypeName, TemplateEntryToProcess(&structInfo)));
+			}
+		}
+
+		auto fnGenerateTemplateScriptName = [&entriesToProcess](TemplateEntryToProcess& entryToProcess, auto&& fnGenerateTemplateScriptName) -> void
+		{
+			if(entryToProcess.IsProcessed)
+				return;
+
+			const GeneratedTypeInformation& typeInformation = *entryToProcess.TypeInformation;
+
+			std::stringstream streamNoNamespace;
+			std::stringstream streamWithNamespace;
+
+			streamNoNamespace << typeInformation.NativeNameWithoutTemplateArguments << "<";
+			streamWithNamespace << typeInformation.NativeNameWithoutTemplateArguments << "<";
+
+			for(size_t templateParameterIndex = 0; templateParameterIndex < typeInformation.TemplateParameters.size(); ++templateParameterIndex)
+			{
+				if(templateParameterIndex != 0)
+				{
+					streamWithNamespace << ",";
+					streamNoNamespace << ",";
+				}
+
+				const TypeMappingInformation& parameterTypeMappingInformation = GetNativeToScriptTypeMapping(typeInformation.TemplateParameters[templateParameterIndex].Value);
+				std::string typeNameSpace;
+				if(parameterTypeMappingInformation.NativeNamespace.size() == 1)
+				{
+					if(parameterTypeMappingInformation.NativeNamespace[0] == sFrameworkCppNs)
+						typeNameSpace = sFrameworkCsNs;
+					else if(parameterTypeMappingInformation.NativeNamespace[0] == sEditorCppNs)
+						typeNameSpace = sEditorCsNs;
+				}
+
+				std::string parameterScriptTypeName;
+				std::string parameterScriptTypeNameWithNamespace;
+				auto found = entriesToProcess.find(parameterTypeMappingInformation.ScriptTypeName);
+				if(found != entriesToProcess.end())
+				{
+					if(!found->second.IsProcessed)
+						fnGenerateTemplateScriptName(found->second, fnGenerateTemplateScriptName);
+
+					parameterScriptTypeName = found->second.NewScriptTypeName;
+					parameterScriptTypeNameWithNamespace = found->second.NewScriptTypeNameWithExplicitNamespace;
+				}
+				else
+				{
+					parameterScriptTypeName = parameterTypeMappingInformation.ScriptTypeName;
+					parameterScriptTypeNameWithNamespace = parameterScriptTypeName;
+				}
+
+				if(!typeNameSpace.empty())
+					streamWithNamespace << typeNameSpace << "::";
+
+				streamWithNamespace << parameterScriptTypeNameWithNamespace;
+				streamNoNamespace << parameterScriptTypeName;
+			}
+
+			streamWithNamespace << ">";
+			streamNoNamespace << ">";
+
+			entryToProcess.IsProcessed = true;
+			entryToProcess.NewScriptTypeName = streamNoNamespace.str();
+			entryToProcess.NewScriptTypeNameWithExplicitNamespace = streamWithNamespace.str();
+		};
+
+		for(auto& entryToProcess : entriesToProcess)
+			fnGenerateTemplateScriptName(entryToProcess.second, fnGenerateTemplateScriptName);
+
+		for(auto& entryToProcess : entriesToProcess)
+		{
+			auto found = mNativeToScriptTypeMap.find(entryToProcess.second.TypeInformation->NativeName);
+			if(found != mNativeToScriptTypeMap.end())
+				found->second.ScriptTypeName = entryToProcess.second.NewScriptTypeName;
+
+			entryToProcess.second.TypeInformation->ScriptTypeDefinitionTypeName = entryToProcess.second.NewScriptTypeNameWithExplicitNamespace;
 		}
 	}
 

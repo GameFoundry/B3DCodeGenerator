@@ -1080,8 +1080,10 @@ bool BansheeCodeGeneratorASTVisitor::TryParseDeclarationAsStruct(CXXRecordDecl* 
 	else
 	{
 		scriptExportName = ParserUtility::ConvertToPascalCase(sourceClassName);
-		scriptInteropExportName = ParserUtility::ReplaceInvalidTypeNameCharacters(scriptExportName);
+		scriptInteropExportName = CleanTemplateParameters(scriptExportName);
 	}
+
+	outStructInfo.ScriptTypeDefinitionTypeName = scriptExportName;
 
 	TypeLookup::RegisterNativeToScriptTypeMapping(outStructInfo.Namespace, outStructInfo.NativeName, declarationFile, scriptExportName, scriptInteropExportName, scriptExportInformation.ExportedFileName, outStructInfo.API, ExportedClassTypeCategory::Struct);
 
@@ -1565,8 +1567,10 @@ bool BansheeCodeGeneratorASTVisitor::TryParseDeclarationAsClass(CXXRecordDecl* d
 	else
 	{
 		scriptExportName = ParserUtility::ConvertToPascalCase(sourceClassName);
-		scriptInteropExportName = ParserUtility::ReplaceInvalidTypeNameCharacters(scriptExportName);
+		scriptInteropExportName = CleanTemplateParameters(scriptExportName);
 	}
+
+	outClassInfo.ScriptTypeDefinitionTypeName = scriptExportName;
 
 	TypeLookup::RegisterNativeToScriptTypeMapping(outClassInfo.Namespace, sourceClassName, declarationFile, scriptExportName, scriptInteropExportName, scriptExportInformation.ExportedFileName, outClassInfo.API, classType);
 
@@ -1993,6 +1997,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitEnumDecl(EnumDecl* decl)
 	EnumInfo enumEntry;
 	enumEntry.NativeName = sourceClassName.str();
 	enumEntry.ScriptName = scriptName;
+	enumEntry.ScriptTypeDefinitionTypeName = scriptName;
 	enumEntry.Visibility = scriptExportInformation.Visibility;
 	enumEntry.API = ParserUtility::ParseAPIFromExportFlags(scriptExportInformation.ExportFlags);
 	enumEntry.DocumentationGroup = scriptExportInformation.DocumentationGroup;

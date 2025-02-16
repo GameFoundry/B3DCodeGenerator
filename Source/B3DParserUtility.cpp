@@ -307,16 +307,3 @@ std::string ParserUtility::ConvertToPascalCase(const std::string& name)
 
 	return output;
 }
-
-std::string ParserUtility::ReplaceInvalidTypeNameCharacters(const std::string& name)
-{
-	std::string output = name;
-
-	std::replace(output.begin(), output.end(), '<', '_');
-	std::replace(output.begin(), output.end(), '>', '_');
-	std::replace(output.begin(), output.end(), ',', '_');
-	std::replace(output.begin(), output.end(), ' ', '_');
-
-	return output;
-}
-

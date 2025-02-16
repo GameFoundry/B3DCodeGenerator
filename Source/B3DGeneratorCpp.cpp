@@ -2820,9 +2820,9 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 	output << "\tpublic:" << std::endl;
 
 	if(!inEditor)
-		output << "\t\tB3D_SCRIPT_TYPE_DEFINITION(kEngineAssembly, kEngineNs, \"" << typeMappingInformation.ScriptTypeName << "\")\n";
+		output << "\t\tB3D_SCRIPT_TYPE_DEFINITION(kEngineAssembly, kEngineNs, \"" << classInfo.ScriptTypeDefinitionTypeName << "\")\n";
 	else
-		output << "\t\tB3D_SCRIPT_TYPE_DEFINITION(kEditorAssembly, kEditorNs, \"" << typeMappingInformation.ScriptTypeName << "\")\n";
+		output << "\t\tB3D_SCRIPT_TYPE_DEFINITION(kEditorAssembly, kEditorNs, \"" << classInfo.ScriptTypeDefinitionTypeName << "\")\n";
 
 	output << std::endl;
 
@@ -3435,9 +3435,9 @@ static std::string GenerateStructDeclaration(const StructInfo& structInfo)
 	output << "\tpublic:\n";
 
 	if(!inEditor)
-		output << "\t\tB3D_SCRIPT_TYPE_DEFINITION(kEngineAssembly, kEngineNs, \"" << typeMappingInformation.ScriptTypeName << "\")\n";
+		output << "\t\tB3D_SCRIPT_TYPE_DEFINITION(kEngineAssembly, kEngineNs, \"" << structInfo.ScriptTypeDefinitionTypeName << "\")\n";
 	else
-		output << "\t\tB3D_SCRIPT_TYPE_DEFINITION(kEditorAssembly, kEditorNs, \"" << typeMappingInformation.ScriptTypeName << "\")\n";
+		output << "\t\tB3D_SCRIPT_TYPE_DEFINITION(kEditorAssembly, kEditorNs, \"" << structInfo.ScriptTypeDefinitionTypeName << "\")\n";
 
 	output << "\n";
 

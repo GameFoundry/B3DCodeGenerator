@@ -230,6 +230,7 @@ struct GeneratedTypeInformation
 	std::string SingletonGetterName; /**< Name of the global getter method in case the class is a singleton. */
 
 	std::string NativeNameWithoutTemplateArguments; /**< Native name of the type, with template parameters stripped. */
+	std::string ScriptTypeDefinitionTypeName; /**< Name of the type in the C++ script export definition. */
 	std::vector<TemplateParameterInformation> TemplateParameters; /**< Template parameters of the native type, if any. */
 	
 	CommentEntry Documentation; /**< Documentation comments for the type. */
@@ -410,6 +411,8 @@ inline std::string CleanTemplateParameters(const std::string& name)
 	std::string cleanName = name;
 	std::replace(cleanName.begin(), cleanName.end(), '<', '_');
 	std::replace(cleanName.begin(), cleanName.end(), '>', '_');
+	std::replace(cleanName.begin(), cleanName.end(), ',', '_');
+	std::replace(cleanName.begin(), cleanName.end(), ' ', '_');
 
 	return cleanName;
 }

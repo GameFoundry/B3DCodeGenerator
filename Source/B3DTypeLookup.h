@@ -35,12 +35,14 @@ struct TypeMappingInformation
 	TypeMappingInformation() {}
 
 	TypeMappingInformation(SmallVector<std::string, 4> nativeNamespace, const std::string& scriptName, const std::string& scriptInteropTypeName, ::ExportedClassTypeCategory typeCategory, const std::string& nativeFile, const std::string& destFile)
-		:NativeNamespace(std::move(nativeNamespace)), ScriptTypeName(scriptName), ScriptInteropTypeName(scriptInteropTypeName), TypeCategory(typeCategory), NativeFile(nativeFile), InteropFile(destFile), EditorInteropFile(destFile)
+		: NativeNamespace(std::move(nativeNamespace)), ScriptTypeName(scriptName), ScriptInteropTypeName(scriptInteropTypeName)
+		, TypeCategory(typeCategory), NativeFile(nativeFile), InteropFile(destFile), EditorInteropFile(destFile)
 	{ }
 
 	TypeMappingInformation(SmallVector<std::string, 4> nativeNamespace, const std::string& scriptName, const std::string& scriptInteropTypeName, ::ExportedClassTypeCategory typeCategory, const std::string& nativeFile, const std::string& destFile,
 		const std::string& destFileEditor)
-		:NativeNamespace(std::move(nativeNamespace)), ScriptTypeName(scriptName), ScriptInteropTypeName(scriptInteropTypeName), TypeCategory(typeCategory), NativeFile(nativeFile), InteropFile(destFile), EditorInteropFile(destFileEditor)
+		: NativeNamespace(std::move(nativeNamespace)), ScriptTypeName(scriptName), ScriptInteropTypeName(scriptInteropTypeName)
+		, TypeCategory(typeCategory), NativeFile(nativeFile), InteropFile(destFile), EditorInteropFile(destFileEditor)
 	{ }
 
 	bool IsInt64() const;
@@ -49,7 +51,7 @@ struct TypeMappingInformation
 	bool IsHandleType() const;
 	bool IsClassType() const;
 
-	std::string ScriptInteropTypeName;
+	std::string ScriptInteropTypeName; /**< Name of the C++ wrapper type. */
 	std::string ScriptTypeName; /**< Name of the type in the script code. */
 	SmallVector<std::string, 4> NativeNamespace; /**< Namespace in which the native type is located in. Used for e.g. forward declares in generated native interop code. */
 	std::string NativeFile; /**< File in which the native type is defined in. Used for resolving includes. */
@@ -98,6 +100,7 @@ struct IncludesInfo
 	std::unordered_map<std::string, IncludeInfo> Includes;
 	std::unordered_map<std::string, ForwardDeclarationInformation> ForwardDeclarations;
 };
+
 /** Contains information about types we're generating code for, and mapping between native and script types. */
 class TypeLookup
 {

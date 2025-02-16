@@ -25,9 +25,6 @@ public:
 	/** Converts the provided name from camel case or screaming snake case into pascal case. */
 	static std::string ConvertToPascalCase(const std::string& name);
 
-	/** Replaces characters that are invalid in a type name with _. */
-	static std::string ReplaceInvalidTypeNameCharacters(const std::string& name);
-
 	static bool MapBuiltinPrimitiveTypeToCppType(BuiltinType::Kind kind, std::string& output);
 	static ApiFlags ParseAPIFromExportFlags(int exportFlags);
 };
