@@ -196,58 +196,59 @@ static std::string GetWrapperRootBaseClass(const std::string& nativeClassName, c
  */
 static std::string GetInteropThunkSignatureQualifiedTypeName(const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation)
 {
-	std::string typeName;
-
-	// Generic types require `X after their name
-	StringRef inputStr(typeMappingInformation.ScriptTypeName.data(), typeMappingInformation.ScriptTypeName.length());
-	inputStr = inputStr.trim();
-
-	const size_t leftBracketIdx = inputStr.find_first_of('<');
-	const size_t rightBracketIdx = inputStr.find_last_of('>');
-	const size_t leftBracketCount = inputStr.count('<');
-	const size_t rightBracketCount = inputStr.count('>');
-
-	if (leftBracketCount > 1 || rightBracketCount > 1)
+	std::function<std::string(const std::string&)> fnConvertType = [&fnConvertType](const std::string& input) -> std::string
 	{
-		outs() << "Error: Cannot parse event signature type. Nested generic parameters are not allowed.\n";
-		typeName = typeMappingInformation.ScriptTypeName;
-	}
-	else if (leftBracketIdx != StringRef::npos && rightBracketIdx != StringRef::npos)
-	{
-		StringRef templateType = inputStr.substr(0, leftBracketIdx);
-		StringRef combinedTemplateArgs = inputStr.substr(leftBracketIdx + 1, rightBracketIdx - leftBracketIdx - 1);
+		std::string typeName;
 
-		SmallVector<StringRef, 4> templateArgs;
-		SplitString(combinedTemplateArgs, templateArgs, ",");
+		// Generic types require `X after their name
+		StringRef inputStr(input.data(), input.length());
+		inputStr = inputStr.trim();
 
-		const size_t templateArgumentCount = templateArgs.size();
+		const size_t leftBracketIndex = inputStr.find_first_of('<');
+		const size_t rightBracketIndex = inputStr.find_last_of('>');
+		const size_t leftBracketCount = inputStr.count('<');
+		const size_t rightBracketCount = inputStr.count('>');
 
-		std::stringstream typeNameStream;
-		typeNameStream << templateType.str() << "`" << templateArgumentCount << "<";
-
-		for(uint32_t templateArgumentIndex = 0; templateArgumentIndex < (uint32_t)templateArgs.size(); ++templateArgumentIndex)
+		if (leftBracketCount != rightBracketCount)
 		{
-			if(templateArgs[templateArgumentIndex] == "float")
-				typeNameStream << "single";
-			else
-				typeNameStream << templateArgs[templateArgumentIndex].str();
-
-			if((templateArgumentIndex + 1) < (uint32_t)templateArgs.size())
-				typeNameStream << ",";
+			outs() << "Error: Cannot parse event signature type. Non-matching <> bracket count.\n";
+			typeName = input;
 		}
+		else if (leftBracketIndex != StringRef::npos && rightBracketIndex != StringRef::npos)
+		{
+			StringRef templateType = inputStr.substr(0, leftBracketIndex);
+			StringRef combinedTemplateArgs = inputStr.substr(leftBracketIndex + 1, rightBracketIndex - leftBracketIndex - 1);
 
-		typeNameStream << ">";
-		typeName = typeNameStream.str();
-	}
-	else
-		typeName = typeMappingInformation.ScriptTypeName;
+			SmallVector<StringRef, 4> templateArgs;
+			SplitString(combinedTemplateArgs, templateArgs, ",");
 
-	if(typeName == "float")
-		typeName = "single";
+			const size_t templateArgumentCount = templateArgs.size();
+
+			std::stringstream typeNameStream;
+			typeNameStream << templateType.str() << "`" << templateArgumentCount << "<";
+
+			for(uint32_t templateArgumentIndex = 0; templateArgumentIndex < (uint32_t)templateArgs.size(); ++templateArgumentIndex)
+			{
+				typeNameStream << fnConvertType(templateArgs[templateArgumentIndex].str());
+
+				if((templateArgumentIndex + 1) < (uint32_t)templateArgs.size())
+					typeNameStream << ",";
+			}
+
+			typeNameStream << ">";
+			typeName = typeNameStream.str();
+		}
+		else
+			typeName = input;
+
+		if(typeName == "float")
+			typeName = "single";
+
+		return typeName;
+	};
 
 	std::stringstream output;
-
-	output << typeName;
+	output << fnConvertType(typeMappingInformation.ScriptTypeName);
 
 	if (typeInformation.IsArrayOrVector())
 		output << "[]";
@@ -2848,6 +2849,10 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 	// SetupScriptBindings()
 	output << "\t\tstatic void SetupScriptBindings();\n";
 	output << "\n";
+
+	// Lifetime tracking (if not at default)
+	if(classInfo.LifetimeTrackingMode == ScriptObjectLifetimeTrackingMode::ExplicitDestroy)
+		output << "\t\tScriptObjectLifetimeTrackingMode GetLifetimeTrackingMode() const override { return ScriptObjectLifetimeTrackingMode::StrongHandleWithExplicitDestroy; }\n";
 
 	if(hasNonStaticEvents && !isBase)
 		output << "\t\tvirtual void RegisterEvents();\n";

@@ -54,6 +54,13 @@ enum class CSVisibility
 	Private
 };
 
+/** Determines how is script exported lifetime managed. */
+enum class ScriptObjectLifetimeTrackingMode
+{
+	ReferenceTracking, /**< When the reference count of both native and managed object reaches 0, object will be automatically deleted. */
+	ExplicitDestroy /**< Object provides an explicit destroy method that must be called to destroy it. */
+};
+
 /** Determines for which API we're exporting a declaration. */
 enum class ApiFlags
 {
@@ -261,6 +268,7 @@ enum class StructFlags
 struct ClassInfo : GeneratedTypeInformation
 {
 	int ClassFlags = 0; /**< Assigned flags, of ClassFlags type. */
+	ScriptObjectLifetimeTrackingMode LifetimeTrackingMode = ScriptObjectLifetimeTrackingMode::ReferenceTracking; /**< Determines how is script object lifetime tracked, and when should the native object be destroyed. */ 
 
 	std::vector<MethodInfo> Constructors;
 	std::vector<PropertyInfo> Properties;

@@ -958,7 +958,6 @@ bool BansheeCodeGeneratorASTVisitor::TryParseEvent(ValueDecl* decl, const std::s
 	return true;
 }
 
-__pragma(optimize("", off))
 std::string BansheeCodeGeneratorASTVisitor::ParseTemplateArguments(const std::string& className, const ClassTemplateSpecializationDecl* specializationDeclaration, std::vector<TemplateParameterInformation>* outTemplateArgumentInformation)
 {
 	const TemplateArgumentList& arguments = specializationDeclaration->getTemplateInstantiationArgs();
@@ -1030,7 +1029,6 @@ std::string BansheeCodeGeneratorASTVisitor::ParseTemplateArguments(const std::st
 	tmplArgsStream << ">";
 	return tmplArgsStream.str();
 }
-__pragma(optimize("", on))
 
 bool BansheeCodeGeneratorASTVisitor::TryParseDeclarationAsStruct(CXXRecordDecl* declaration, const ScriptExportInformation& scriptExportInformation, StructInfo& outStructInfo)
 {
@@ -1516,6 +1514,7 @@ bool BansheeCodeGeneratorASTVisitor::TryParseDeclarationAsClass(CXXRecordDecl* d
 	outClassInfo.NativeName = sourceClassName;
 	outClassInfo.NativeNameWithoutTemplateArguments = declarationName.str();
 	outClassInfo.Visibility = scriptExportInformation.Visibility;
+	outClassInfo.LifetimeTrackingMode = scriptExportInformation.LifetimeTrackingMode;
 	outClassInfo.API = ParserUtility::ParseAPIFromExportFlags(scriptExportInformation.ExportFlags);
 	outClassInfo.ClassFlags = 0;
 	outClassInfo.BaseClassName = ScriptExportAttributeParser::FindExportableBaseClassName(declaration);

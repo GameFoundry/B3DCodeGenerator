@@ -194,6 +194,15 @@ void ScriptExportAttributeParser::ParseScriptExportAttributeCommand(const std::s
 		output.SetExportFlag(ExportFlags::SingletonClass);
 		output.SingletonGetterName = value;
 	}
+	else if(name == "Lifetime")
+	{
+		if(value == "Explicit")
+			output.LifetimeTrackingMode = ScriptObjectLifetimeTrackingMode::ExplicitDestroy;
+		else if(value == "Auto")
+			output.LifetimeTrackingMode = ScriptObjectLifetimeTrackingMode::ReferenceTracking;
+		else
+			outs() << "Warning: Invalid value provided for script export option \"Lifetime\" on type " << typeName << ". Provided value: " << value << ".\n";
+	}
 	else if (name == "UI")
 	{
 		if (value == "Hide")

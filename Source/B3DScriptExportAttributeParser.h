@@ -28,6 +28,7 @@ struct ScriptExportInformation
 	std::string ExtensionOfType; /**< If the declaration is acting as an extension for some other class, this tells us for which class is the declaration an extension of. */
 	std::string DocumentationGroup; /**< Name of the documentation group to wrap the generated code in. */
 	CSVisibility Visibility = CSVisibility::Public; /**< Visibility of the declaration in generated code. */
+	ScriptObjectLifetimeTrackingMode LifetimeTrackingMode = ScriptObjectLifetimeTrackingMode::ReferenceTracking; /**< Determines how is script object lifetime tracked, and when should the native object be destroyed. */ 
 	int ExportFlags = 0; /**< Various flags controlling export. */
 	MemberMetaData MetaData; /**< Additional settings controlling how is the exported declaration API generated. */
 	std::string SingletonGetterName; /**< Name of the singleton getter method, for singleton classes. */
