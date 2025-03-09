@@ -189,6 +189,44 @@ static std::string GetWrapperRootBaseClass(const std::string& nativeClassName, c
 }
 
 /**
+ * Parses a type containing generic arguments, and returns the generic arguments.
+ * e.g. for MyType<Arg1, Arg2<Arg3>> returns an array containing two entries [Arg1, Arg2<Arg3>].
+ */
+static SmallVector<StringRef, 2> ParseGenericArguments(const StringRef& type)
+{
+	SmallVector<StringRef, 2> genericArguments;
+
+	uint32_t level = 0;
+	size_t start = 0;
+	for(size_t i = 0; i < type.size(); ++i)
+	{
+		if(type[i] == '<')
+			++level;
+		else if(type[i] == '>')
+			--level;
+		else if(type[i] == ',' && level == 0)
+		{
+			StringRef genericArgument = type.substr(start, i - start);
+			genericArgument = genericArgument.trim();
+
+			genericArguments.push_back(genericArgument);
+
+			start = i + 1;
+		}
+	}
+
+	if(start < type.size())
+	{
+		StringRef genericArgument = type.substr(start);
+		genericArgument = genericArgument.trim();
+
+		genericArguments.push_back(genericArgument);
+	}
+
+	return genericArguments;
+}
+
+/**
  * Returns a type name for the Mono thunk signature lookup, representing the type in @p typeInformation.
  *
  * @param	typeInformation					Information about the native type to generate the type name for.
@@ -196,56 +234,45 @@ static std::string GetWrapperRootBaseClass(const std::string& nativeClassName, c
  */
 static std::string GetInteropThunkSignatureQualifiedTypeName(const VariableTypeInformation& typeInformation, const TypeMappingInformation& typeMappingInformation)
 {
-	std::function<std::string(const std::string&)> fnConvertType = [&fnConvertType](const std::string& input) -> std::string
+	std::function<std::string(const std::string&)> fnConvertType = [&fnConvertType](const StringRef& input) -> std::string
 	{
 		std::string typeName;
 
-		// Generic types require `X after their name
-		StringRef inputStr(input.data(), input.length());
-		inputStr = inputStr.trim();
-
-		const size_t leftBracketIndex = inputStr.find_first_of('<');
-		const size_t rightBracketIndex = inputStr.find_last_of('>');
-		const size_t leftBracketCount = inputStr.count('<');
-		const size_t rightBracketCount = inputStr.count('>');
-
-		if (leftBracketCount != rightBracketCount)
+		// Generic types require `X after their name, with number of arguments following
+		size_t templateStartPosition = input.find_first_of('<');
+		if(templateStartPosition != StringRef::npos)
 		{
-			outs() << "Error: Cannot parse event signature type. Non-matching <> bracket count.\n";
-			typeName = input;
-		}
-		else if (leftBracketIndex != StringRef::npos && rightBracketIndex != StringRef::npos)
-		{
-			StringRef templateType = inputStr.substr(0, leftBracketIndex);
-			StringRef combinedTemplateArgs = inputStr.substr(leftBracketIndex + 1, rightBracketIndex - leftBracketIndex - 1);
+			const StringRef genericType = input.substr(0, templateStartPosition);
+			const StringRef unparsedArguments = input.substr(templateStartPosition + 1, input.size() - templateStartPosition - 2);
 
-			SmallVector<StringRef, 4> templateArgs;
-			SplitString(combinedTemplateArgs, templateArgs, ",");
-
-			const size_t templateArgumentCount = templateArgs.size();
+			SmallVector<StringRef, 2> parsedArguments = ParseGenericArguments(unparsedArguments);
+			const uint32_t argumentCount = (uint32_t)parsedArguments.size();
 
 			std::stringstream typeNameStream;
-			typeNameStream << templateType.str() << "`" << templateArgumentCount << "<";
+			typeNameStream << genericType.str() << "`" << argumentCount << "<";
 
-			for(uint32_t templateArgumentIndex = 0; templateArgumentIndex < (uint32_t)templateArgs.size(); ++templateArgumentIndex)
+			for(uint32_t argumentIndex = 0; argumentIndex < argumentCount; ++argumentIndex)
 			{
-				typeNameStream << fnConvertType(templateArgs[templateArgumentIndex].str());
+				typeNameStream << fnConvertType(parsedArguments[argumentIndex].str());
 
-				if((templateArgumentIndex + 1) < (uint32_t)templateArgs.size())
-					typeNameStream << ",";
+				if((argumentIndex + 1) < argumentCount)
+					typeNameStream << ", ";
 			}
 
 			typeNameStream << ">";
 			typeName = typeNameStream.str();
 		}
 		else
-			typeName = input;
+			typeName = input.str();
 
 		if(typeName == "float")
 			typeName = "single";
 
 		return typeName;
 	};
+
+	StringRef scriptTypeName(typeMappingInformation.ScriptTypeName.data(), typeMappingInformation.ScriptTypeName.length());
+	scriptTypeName = scriptTypeName.trim();
 
 	std::stringstream output;
 	output << fnConvertType(typeMappingInformation.ScriptTypeName);
