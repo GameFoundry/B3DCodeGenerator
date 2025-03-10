@@ -6,6 +6,10 @@
 /** Parses the declaration and determines what exported type category should be used to represent this type in scripting. */
 static ExportedClassTypeCategory DetermineExportedTypeCategory(const CXXRecordDecl* decl)
 {
+	std::string className = decl->getName().str();
+	if(className == kBuiltinGUIElementType)
+		return ::ExportedClassTypeCategory::GUIElement;
+
 	std::stack<const CXXRecordDecl*> todo;
 	todo.push(decl);
 
@@ -22,19 +26,19 @@ static ExportedClassTypeCategory DetermineExportedTypeCategory(const CXXRecordDe
 				const CXXBaseSpecifier* baseSpec = iter;
 				CXXRecordDecl* baseDecl = baseSpec->getType()->getAsCXXRecordDecl();
 
-				std::string className = baseDecl->getName().str();
+				std::string baseClassName = baseDecl->getName().str();
 
-				if (className == kBuiltinGameObjectType)
+				if (baseClassName == kBuiltinGameObjectType)
 					return ::ExportedClassTypeCategory::GameObject;
-				else if (className == kBuiltinComponentType)
+				else if (baseClassName == kBuiltinComponentType)
 					return ::ExportedClassTypeCategory::Component;
-				else if (className == kBuiltinResourceType)
+				else if (baseClassName == kBuiltinResourceType)
 					return ::ExportedClassTypeCategory::Resource;
-				else if (className == kBuiltinSceneObjectType)
+				else if (baseClassName == kBuiltinSceneObjectType)
 					return ::ExportedClassTypeCategory::SceneObject;
-				else if (className == kBuiltinGUIElementType)
+				else if (baseClassName == kBuiltinGUIElementType)
 					return ::ExportedClassTypeCategory::GUIElement;
-				else if (className == kBuiltinReflectableType)
+				else if (baseClassName == kBuiltinReflectableType)
 					return ::ExportedClassTypeCategory::ReflectableClass;
 
 				todo.push(baseDecl);
