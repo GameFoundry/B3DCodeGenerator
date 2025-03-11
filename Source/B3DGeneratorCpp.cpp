@@ -1315,6 +1315,8 @@ static std::string GenerateMethodBodyBlockForArgument(const std::string& paramet
 
 			if (isClassType && (returnValue || isOutputParameter) && parameterInformation.TypeInformation.TypeCategory != VariableTypeCategory::SharedPointer)
 				preCallActions << " = B3DMakeShared<" << parameterTypeName << ">()"; // We'll be copying by value rather than just assigning the pointer, so initialize the destination
+			else if(parameterTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::GUIElement || parameterTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::MonoObject || parameterTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::MonoReflectionType || parameterTypeMappingInformation.TypeCategory == ExportedClassTypeCategory::ConstCharString)
+				preCallActions << " = nullptr";
 
 			preCallActions << ";\n";
 		}

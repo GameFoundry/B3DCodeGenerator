@@ -833,7 +833,7 @@ static std::string GenerateCSharpClass(const ClassInfo& classInformation)
 		baseType = "Resource";
 	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Component)
 		baseType = "Component";
-	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GUIElement)
+	else if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GUIElement && classInformation.NativeName != kBuiltinGUIElementType)
 		baseType = "GUIElement";
 	else
 		baseType = "ScriptObject";
