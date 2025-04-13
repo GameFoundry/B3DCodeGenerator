@@ -215,10 +215,6 @@ int main(int argc, const char** argv)
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "SceneObject", "Scene/BsSceneObject.h", "SceneObject", "Wrappers/BsScriptSceneObject.h", ExportedClassTypeCategory::SceneObject);
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Resource", "Resources/BsResource.h", "Resource", "BsScriptResourceWrapper.h", ExportedClassTypeCategory::Resource);
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Any", "Utility/BsAny.h", "Any", "", ExportedClassTypeCategory::Class);
-	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "GUILayout", "GUI/BsGUILayout.h", "GUILayout", "Wrappers/GUI/BsScriptGUILayout.h", ExportedClassTypeCategory::GUIElement);
-	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "GUILayoutX", "GUI/BsGUILayoutX.h", "GUILayoutX", "Wrappers/GUI/BsScriptGUILayout.h", ExportedClassTypeCategory::GUIElement);
-	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "GUILayoutY", "GUI/BsGUILayoutY.h", "GUILayoutY", "Wrappers/GUI/BsScriptGUILayout.h", ExportedClassTypeCategory::GUIElement);
-	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "GUIPanel", "GUI/BsGUIPanel.h", "GUIPanel", "Wrappers/GUI/BsScriptGUILayout.h", ExportedClassTypeCategory::GUIElement);
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Prefab", "Scene/BsPrefab.h", "Prefab", "Wrappers/BsScriptPrefab.h", ExportedClassTypeCategory::Resource);
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "GUIContextMenu", "GUI/BsGUIContextMenu.h", "ContextMenu", "Wrappers/BsScriptContextMenu.h", ExportedClassTypeCategory::Class);
 
