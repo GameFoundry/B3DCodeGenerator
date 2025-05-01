@@ -2760,10 +2760,15 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 		{
 			const bool isStatic = eventInfo.IsFlagSet(MethodFlags::Static);
 			const bool isCallback = eventInfo.IsFlagSet(MethodFlags::Callback);
-			if(!isCallback && (isStatic || classHasGlobalSingleInstance))
+			if(!isCallback)
 			{
 				stream << GenerateApiCheckBegin(eventInfo.API);
-				stream << "\t\tstatic HEvent " << eventInfo.NativeName << "Connection;" << std::endl;
+				stream << "\t\t";
+
+				if(isStatic || classHasGlobalSingleInstance)
+					stream << "static ";
+
+				stream << "HEvent " << eventInfo.NativeName << "Connection;\n";
 				stream << GenerateApiCheckEnd(eventInfo.API);
 			}
 		}
@@ -2802,7 +2807,10 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 		output << "\n";
 
 		if(hasNonStaticEvents)
+		{
 			output << "\t\tvirtual void RegisterEvents();\n";
+			output << "\t\tvirtual void UnregisterEvents();\n";
+		}
 
 		fnGenerateEventCallbackMethods(output);
 
@@ -2873,7 +2881,11 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 		output << "\t\t" << interopClassName << "();\n";
 	}
 
-	output << std::endl;
+	// Destructor
+	if(!classHasGlobalSingleInstance)
+		output << "\t\t" << "~" << interopClassName << "();\n";
+
+	output << "\n";
 
 	// SetupScriptBindings()
 	output << "\t\tstatic void SetupScriptBindings();\n";
@@ -2884,7 +2896,10 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 		output << "\t\tScriptObjectLifetimeTrackingMode GetLifetimeTrackingMode() const override { return ScriptObjectLifetimeTrackingMode::StrongHandleWithExplicitDestroy; }\n";
 
 	if(hasNonStaticEvents && !isBase)
+	{
 		output << "\t\tvirtual void RegisterEvents();\n";
+		output << "\t\tvirtual void UnregisterEvents();\n";
+	}
 
 	if(!classHasGlobalSingleInstance)
 	{
@@ -3037,7 +3052,7 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 		}
 	};
 
-	auto fnGenerateRegisterEvents = [&classInfo](std::stringstream& stream, const std::string& className, const std::string& wrappedDataType)
+	auto fnGenerateRegisterEvents = [&classInfo](std::stringstream& stream, const std::string& className)
 	{
 		for(auto& eventInfo : classInfo.Events)
 		{
@@ -3048,7 +3063,7 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 				stream << GenerateApiCheckBegin(eventInfo.API);
 
 				if(!isCallback)
-					stream << "\t\tstatic_cast<" << classInfo.NativeName << "*>(GetNativeObject())->" << eventInfo.NativeName << ".Connect(";
+					stream << "\t\t"<< eventInfo.NativeName << "Connection = static_cast<" << classInfo.NativeName << "*>(GetNativeObject())->" << eventInfo.NativeName << ".Connect(";
 				else
 					stream << "\t\tstatic_cast<" << classInfo.NativeName << "*>(GetNativeObject())->" << eventInfo.NativeName << " = ";
 
@@ -3066,15 +3081,37 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 		}
 	};
 
-	auto fnGenerateRegisterEventsMethodBody = [&fnGenerateRegisterEvents](std::stringstream& stream, const TypeMappingInformation& typeMappingInformation, const ClassInfo& classInfo, std::string& className, const std::string& baseClassName, const std::string& wrappedDataType)
+	auto fnGenerateRegisterEventsMethodBody = [&fnGenerateRegisterEvents](std::stringstream& stream, const std::string& className, const std::string& baseClassName)
 	{
 		stream << "\tvoid " << className << "::RegisterEvents()\n";
 		stream << "\t{\n";
 
-		fnGenerateRegisterEvents(stream, className, wrappedDataType);
+		fnGenerateRegisterEvents(stream, className);
 
 		if(!baseClassName.empty())
 			stream << "\t\t" << baseClassName << "::RegisterEvents();\n";
+
+		stream << "\t}\n";
+	};
+
+	auto fnGenerateUnregisterEventsMethodBody = [](std::stringstream& stream, const ClassInfo& classInfo, std::string& className, const std::string& baseClassName)
+	{
+		stream << "\tvoid " << className << "::UnregisterEvents()\n";
+		stream << "\t{\n";
+
+		for(auto& eventInfo : classInfo.Events)
+		{
+			const bool isCallback = eventInfo.IsFlagSet(MethodFlags::Callback);
+			if(!isCallback)
+			{
+				stream << GenerateApiCheckBegin(eventInfo.API);
+				stream << "\t\t"<< eventInfo.NativeName << "Connection.Disconnect();\n";
+				stream << GenerateApiCheckEnd(eventInfo.API);
+			}
+		}
+
+		if(!baseClassName.empty())
+			stream << "\t\t" << baseClassName << "::UnregisterEvents();\n";
 
 		stream << "\t}\n";
 	};
@@ -3112,9 +3149,12 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 		// Event callback method implementations
 		fnGenerateEventCallbacks(output, interopBaseClassName);
 
-		// RegisterEvents method
+		// (Un)RegisterEvents methods
 		if(hasNonStaticEvents)
-			fnGenerateRegisterEventsMethodBody(output, typeMappingInformation, classInfo, interopBaseClassName, parentBaseClassName, wrappedDataType);
+		{
+			fnGenerateRegisterEventsMethodBody(output, interopBaseClassName, parentBaseClassName);
+			fnGenerateUnregisterEventsMethodBody(output, classInfo, interopBaseClassName, parentBaseClassName);
+		}
 	}
 
 	// Event thunks
@@ -3159,6 +3199,16 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 
 	output << "\t}" << std::endl;
 	output << std::endl;
+
+	// Destructor
+	if(!classHasGlobalSingleInstance)
+	{
+		output << "\t" << interopClassName << "::~" << interopClassName << "()\n";
+		output << "\t{\n";
+		output << "\t\tUnregisterEvents();\n";
+		output << "\t}\n";
+		output << "\n";
+	}
 
 	// CLR hook registration
 	output << "\tvoid " << interopClassName << "::SetupScriptBindings()" << std::endl;
@@ -3317,9 +3367,12 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 	if(!isBase)
 		fnGenerateEventCallbacks(output, interopClassName);
 
-	// RegisterEvents method
+	// (Un)registerEvents methods
 	if(hasNonStaticEvents && !isBase && !classHasGlobalSingleInstance)
-		fnGenerateRegisterEventsMethodBody(output, typeMappingInformation, classInfo, interopClassName, interopBaseClassName, wrappedDataType);
+	{
+		fnGenerateRegisterEventsMethodBody(output, interopClassName, interopBaseClassName);
+		fnGenerateUnregisterEventsMethodBody(output, classInfo, interopClassName, interopBaseClassName);
+	}
 
 	// CLR hook method implementations
 	std::string interopClassThisPtrType;
