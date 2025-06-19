@@ -116,12 +116,12 @@ namespace b3d
 		float intensity = 1.0f;
 	};
 	
-	namespace ct
+	namespace render
 	{
 		struct ParticleVectorFieldSettings {};
 	}
 
-	template<> struct CoreThreadType<ParticleVectorFieldSettings> { typedef ct::ParticleVectorFieldSettings Type; };
+	template<> struct CoreThreadType<ParticleVectorFieldSettings> { typedef render::ParticleVectorFieldSettings Type; };
 	
 	class BS_SCRIPT_EXPORT() CoreVariantTest
 	{
