@@ -17,14 +17,14 @@ const char *const kBuiltinGUIElementType = "GUIElement";
 const char *const kBuiltinReflectableType = "IReflectable";
 const char *const kBuiltinIScriptExportableType = "IScriptExportable";
 
-std::string sFrameworkCppNs = "bs";
-std::string sEditorCppNs = "bs";
-std::string sFrameworkCsNs = "bs";
-std::string sEditorCsNs = "bs.Editor";
+std::string sFrameworkCppNs = "b3d";
+std::string sEditorCppNs = "b3d";
+std::string sFrameworkCsNs = "b3d";
+std::string sEditorCsNs = "b3d.Editor";
 std::string sFrameworkDllExportMacro = "B3D_SCRIPT_INTEROP_EXPORT";
 std::string sEditorDllExportMacro = "B3D_EDITOR_SCRIPT_INTEROP_EXPORT";
 std::string sFrameworkCopyrightNotice = 
-	"//********************************* bs::framework - Copyright 2018-2022 Marko Pintera ************************************//\n" \
+	"//********************************* B3D Framework - Copyright 2018-2022 Marko Pintera ************************************//\n" \
 	"//*********** Licensed under the MIT license. See LICENSE.md for full terms. This notice is not to be removed. ***********//\n";
 std::string sEditorCopyrightNotice = 
 	"//********************************** Banshee Engine (www.banshee3d.com) **************************************************//\n" \

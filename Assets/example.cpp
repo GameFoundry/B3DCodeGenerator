@@ -23,7 +23,7 @@ class Flags
 
 using String = std::string;
 
-namespace bs
+namespace b3d
 {
 	class GUIElement
 	{ };
@@ -51,7 +51,7 @@ typedef basic_string<wchar_t> wstring;
 #define BS_SCRIPT_EXPORT(...) __attribute__((annotate("se," #__VA_ARGS__)))
 #define BS_PARAMS __attribute__((annotate("params")))
 
-namespace bs
+namespace b3d
 {
 	class Component
 	{
@@ -312,25 +312,25 @@ public:
 
 #define BS_NORREF __attribute__((annotate("norref")))
 
-typedef bs::TResourceHandle<bs::Texture> HTexture;
+typedef b3d::TResourceHandle<b3d::Texture> HTexture;
 
 struct BS_SCRIPT_EXPORT(pl:true,m:GUI) GUIContentImages
 {
 	GUIContentImages() = default;
 	
-	GUIContentImages(const bs::TResourceHandle<bs::Texture>& image)
+	GUIContentImages(const b3d::TResourceHandle<b3d::Texture>& image)
 		:normal(image), hover(image), active(image), focused(image),
 		normalOn(image), hoverOn(image), activeOn(image), focusedOn(image)
 	{ }
 
 	BS_NORREF HTexture normal;
-	BS_NORREF bs::TResourceHandle<bs::Texture> hover;
-	BS_NORREF bs::TResourceHandle<bs::Texture> active;
-	BS_NORREF bs::TResourceHandle<bs::Texture> focused;
-	BS_NORREF bs::TResourceHandle<bs::Texture> normalOn;
-	BS_NORREF bs::TResourceHandle<bs::Texture> hoverOn;
-	BS_NORREF bs::TResourceHandle<bs::Texture> activeOn;
-	BS_NORREF bs::TResourceHandle<bs::Texture> focusedOn;
+	BS_NORREF b3d::TResourceHandle<b3d::Texture> hover;
+	BS_NORREF b3d::TResourceHandle<b3d::Texture> active;
+	BS_NORREF b3d::TResourceHandle<b3d::Texture> focused;
+	BS_NORREF b3d::TResourceHandle<b3d::Texture> normalOn;
+	BS_NORREF b3d::TResourceHandle<b3d::Texture> hoverOn;
+	BS_NORREF b3d::TResourceHandle<b3d::Texture> activeOn;
+	BS_NORREF b3d::TResourceHandle<b3d::Texture> focusedOn;
 };
 
 class BS_SCRIPT_EXPORT(pl:true,m:GUI) GUIContent
@@ -568,7 +568,7 @@ struct BS_SCRIPT_EXPORT(pl:true) Str2 : public Str1
 	std::wstring cdc;
 };
 
-class BS_SCRIPT_EXPORT() Cmp1 : public bs::Component
+class BS_SCRIPT_EXPORT() Cmp1 : public b3d::Component
 {
 
 };
@@ -578,11 +578,11 @@ class BS_SCRIPT_EXPORT() Cmp2 : public Cmp1
 
 };
 
-class BS_SCRIPT_EXPORT(ed:true,m:GUIEditor) GUIColorGradient : public bs::GUIElement
+class BS_SCRIPT_EXPORT(ed:true,m:GUIEditor) GUIColorGradient : public b3d::GUIElement
 {
 public:
 	BS_SCRIPT_EXPORT(ec:GUIColorGradient)
-	static GUIColorGradient* create(const String& styleName = bs::StringUtil::BLANK);
+	static GUIColorGradient* create(const String& styleName = b3d::StringUtil::BLANK);
 
 	/**	Color gradient to display. */
 	BS_SCRIPT_EXPORT(pr:setter,n:Gradient)
@@ -610,10 +610,10 @@ public:
 	ColorGradient getGradient() const;
 
 	BS_SCRIPT_EXPORT()
-	bs::Event<void()> onClicked;
+	b3d::Event<void()> onClicked;
 };
 
-namespace bs
+namespace b3d
 {
 	class BS_SCRIPT_EXPORT(m:Math) Random
 	{
@@ -707,7 +707,7 @@ class BS_SCRIPT_EXPORT(f:TestOutput) MyClass
 	
 	BS_SCRIPT_EXPORT() void defParamTest(ResourceLoadFlags t = ResourceLoadFlag::Default);
 	
-	BS_SCRIPT_EXPORT() void strParamTest(String a = bs::StringUtil::BLANK);
+	BS_SCRIPT_EXPORT() void strParamTest(String a = b3d::StringUtil::BLANK);
 	
 	BS_SCRIPT_EXPORT() void paramsTest(int a, BS_PARAMS std::vector<float> b);
 	
@@ -717,7 +717,7 @@ class BS_SCRIPT_EXPORT(f:TestOutput) MyClass
 	BS_SCRIPT_EXPORT() void tst(const Vector3I& dft = Vector3I(1, 1, 1));
 	
 	BS_SCRIPT_EXPORT()
-	std::vector<bs::TResourceHandle<bs::Texture>> textures;
+	std::vector<b3d::TResourceHandle<b3d::Texture>> textures;
 	
 	BS_SCRIPT_EXPORT()
 	std::vector<std::wstring> getIdentifiers() const;
@@ -737,13 +737,13 @@ class BS_SCRIPT_EXPORT(f:TestOutput) MyClass
 	void setEnum(FlgEnums e) const;		
 	
 	BS_SCRIPT_EXPORT()
-	bs::Event<void(int)> myEvent;
+	b3d::Event<void(int)> myEvent;
 	
 	BS_SCRIPT_EXPORT()
-	bs::Event<void(FlgEnums)> myEnumEvent;
+	b3d::Event<void(FlgEnums)> myEnumEvent;
 	
 	BS_SCRIPT_EXPORT()
-	static bs::Event<void(int)> myStaticEvent;
+	static b3d::Event<void(int)> myStaticEvent;
 };
 
 class BS_SCRIPT_EXPORT() StaticClass
@@ -827,9 +827,9 @@ class BS_SCRIPT_EXPORT(f:TestOutput2,m:TestModule) MyClass2
 	void setStructArr(const std::vector<ComplexStruct>& value);
 	
 	BS_SCRIPT_EXPORT()
-	bs::Event<void(ComplexStruct)> myEvent;
+	b3d::Event<void(ComplexStruct)> myEvent;
 	
 	BS_SCRIPT_EXPORT()
-	bs::Event<void(std::vector<ComplexStruct>)> myEvent2;
+	b3d::Event<void(std::vector<ComplexStruct>)> myEvent2;
 	
 };
