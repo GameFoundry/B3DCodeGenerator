@@ -1,4 +1,7 @@
 #include "B3DParserUtility.h"
+
+#include <stack>
+
 #include "B3DCommentParser.h"
 #include "B3DScriptExportAttributeParser.h"
 #include "B3DTypeLookup.h"

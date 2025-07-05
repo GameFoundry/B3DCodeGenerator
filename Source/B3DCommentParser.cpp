@@ -1,4 +1,7 @@
 #include "B3DCommentParser.h"
+
+#include <stack>
+
 #include "B3DParserUtility.h"
 #include "B3DGeneratorUtility.h"
 
@@ -22,13 +25,13 @@ bool CommentParser::ParseComments(const Decl* decl, CommentEntry& output)
 	while (commentIter != comment->child_end())
 	{
 		comments::Comment* childComment = *commentIter;
-		int kind = childComment->getCommentKind();
+		comments::CommentKind kind = childComment->getCommentKind();
 
 		switch (kind)
 		{
-		case comments::Comment::CommentKind::NoCommentKind:
+		case comments::CommentKind::None:
 			break;
-		case comments::Comment::CommentKind::BlockCommandCommentKind:
+		case comments::CommentKind::BlockCommandComment:
 		{
 			comments::BlockCommandComment* blockComment = cast<comments::BlockCommandComment>(childComment);
 			const comments::CommandInfo *commandInfo = traits.getCommandInfo(blockComment->getCommandID());
@@ -41,7 +44,7 @@ bool CommentParser::ParseComments(const Decl* decl, CommentEntry& output)
 
 			break;
 		}
-		case comments::Comment::CommentKind::ParagraphCommentKind:
+		case comments::CommentKind::ParagraphComment:
 		{
 			comments::ParagraphComment* paragraphComment = cast<comments::ParagraphComment>(childComment);
 
@@ -50,7 +53,7 @@ bool CommentParser::ParseComments(const Decl* decl, CommentEntry& output)
 
 			break;
 		}
-		case comments::Comment::CommentKind::ParamCommandCommentKind:
+		case comments::CommentKind::ParamCommandComment:
 		{
 			comments::ParamCommandComment* paramComment = cast<comments::ParamCommandComment>(childComment);
 
@@ -109,9 +112,9 @@ bool CommentParser::ParseComments(const Decl* decl, CommentEntry& output)
 			while (childIter != paragraph->child_end())
 			{
 				comments::Comment* childComment = *childIter;
-				int kind = childComment->getCommentKind();
+				comments::CommentKind kind = childComment->getCommentKind();
 
-				if (kind == comments::Comment::CommentKind::TextCommentKind)
+				if (kind == comments::CommentKind::TextComment)
 				{
 					if (nativeDoc <= 0)
 					{
@@ -128,7 +131,7 @@ bool CommentParser::ParseComments(const Decl* decl, CommentEntry& output)
 						hasAnyData = true;
 					}
 				}
-				else if (kind == comments::Comment::CommentKind::InlineCommandCommentKind)
+				else if (kind == comments::CommentKind::InlineCommandComment)
 				{
 					comments::InlineCommandComment* inlineCommand = cast<comments::InlineCommandComment>(childComment);
 
@@ -162,7 +165,7 @@ bool CommentParser::ParseComments(const Decl* decl, CommentEntry& output)
 							ref.PositionInText = size + refsTotalSize;
 
 							StringRef refArg = inlineCommand->getArgText(0);
-							if (refArg.endswith(".") || refArg.endswith(","))
+							if (refArg.ends_with(".") || refArg.ends_with(","))
 							{
 								paragraphText << refArg[refArg.size() - 1];
 								refArg = refArg.substr(0, refArg.size() - 1);
@@ -710,7 +713,7 @@ void CommentParser::ResolveCopydocComments(CommentEntry& comment, const std::str
 	{
 		StringRef commentRef(entry.Text.data(), entry.Text.length());
 
-		if (commentRef.startswith("@copydoc"))
+		if (commentRef.starts_with("@copydoc"))
 		{
 			copydocArg = commentRef.split(' ').second;
 			break;

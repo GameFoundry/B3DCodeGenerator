@@ -1,11 +1,12 @@
 #include "B3DScriptExportAttributeParser.h"
 #include "B3DParserUtility.h"
+#include <stack>
 
 bool ScriptExportAttributeParser::IsExportAttribute(AnnotateAttr* attr)
 {
 	StringRef annotation = attr->getAnnotation();
 
-	return annotation.startswith("se,");
+	return annotation.starts_with("se,");
 }
 
 bool ScriptExportAttributeParser::IsExportable(const CXXRecordDecl* decl)

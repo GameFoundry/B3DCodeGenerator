@@ -1,4 +1,7 @@
 #include "B3DParser.h"
+
+#include <stack>
+
 #include "B3DParserUtility.h"
 #include "B3DScriptExportAttributeParser.h"
 #include "B3DTypeLookup.h"
@@ -211,12 +214,11 @@ bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, Variabl
 	{
 		const TemplateSpecializationType* specType = realType->getAs<TemplateSpecializationType>();
 
-		int numArgs = 0;
-
+		ArrayRef<TemplateArgument> templateArguments;
 		if (specType != nullptr)
-			numArgs = specType->getNumArgs();
+			templateArguments = specType->template_arguments();
 
-		if (numArgs > 0)
+		if (!templateArguments.empty())
 		{
 			const RecordType* recordType = realType->getAs<RecordType>();
 			const RecordDecl* recordDecl = recordType->getDecl();
@@ -229,7 +231,7 @@ bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, Variabl
 				outType.TypeName = "Vector";
 				outType.TypeCategory = VariableTypeCategory::Vector;
 
-				QualType underlyingType = specType->getArg(0).getAsType();
+				QualType underlyingType = templateArguments[0].getAsType();
 				VariableTypeInformation underlyingTypeInformation;
 				if (!ParseTypeInformation(underlyingType, underlyingTypeInformation))
 				{
@@ -244,8 +246,9 @@ bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, Variabl
 			{
 				QualType aliasedType = specType->getAliasedType();
 				specType = aliasedType->getAs<TemplateSpecializationType>(); // TODO - Move this above, we always want to work on the aliased type
+				templateArguments = specType->template_arguments();
 
-				QualType allocatorType = specType->getArg(1).getAsType();
+				QualType allocatorType = templateArguments[1].getAsType();
 				VariableTypeInformation allocatorTypeInformation;
 				if (!ParseTypeInformation(allocatorType, allocatorTypeInformation))
 				{
@@ -263,12 +266,13 @@ bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, Variabl
 					outType.TypeCategory = VariableTypeCategory::TInlineArray;
 
 					const TemplateSpecializationType* allocatorSpecializationType = allocatorType->getAs<TemplateSpecializationType>();
+					ArrayRef<TemplateArgument> allocatorTemplateArguments = allocatorSpecializationType->template_arguments();
 
 					uint32_t inlineVectorSize = 0;
-					if(allocatorSpecializationType->getNumArgs() > 0)
+					if(!allocatorTemplateArguments.empty())
 					{
 						std::string tmplArgExprValue, exprType;
-						if (TryEvaluateExpression(allocatorSpecializationType->getArg(0).getAsExpr(), tmplArgExprValue, exprType))
+						if (TryEvaluateExpression(allocatorTemplateArguments[0].getAsExpr(), tmplArgExprValue, exprType))
 						{
 							try
 							{
@@ -296,7 +300,7 @@ bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, Variabl
 					outType.TypeCategory = VariableTypeCategory::TArray;
 				}
 
-				QualType underlyingType = specType->getArg(0).getAsType();
+				QualType underlyingType = specType->template_arguments()[0].getAsType();
 				VariableTypeInformation underlyingTypeInformation;
 				if (!ParseTypeInformation(underlyingType, underlyingTypeInformation))
 				{
@@ -349,7 +353,7 @@ bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, Variabl
 				outType.TypeName = "TAsyncOp";
 				outType.TypeCategory = VariableTypeCategory::AsyncOp;
 
-				QualType underlyingType = specType->getArg(0).getAsType();
+				QualType underlyingType = templateArguments[0].getAsType();
 				VariableTypeInformation underlyingTypeInformation;
 				if (!ParseTypeInformation(underlyingType, underlyingTypeInformation))
 				{
@@ -365,9 +369,9 @@ bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, Variabl
 				outType.TypeName = "Flags";
 				outType.TypeCategory = VariableTypeCategory::Flags;
 
-				if(numArgs > 1)
+				if(templateArguments.size() > 1)
 				{
-					QualType storageType = specType->getArg(1).getAsType();
+					QualType storageType = templateArguments[1].getAsType();
 					bool validStorageType = false;
 					if (storageType->isBuiltinType())
 					{
@@ -387,7 +391,7 @@ bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, Variabl
 					}
 				}
 
-				QualType underlyingType = specType->getArg(0).getAsType();
+				QualType underlyingType = templateArguments[0].getAsType();
 				VariableTypeInformation underlyingTypeInformation;
 				if (!ParseTypeInformation(underlyingType, underlyingTypeInformation))
 				{
@@ -400,7 +404,7 @@ bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, Variabl
 			}
 			else if (sourceTypeName == "basic_string" && recordDecl->isInStdNamespace())
 			{
-				realType = specType->getArg(0).getAsType();
+				realType = templateArguments[0].getAsType();
 
 				const BuiltinType* builtinType = realType->getAs<BuiltinType>();
 				if (builtinType->getKind() == BuiltinType::Kind::WChar_U ||
@@ -422,7 +426,7 @@ bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, Variabl
 				outType.TypeName = "Shared";
 				outType.TypeCategory = VariableTypeCategory::SharedPointer;
 
-				QualType underlyingType = specType->getArg(0).getAsType();
+				QualType underlyingType = templateArguments[0].getAsType();
 				VariableTypeInformation underlyingTypeInformation;
 				if (!ParseTypeInformation(underlyingType, underlyingTypeInformation))
 				{
@@ -447,7 +451,7 @@ bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, Variabl
 				outType.TypeCategory = VariableTypeCategory::ResourceHandle;
 				outType.ParameterFlags |= (uint32_t)ParameterFlags::AsResourceRef; // Set this here, as we want to make it a default
 
-				QualType underlyingType = specType->getArg(0).getAsType();
+				QualType underlyingType = templateArguments[0].getAsType();
 				VariableTypeInformation underlyingTypeInformation;
 				if (!ParseTypeInformation(underlyingType, underlyingTypeInformation))
 				{
@@ -460,11 +464,11 @@ bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, Variabl
 			}
 			else if (sourceTypeName == "GameObjectHandle")
 			{
-				realType = specType->getArg(0).getAsType();
+				realType = templateArguments[0].getAsType();
 				outType.TypeName = "GameObjectHandle";
 				outType.TypeCategory = VariableTypeCategory::GameObjectHandle;
 
-				QualType underlyingType = specType->getArg(0).getAsType();
+				QualType underlyingType = templateArguments[0].getAsType();
 				VariableTypeInformation underlyingTypeInformation;
 				if (!ParseTypeInformation(underlyingType, underlyingTypeInformation))
 				{
@@ -630,12 +634,12 @@ bool BansheeCodeGeneratorASTVisitor::TryParseEventSignature(QualType type, Metho
 	if (type->isStructureOrClassType())
 	{
 		const TemplateSpecializationType* specType = type->getAs<TemplateSpecializationType>();
-		int numArgs = 0;
+		ArrayRef<TemplateArgument> templateArguments;
 
 		if (specType != nullptr)
-			numArgs = specType->getNumArgs();
+			templateArguments = specType->template_arguments();
 
-		if (numArgs > 0)
+		if (!templateArguments.empty())
 		{
 			const RecordType* recordType = type->getAs<RecordType>();
 			const RecordDecl* recordDecl = recordType->getDecl();
@@ -657,7 +661,7 @@ bool BansheeCodeGeneratorASTVisitor::TryParseEventSignature(QualType type, Metho
 
 			if (isEvent)
 			{
-				type = specType->getArg(0).getAsType();
+				type = templateArguments[0].getAsType();
 				if(type->isFunctionProtoType())
 				{
 					const FunctionProtoType* funcType = type->getAs<FunctionProtoType>();
@@ -1403,7 +1407,7 @@ bool BansheeCodeGeneratorASTVisitor::TryParseDeclarationAsStruct(CXXRecordDecl* 
 				const SubstTemplateTypeParmType* substitutedTemplateType = fieldDecl->getType().getTypePtr()->getAs<SubstTemplateTypeParmType>();
 				if(substitutedTemplateType != nullptr)
 				{
-					const TemplateTypeParmType* templatedParameterType = substitutedTemplateType->getReplacedParameter();
+					const TemplateTypeParmDecl* templatedParameterType = substitutedTemplateType->getReplacedParameter();
 					if(templatedParameterType != nullptr)
 						fieldInfo.TemplateParameterIndex = templatedParameterType->getIndex();
 				}
