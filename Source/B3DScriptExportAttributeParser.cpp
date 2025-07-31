@@ -296,13 +296,13 @@ void ScriptExportAttributeParser::ParseScriptExportAttributeCommand(const std::s
 			float secondValue = 0.0f;
 
 			bool isSecondValueFound = false;
-			while(currentCharacter != '\0')
+			while(currentCharacter != nullptr)
 			{
 				if (*currentCharacter == ',')
 				{
 					currentCharacter++;
 
-					if (currentCharacter == '\0')
+					if (currentCharacter == nullptr)
 						break;
 
 					secondValue = std::strtof(currentCharacter, &nextCharacter);
