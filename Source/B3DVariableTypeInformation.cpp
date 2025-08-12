@@ -86,7 +86,6 @@ const std::string& VariableTypeInformation::GetFirstWrappedOrSelfTypeName() cons
 	case VariableTypeCategory::ResourceHandle:
 	case VariableTypeCategory::GameObjectHandle:
 	case VariableTypeCategory::Flags:
-	case VariableTypeCategory::ComponentOrActor:
 	case VariableTypeCategory::AsyncOp:
 		return AssertGetUnderlyingType().TypeName;
 	}

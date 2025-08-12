@@ -311,43 +311,6 @@ bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, Variabl
 				outType.UnderlyingType = std::make_unique<VariableTypeInformation>(std::move(underlyingTypeInformation));
 				return true;
 			}
-			else if(sourceTypeName == "ComponentOrActor")
-			{
-				outType.TypeName = "ComponentOrActor";
-				outType.TypeCategory = VariableTypeCategory::ComponentOrActor;
-
-				QualType underlyingType;
-				bool foundUnderlying = false;
-				const DeclContext* context = dyn_cast<DeclContext>(recordDecl);
-				for (auto I = context->decls_begin(); I != context->decls_end(); ++I)
-				{
-					if (TypeAliasDecl* typeAliasDecl = dyn_cast<TypeAliasDecl>(*I))
-					{
-						if(typeAliasDecl->getName() == "HandleType")
-						{
-							underlyingType = typeAliasDecl->getUnderlyingType();
-							foundUnderlying = true;
-							break;
-						}
-					}
-				}
-
-				if(!foundUnderlying)
-				{
-					errs() << "Error: Cannot find underlying component type for ComponentOrActor<T>.\n";
-					return false;
-				}
-
-				VariableTypeInformation underlyingTypeInformation;
-				if (!ParseTypeInformation(underlyingType, underlyingTypeInformation))
-				{
-					errs() << "Error: Failed parsing underlying ComponentOrActor<T> type.\n";
-					return false;
-				}
-
-				outType.UnderlyingType = std::make_unique<VariableTypeInformation>(std::move(underlyingTypeInformation));
-				return true;
-			}
 			else if(sourceTypeName == "TAsyncOp")
 			{
 				outType.TypeName = "TAsyncOp";

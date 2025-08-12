@@ -93,7 +93,7 @@ static std::string GetCppNativeQualifiedTypeName(const VariableTypeInformation& 
 		output << "TArray<" + GetCppNativeQualifiedTypeName(typeInformation.AssertGetUnderlyingType(), typeMappingInformation, false) + ">";
 	else if(typeInformation.TypeCategory == VariableTypeCategory::AsyncOp)
 		output << "TAsyncOp<" + GetCppNativeQualifiedTypeName(typeInformation.AssertGetUnderlyingType(), typeMappingInformation, false) + ">";
-	else if(typeInformation.TypeCategory == VariableTypeCategory::Array || typeInformation.TypeCategory == VariableTypeCategory::ComponentOrActor)
+	else if(typeInformation.TypeCategory == VariableTypeCategory::Array)
 		output << GetCppNativeQualifiedTypeName(typeInformation.AssertGetUnderlyingType(), typeMappingInformation, false);
 	else if(typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Resource)
 		output << "TResourceHandle<" + typeName + ">";
@@ -374,9 +374,9 @@ static std::string GetArgumentForInternalToNativeCall(const MethodInfo& methodIn
 		}
 		else
 		{
-			assert(typeInformation.TypeCategory == VariableTypeCategory::SharedPointer || typeInformation.TypeCategory == VariableTypeCategory::GameObjectHandle || typeInformation.TypeCategory == VariableTypeCategory::ComponentOrActor || typeInformation.TypeCategory == VariableTypeCategory::General);
+			assert(typeInformation.TypeCategory == VariableTypeCategory::SharedPointer || typeInformation.TypeCategory == VariableTypeCategory::GameObjectHandle || typeInformation.TypeCategory == VariableTypeCategory::General);
 
-			if (typeInformation.TypeCategory == VariableTypeCategory::GameObjectHandle || typeInformation.TypeCategory == VariableTypeCategory::ComponentOrActor)
+			if (typeInformation.TypeCategory == VariableTypeCategory::GameObjectHandle)
 				return argumentName;
 		}
 
@@ -421,9 +421,9 @@ static std::string GetArgumentForInternalToNativeCall(const MethodInfo& methodIn
 	case ExportedClassTypeCategory::ReflectableClass:
 	case ExportedClassTypeCategory::IReflectable:
 	{
-		assert(typeInformation.TypeCategory == VariableTypeCategory::SharedPointer || typeInformation.TypeCategory == VariableTypeCategory::ComponentOrActor || typeInformation.TypeCategory == VariableTypeCategory::General);
+		assert(typeInformation.TypeCategory == VariableTypeCategory::SharedPointer || typeInformation.TypeCategory == VariableTypeCategory::General);
 
-		if(typeInformation.TypeCategory == VariableTypeCategory::SharedPointer || typeInformation.TypeCategory == VariableTypeCategory::ComponentOrActor)
+		if(typeInformation.TypeCategory == VariableTypeCategory::SharedPointer)
 			return argumentName;
 
 		if(typeInformation.IsQualifierFlagSet(VariableQualifierFlags::IsPointer))
@@ -519,15 +519,11 @@ static std::string GetReturnValueForNativeCall(const std::string& access, const 
 			return access;
 	case ExportedClassTypeCategory::Component: // Always passed as a handle, input must be a handle
 	{
-		const VariableTypeInformation& componentOrActorUnderlyingType = underlyingType.TypeCategory == VariableTypeCategory::ComponentOrActor ? underlyingType.AssertGetUnderlyingType() : underlyingType;
-		if (componentOrActorUnderlyingType.TypeCategory != VariableTypeCategory::GameObjectHandle)
+		if (underlyingType.TypeCategory != VariableTypeCategory::GameObjectHandle)
 		{
 			errs() << "Error: Unsure how to provide \"" << access << "\" to interop as a return value.\".\n";
 			return access;
 		}
-
-		if (underlyingType.TypeCategory == VariableTypeCategory::ComponentOrActor)
-			return access + ".GetComponent()";
 
 		return access;
 	}
@@ -1860,12 +1856,7 @@ static std::string GenerateFieldConvertBlock(const std::string& name, const Vari
 
 			if(toInterop)
 			{
-				std::string argName;
-				
-				if(fieldInformation.TypeInformation.TypeCategory != VariableTypeCategory::ComponentOrActor)
-					argName = "value." + name;
-				else
-					argName = "value." + name + ".GetComponent()";
+				std::string argName = "value." + name;
 
 				preActions << "\t\tMonoObject* " << argumentVariableName << ";\n";
 
@@ -1880,7 +1871,7 @@ static std::string GenerateFieldConvertBlock(const std::string& name, const Vari
 				preActions << GenerateScriptObjectToNativeObject(fieldInformation.TypeInformation, parameterTypeMappingInformation, name, "value." + name, argumentVariableName);
 			}
 
-			const VariableTypeInformation& underlyingType = fieldInformation.TypeInformation.TypeCategory == VariableTypeCategory::ComponentOrActor ? fieldInformation.TypeInformation.AssertGetUnderlyingType() : fieldInformation.TypeInformation;
+			const VariableTypeInformation& underlyingType = fieldInformation.TypeInformation;
 			if(underlyingType.TypeCategory != VariableTypeCategory::GameObjectHandle && underlyingType.TypeCategory != VariableTypeCategory::ResourceHandle)
 				outs() << "Error: Invalid struct member type for \"" << name << "\"\n";
 		}

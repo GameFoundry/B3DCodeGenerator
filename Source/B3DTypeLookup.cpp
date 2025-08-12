@@ -497,7 +497,6 @@ TypeMappingInformation TypeLookup::GetNativeToScriptTypeMapping(const VariableTy
 	case VariableTypeCategory::TArray:
 	case VariableTypeCategory::Array:
 	case VariableTypeCategory::GameObjectHandle:
-	case VariableTypeCategory::ComponentOrActor:
 	case VariableTypeCategory::Flags:
 	case VariableTypeCategory::SharedPointer:
 	{
