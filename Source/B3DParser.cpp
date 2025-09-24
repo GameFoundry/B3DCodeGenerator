@@ -1983,8 +1983,8 @@ bool BansheeCodeGeneratorASTVisitor::VisitEnumDecl(EnumDecl* decl)
 		MapBuiltinTypeToCSharpType(builtinType->getKind(), enumEntry.ExplicitUnderlyingCSharpType);
 
 	std::string declFile = astContext->getSourceManager().getFilename(decl->getSourceRange().getBegin()).str();
-	std::string destFile = "BsScript" + scriptExportInformation.ExportedFileName + ".generated.h";
-	std::string destFileEditor = "BsScript" + scriptExportInformation.ExportedFileName + ".editor.generated.h";
+	std::string destFile = "B3DScript" + scriptExportInformation.ExportedFileName + ".generated.h";
+	std::string destFileEditor = "B3DScript" + scriptExportInformation.ExportedFileName + ".editor.generated.h";
 
 	TypeLookup::RegisterNativeToScriptTypeMapping(enumEntry.Namespace, sourceClassName.str(), declFile, scriptName, scriptName, scriptExportInformation.ExportedFileName, enumEntry.API, ExportedClassTypeCategory::Enum, builtinType->getKind());
 

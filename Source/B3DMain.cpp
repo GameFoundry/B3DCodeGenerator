@@ -204,18 +204,18 @@ int main(int argc, const char** argv)
 	// Note: I could auto-generate C++ wrappers for these types
 	SmallVector<std::string, 4> frameworkNamespace = { sFrameworkCppNs };
 	
-	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "TMatrix3<float>", "Math/BsMatrix3.h", "Matrix3", "", ExportedClassTypeCategory::Struct);
-	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "TMatrix4<float>", "Math/BsMatrix4.h", "Matrix4", "", ExportedClassTypeCategory::Struct);
-	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "TRadian<float>", "Math/BsRadian.h", "Radian", "", ExportedClassTypeCategory::Struct);
-	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "TDegree<float>", "Math/BsDegree.h", "Degree", "", ExportedClassTypeCategory::Struct);
-	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "TCapsule<float>", "Math/BsCapsule.h", "Capsule", "", ExportedClassTypeCategory::Struct);
-	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "TBounds<float>", "Math/BsBounds.h", "Bounds", "", ExportedClassTypeCategory::Struct);
-	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "UUID", "Utility/BsUUID.h", "UUID", "BsScriptResourceWrapper.h", ExportedClassTypeCategory::Struct);
-	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "GameObject", "Scene/BsGameObject.h", "GameObject", "BsScriptGameObjectWrapper.h", ExportedClassTypeCategory::GameObject);
-	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "SceneObject", "Scene/BsSceneObject.h", "SceneObject", "Wrappers/BsScriptSceneObject.h", ExportedClassTypeCategory::SceneObject);
-	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Resource", "Resources/BsResource.h", "Resource", "BsScriptResourceWrapper.h", ExportedClassTypeCategory::Resource);
-	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Any", "Utility/BsAny.h", "Any", "", ExportedClassTypeCategory::Class);
-	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "GUIContextMenu", "GUI/BsGUIContextMenu.h", "ContextMenu", "Wrappers/BsScriptContextMenu.h", ExportedClassTypeCategory::Class);
+	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "TMatrix3<float>", "Math/B3DMatrix3.h", "Matrix3", "", ExportedClassTypeCategory::Struct);
+	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "TMatrix4<float>", "Math/B3DMatrix4.h", "Matrix4", "", ExportedClassTypeCategory::Struct);
+	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "TRadian<float>", "Math/B3DRadian.h", "Radian", "", ExportedClassTypeCategory::Struct);
+	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "TDegree<float>", "Math/B3DDegree.h", "Degree", "", ExportedClassTypeCategory::Struct);
+	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "TCapsule<float>", "Math/B3DCapsule.h", "Capsule", "", ExportedClassTypeCategory::Struct);
+	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "TBounds<float>", "Math/B3DBounds.h", "Bounds", "", ExportedClassTypeCategory::Struct);
+	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "UUID", "Utility/B3DUUID.h", "UUID", "B3DScriptResourceWrapper.h", ExportedClassTypeCategory::Struct);
+	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "GameObject", "Scene/B3DGameObject.h", "GameObject", "B3DScriptGameObjectWrapper.h", ExportedClassTypeCategory::GameObject);
+	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "SceneObject", "Scene/B3DSceneObject.h", "SceneObject", "Wrappers/B3DScriptSceneObject.h", ExportedClassTypeCategory::SceneObject);
+	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Resource", "Resources/B3DResource.h", "Resource", "B3DScriptResourceWrapper.h", ExportedClassTypeCategory::Resource);
+	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Any", "Utility/B3DAny.h", "Any", "", ExportedClassTypeCategory::Class);
+	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "GUIContextMenu", "GUI/B3DGUIContextMenu.h", "ContextMenu", "Wrappers/B3DScriptContextMenu.h", ExportedClassTypeCategory::Class);
 
 	// Parse C++ into an easy to read format
 	const std::unique_ptr<BansheeCodeGeneratorFrontendActionFactory> factory = std::unique_ptr<BansheeCodeGeneratorFrontendActionFactory>(new BansheeCodeGeneratorFrontendActionFactory);

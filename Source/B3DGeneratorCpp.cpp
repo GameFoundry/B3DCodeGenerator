@@ -3680,7 +3680,7 @@ void GenerateCpp(StringRef engineOutputFolder, StringRef editorOutputFolder, boo
 		}
 
 		StringRef cppOutputFolder = fileInfo.second.InEditor ? editorOutputFolder : engineOutputFolder;
-		std::ofstream output = GeneratorUtility::CreateFile("BsScript" + fileInfo.first + ".generated.h", cppOutputFolder);
+		std::ofstream output = GeneratorUtility::CreateFile("B3DScript" + fileInfo.first + ".generated.h", cppOutputFolder);
 
 		// License/copyright header
 		output << GeneratorUtility::GenerateCopyrightHeader(fileInfo.second.InEditor);
@@ -3766,7 +3766,7 @@ void GenerateCpp(StringRef engineOutputFolder, StringRef editorOutputFolder, boo
 		}
 
 		StringRef cppOutputFolder = fileInfo.second.InEditor ? editorOutputFolder : engineOutputFolder;
-		std::ofstream output = GeneratorUtility::CreateFile("BsScript" + fileInfo.first + ".generated.cpp", cppOutputFolder);
+		std::ofstream output = GeneratorUtility::CreateFile("B3DScript" + fileInfo.first + ".generated.cpp", cppOutputFolder);
 
 		// License/copyright header
 		output << GeneratorUtility::GenerateCopyrightHeader(fileInfo.second.InEditor);

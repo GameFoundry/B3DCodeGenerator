@@ -323,12 +323,12 @@ void TypeLookup::RegisterEntryToGenerate(const std::string& fileName, EnumInfo e
 
 void TypeLookup::RegisterNativeToScriptTypeMapping(const SmallVector<std::string, 4>& nameSpace, const std::string& nativeName, const std::string& nativeFilePath, const std::string& scriptName, const std::string& scriptInteropName, const std::string& scriptFileName, ApiFlags api, ExportedClassTypeCategory typeCategory, BuiltinType::Kind enumUnderlyingType)
 {
-	const std::string destinationFile = "BsScript" + scriptFileName + ".generated.h";
+	const std::string destinationFile = "B3DScript" + scriptFileName + ".generated.h";
 	std::string destinationFileEditor = destinationFile;
 
 	// Going to need separate file for editor?
 	if (IsAPIEditor(api) && IsAPIFramework(api))
-		destinationFileEditor = "BsScript" + scriptFileName + ".editor.generated.h";
+		destinationFileEditor = "B3DScript" + scriptFileName + ".editor.generated.h";
 
 	TypeMappingInformation typeMappingInformation = TypeMappingInformation(nameSpace, scriptName, scriptInteropName, typeCategory, nativeFilePath, destinationFile, destinationFileEditor);
 	typeMappingInformation.EnumUnderlyingType = enumUnderlyingType;
@@ -1177,15 +1177,15 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 
 			// Needed for all .h files
 			if (!fileInfo.second.InEditor)
-				fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptEnginePrerequisites.h");
+				fileInfo.second.ReferencedHeaderIncludes.push_back("B3DScriptEnginePrerequisites.h");
 			else
-				fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptEditorPrerequisites.h");
+				fileInfo.second.ReferencedHeaderIncludes.push_back("B3DScriptEditorPrerequisites.h");
 
 			// Needed for all .cpp files
-			fileInfo.second.ReferencedSourceIncludes.push_back("BsScript" + fileInfo.first + ".generated.h");
-			fileInfo.second.ReferencedSourceIncludes.push_back("BsMonoMethod.h");
-			fileInfo.second.ReferencedSourceIncludes.push_back("BsMonoClass.h");
-			fileInfo.second.ReferencedSourceIncludes.push_back("BsMonoUtil.h");
+			fileInfo.second.ReferencedSourceIncludes.push_back("B3DScript" + fileInfo.first + ".generated.h");
+			fileInfo.second.ReferencedSourceIncludes.push_back("B3DMonoMethod.h");
+			fileInfo.second.ReferencedSourceIncludes.push_back("B3DMonoClass.h");
+			fileInfo.second.ReferencedSourceIncludes.push_back("B3DMonoUtil.h");
 
 			for (auto& classInfo : fileInfo.second.Classes)
 			{
@@ -1201,25 +1201,25 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 
 				// Include the script wrapper object root base type
 				if(classInfo.HasGlobalSingleInstance())
-					fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptTypeDefinition.h");
+					fileInfo.second.ReferencedHeaderIncludes.push_back("B3DScriptTypeDefinition.h");
 				else
 				{
 					if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::Resource)
-						fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptResourceWrapper.h");
+						fileInfo.second.ReferencedHeaderIncludes.push_back("B3DScriptResourceWrapper.h");
 					else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::GameObject)
-						fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptGameObjectWrapper.h");
+						fileInfo.second.ReferencedHeaderIncludes.push_back("B3DScriptGameObjectWrapper.h");
 					else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::Component)
-						fileInfo.second.ReferencedHeaderIncludes.push_back("Wrappers/BsScriptComponent.h");
+						fileInfo.second.ReferencedHeaderIncludes.push_back("Wrappers/B3DScriptComponent.h");
 					else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::SceneObject)
-						fileInfo.second.ReferencedHeaderIncludes.push_back("Wrappers/BsScriptSceneObject.h");
+						fileInfo.second.ReferencedHeaderIncludes.push_back("Wrappers/B3DScriptSceneObject.h");
 					else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::GUIElement)
-						fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptGUIElementWrapper.h");
+						fileInfo.second.ReferencedHeaderIncludes.push_back("B3DScriptGUIElementWrapper.h");
 					else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::ReflectableClass || typeInfo.TypeCategory == ::ExportedClassTypeCategory::IReflectable)
-						fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptReflectableWrapper.h");
+						fileInfo.second.ReferencedHeaderIncludes.push_back("B3DScriptReflectableWrapper.h");
 					else if(typeInfo.TypeCategory == ::ExportedClassTypeCategory::Class)
-						fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptNonReflectableWrapper.h");
+						fileInfo.second.ReferencedHeaderIncludes.push_back("B3DScriptNonReflectableWrapper.h");
 					else // Struct or enum
-						fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptTypeDefinition.h");
+						fileInfo.second.ReferencedHeaderIncludes.push_back("B3DScriptTypeDefinition.h");
 				}
 
 				// If class has a base type, include its script object wrapper file
@@ -1250,24 +1250,24 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 			{
 				const TypeMappingInformation& typeInfo = TypeLookup::GetNativeToScriptTypeMapping(structInfo.NativeName);
 
-				fileInfo.second.ReferencedHeaderIncludes.push_back("BsScriptObjectWrapper.h");
+				fileInfo.second.ReferencedHeaderIncludes.push_back("B3DScriptObjectWrapper.h");
 				fileInfo.second.ReferencedHeaderIncludes.push_back(typeInfo.NativeFile);
 			}
 
 			if(includesInfo.RequiresScriptResourceManager)
-				fileInfo.second.ReferencedSourceIncludes.push_back("BsScriptResourceManager.h");
+				fileInfo.second.ReferencedSourceIncludes.push_back("B3DScriptResourceManager.h");
 
 			if (includesInfo.RequiresScriptRRef)
-				fileInfo.second.ReferencedSourceIncludes.push_back("Wrappers/BsScriptRRefBase.h");
+				fileInfo.second.ReferencedSourceIncludes.push_back("Wrappers/B3DScriptRRefBase.h");
 
 			if (includesInfo.RequiresAsyncOp)
-				fileInfo.second.ReferencedSourceIncludes.push_back("Wrappers/BsScriptAsyncOp.h");
+				fileInfo.second.ReferencedSourceIncludes.push_back("Wrappers/B3DScriptAsyncOp.h");
 
 			if(includesInfo.RequiresRTTI)
-				fileInfo.second.ReferencedSourceIncludes.push_back("Reflection/BsRTTIType.h");
+				fileInfo.second.ReferencedSourceIncludes.push_back("Reflection/B3DRTTIType.h");
 
 			if(includesInfo.RequiresScriptAssemblyManager)
-				fileInfo.second.ReferencedSourceIncludes.push_back("Serialization/BsScriptAssemblyManager.h");
+				fileInfo.second.ReferencedSourceIncludes.push_back("Serialization/B3DScriptAssemblyManager.h");
 
 			for (auto& entry : includesInfo.Includes)
 			{
