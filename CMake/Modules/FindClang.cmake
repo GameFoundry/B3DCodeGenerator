@@ -6,13 +6,13 @@
 #  clang_FOUND
 #  LLVM_CONFIG
 
-set(clang_INSTALL_DIR ${PROJECT_SOURCE_DIR}/Dependencies/llvm CACHE PATH "")
+set(clang_INSTALL_DIR ${B3D_FRAMEWORK_ROOT_FOLDER}/Dependencies/LLVM CACHE PATH "")
 set(clang_INCLUDE_SEARCH_DIRS "${clang_INSTALL_DIR}/include")
 set(clang_LIBRARY_SEARCH_DIRS "${clang_INSTALL_DIR}/lib")
 set(clang_BINARY_SEARCH_DIRS "${clang_INSTALL_DIR}/bin")
 
 message(STATUS "Looking for Clang & LLVM installation...")
-find_path(clang_INCLUDE_DIR llvm/Pass.h PATHS "${clang_INCLUDE_SEARCH_DIRS}")
+find_path(clang_INCLUDE_DIR LLVM/Pass.h PATHS "${clang_INCLUDE_SEARCH_DIRS}")
 
 mark_as_advanced(clang_INSTALL_DIR)
 mark_as_advanced(clang_INCLUDE_DIR)
