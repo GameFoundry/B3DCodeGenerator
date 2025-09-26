@@ -24,11 +24,11 @@ std::string sEditorCsNs = "b3d.Editor";
 std::string sFrameworkDllExportMacro = "B3D_SCRIPT_INTEROP_EXPORT";
 std::string sEditorDllExportMacro = "B3D_EDITOR_SCRIPT_INTEROP_EXPORT";
 std::string sFrameworkCopyrightNotice = 
-	"//********************************* B3D Framework - Copyright 2018-2022 Marko Pintera ************************************//\n" \
+	"//************************************ B3D Framework - Copyright 2025 Marko Pintera **************************************//\n" \
 	"//*********** Licensed under the MIT license. See LICENSE.md for full terms. This notice is not to be removed. ***********//\n";
 std::string sEditorCopyrightNotice = 
 	"//********************************** Banshee Engine (www.banshee3d.com) **************************************************//\n" \
-	"//************** Copyright (c) 2016-2022 Marko Pintera (marko.pintera@gmail.com). All rights reserved. *******************//\n";
+	"//****************** Copyright (c) 2025 Marko Pintera (marko.pintera@gmail.com). All rights reserved. ********************//\n";
 
 static cl::OptionCategory OptCategory("Script binding options");
 static cl::extrahelp CommonHelp(CommonOptionsParser::HelpMessage);
