@@ -27,7 +27,7 @@ private:
 	/**
 	 * Attempts to evaluate an expression. This may be:
 	 *  - Literal expressions that may be evaluated through TryEvaluateLiteral().
-	 *  - Known default static values such as StringUtil::kBlank or UUID::kEmpty.
+	 *  - Known default static values such as StringUtility::kBlank or UUID::kEmpty.
 	 *  - Constructor call containing arguments that may be evaluated themselves via this method.
 	 *  - Type casts
 	 *

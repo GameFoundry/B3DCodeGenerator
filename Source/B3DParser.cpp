@@ -777,7 +777,7 @@ bool BansheeCodeGeneratorASTVisitor::TryEvaluateExpression(Expr* expression, std
 		ValueDecl* decl = declRefExpr->getDecl();
 		const std::string name = ParserUtility::GetFullName(decl);
 
-		if(name == (sFrameworkCppNs + "::StringUtil::kBlank") || name == (sFrameworkCppNs + "::StringUtil::kWblank"))
+		if(name == (sFrameworkCppNs + "::StringUtility::kBlank") || name == (sFrameworkCppNs + "::StringUtility::kWblank"))
 		{
 			outEvaluatedValue = "\"\"";
 			outEvaluatedValueType = "";
