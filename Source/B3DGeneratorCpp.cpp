@@ -3585,7 +3585,7 @@ std::string GenerateStructDefinition(const StructInfo& structInfo)
 		{
 			if(fieldInformation.TypeInformation.TypeCategory == VariableTypeCategory::ConstCharString)
 			{
-				output << "\t\tB3D_LOG(Error, Script, \"const char* type cannot be assigned from scripting for field '" << fieldInformation.Name << "'. This is not supported for this type.\");\n";
+				output << "\t\tB3D_LOG(Error, LogScript, \"const char* type cannot be assigned from scripting for field '" << fieldInformation.Name << "'. This is not supported for this type.\");\n";
 				continue;
 			}
 
