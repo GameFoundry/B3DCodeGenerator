@@ -98,7 +98,7 @@ static std::string GetCppNativeQualifiedTypeName(const VariableTypeInformation& 
 	else if(typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Resource)
 		output << "TResourceHandle<" + typeName + ">";
 	else if(typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GameObject || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::SceneObject || typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Component)
-		output << "GameObjectHandle<" + typeName + ">";
+		output << "TGameObjectHandle<" + typeName + ">";
 	else if(typeMappingInformation.IsClassType())
 	{
 		if(isVariable || typeInformation.TypeCategory == VariableTypeCategory::SharedPointer)

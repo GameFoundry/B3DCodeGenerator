@@ -425,10 +425,10 @@ bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, Variabl
 				outType.UnderlyingType = std::make_unique<VariableTypeInformation>(std::move(underlyingTypeInformation));
 				return true;
 			}
-			else if (sourceTypeName == "GameObjectHandle")
+			else if (sourceTypeName == "TGameObjectHandle")
 			{
 				realType = templateArguments[0].getAsType();
-				outType.TypeName = "GameObjectHandle";
+				outType.TypeName = "TGameObjectHandle";
 				outType.TypeCategory = VariableTypeCategory::GameObjectHandle;
 
 				QualType underlyingType = templateArguments[0].getAsType();
