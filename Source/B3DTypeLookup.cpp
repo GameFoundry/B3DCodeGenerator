@@ -1439,34 +1439,37 @@ void TypeLookup::GatherIncludes(const VariableTypeInformation& typeInformation, 
 		typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Component || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::SceneObject ||
 		typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Resource || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Enum || typeMappingInformation.TypeCategory == ExportedClassTypeCategory::GUIElement)
 	{
+		IncludeType sourceIncludeType = IncludeType::None;
+		IncludeType interopIncludeType = typeMappingInformation.TypeCategory != ExportedClassTypeCategory::Enum ? IncludeType::IncludeInImplementation : IncludeType::None;
+		bool isStruct = false;
+
+		if (underlyingTypeInformation.IsParameterFlagSet(ParameterFlags::AsResourceRef))
+		{
+			sourceIncludeType = IncludeType::IncludeInImplementation;
+			interopIncludeType = IncludeType::None;
+		}
+
+		// Game object handles need the full type definition
+		if(typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Component)
+			sourceIncludeType = IncludeType::IncludeInImplementation;
+
+		if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Struct && !underlyingTypeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsStructWrapperUsed))
+		{
+			sourceIncludeType = IncludeType::IncludeInHeader;
+			isStruct = true;
+		}
+
+		// If enum or passed by value we need to include the header for the source type
+		if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Enum || underlyingTypeInformation.TypeCategory == VariableTypeCategory::General)
+			sourceIncludeType = IncludeType::IncludeInHeader;
+
 		auto iterFind = output.Includes.find(typeName);
 		if (iterFind == output.Includes.end())
-		{
-			IncludeType sourceIncludeType = IncludeType::None;
-			IncludeType interopIncludeType = typeMappingInformation.TypeCategory != ExportedClassTypeCategory::Enum ? IncludeType::IncludeInImplementation : IncludeType::None;
-			bool isStruct = false;
-
-			if (underlyingTypeInformation.IsParameterFlagSet(ParameterFlags::AsResourceRef))
-			{
-				sourceIncludeType = IncludeType::IncludeInImplementation;
-				interopIncludeType = IncludeType::None;
-			}
-
-			// Game object handles need the full type definition
-			if(typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Component)
-				sourceIncludeType = IncludeType::IncludeInImplementation;
-
-			if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Struct && !underlyingTypeInformation.IsPostProcessFlagSet(VariablePostProcessFlags::IsStructWrapperUsed))
-			{
-				sourceIncludeType = IncludeType::IncludeInHeader;
-				isStruct = true;
-			}
-
-			// If enum or passed by value we need to include the header for the source type
-			if (typeMappingInformation.TypeCategory == ExportedClassTypeCategory::Enum || underlyingTypeInformation.TypeCategory == VariableTypeCategory::General)
-				sourceIncludeType = IncludeType::IncludeInHeader;
-
 			output.Includes[typeName] = IncludeInfo(typeName, typeMappingInformation, sourceIncludeType, interopIncludeType, isStruct, isEditor);
+		else
+		{
+			iterFind->second.NativeIncludeFlags = (IncludeType)((uint32_t)iterFind->second.NativeIncludeFlags | (uint32_t)sourceIncludeType);
+			iterFind->second.InteropIncludeFlags = (IncludeType)((uint32_t)iterFind->second.InteropIncludeFlags | (uint32_t)interopIncludeType);
 		}
 
 		if (typeMappingInformation.IsClassType())
