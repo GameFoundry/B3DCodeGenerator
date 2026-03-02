@@ -3089,7 +3089,7 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 				if(!isCallback)
 					stream << ")";
 
-				stream << ");\n";
+				stream << ";\n";
 				stream << GenerateApiCheckEnd(eventInfo.API);
 			}
 		}
