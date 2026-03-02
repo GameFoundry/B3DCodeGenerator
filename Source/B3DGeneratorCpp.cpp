@@ -3058,10 +3058,33 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 				else
 					stream << "\t\tstatic_cast<" << classInfo.NativeName << "*>(GetNativeObject())->" << eventInfo.NativeName << " = ";
 
-				stream << "std::bind(&" << className << "::" << eventInfo.InteropName << ", this";
+				stream << "[this](";
 
-				for(int i = 0; i < (int)eventInfo.Parameters.size(); i++)
-					stream << ", std::placeholders::_" << (i + 1);
+				for(int parameterIndex = 0; parameterIndex < (int)eventInfo.Parameters.size(); parameterIndex++)
+				{
+					const auto& parameterInfo = eventInfo.Parameters[parameterIndex];
+					const TypeMappingInformation parameterTypeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(parameterInfo.TypeInformation);
+					stream << GetCppNativeQualifiedTypeName(parameterInfo.TypeInformation, parameterTypeMappingInformation, false);
+					stream << " p" << parameterIndex;
+
+					if(parameterInfo.TypeInformation.TypeCategory == VariableTypeCategory::Array)
+						stream << "[" << parameterInfo.TypeInformation.ArraySize << "]";
+
+					if(parameterIndex + 1 < (int)eventInfo.Parameters.size())
+						stream << ", ";
+				}
+
+				stream << ") { " << eventInfo.InteropName << "(";
+
+				for(int parameterIndex = 0; parameterIndex < (int)eventInfo.Parameters.size(); parameterIndex++)
+				{
+					stream << "p" << parameterIndex;
+
+					if(parameterIndex + 1 < (int)eventInfo.Parameters.size())
+						stream << ", ";
+				}
+
+				stream << "); }";
 
 				if(!isCallback)
 					stream << ")";
