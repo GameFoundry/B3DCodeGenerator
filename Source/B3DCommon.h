@@ -132,6 +132,7 @@ struct CommentEntry
 
 	SmallVector<CommentParameterEntry, 4> ParameterComments; /**< Comments for method parameters, if this is a method comment. */
 	SmallVector<CommentParagraph, 2> ReturnValueComments; /**< Zero or multiple comment paragraphs describing method return value, if this is a method comment. */
+	SmallVector<CommentParameterEntry, 2> TemplateParameterComments; /**< Comments for template parameters, if this is a class or function template comment. */
 };
 
 /** Base type for describing all variable, parameter, return value or field  declarations. */

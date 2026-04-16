@@ -9,7 +9,7 @@ struct FunctionTypeInfo;
 class BansheeCodeGeneratorASTVisitor : public RecursiveASTVisitor<BansheeCodeGeneratorASTVisitor>
 {
 public:
-	explicit BansheeCodeGeneratorASTVisitor(CompilerInstance* CI, CommentParser& commentParser);
+	BansheeCodeGeneratorASTVisitor(CompilerInstance* CI, CommentParser& commentParser);
 
 	bool VisitEnumDecl(EnumDecl* decl);
 	bool VisitCXXRecordDecl(CXXRecordDecl* declaration);

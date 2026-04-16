@@ -1,4 +1,5 @@
 #include "B3DCommon.h"
+#include "B3DDocGenVisitor.h"
 #include "B3DParser.h"
 #include "B3DParserUtility.h"
 #include "B3DTypeLookup.h"
@@ -100,14 +101,22 @@ static cl::opt<std::string> CppEditorCopyrightNoticeOption(
 	cl::desc("Specify copyright notice to add to the header of all generated editor files.\n"),
 	cl::cat(OptCategory));
 
-class BansheeCodeGeneratorASTConsumer : public ASTConsumer 
+static cl::opt<bool> DocGenJsonOption(
+	"docgen-json",
+	cl::desc("If enabled the tool emits a documentation JSON file describing every class, struct, enum, method, field and free function in the processed translation unit, instead of generating script bindings.\n"),
+	cl::cat(OptCategory));
+
+static cl::opt<std::string> DocGenJsonOutputOption(
+	"docgen-json-output",
+	cl::desc("Path to the documentation JSON file to emit when -docgen-json is enabled.\n"),
+	cl::cat(OptCategory));
+
+class BansheeCodeGeneratorASTConsumer : public ASTConsumer
 {
 public:
-	explicit BansheeCodeGeneratorASTConsumer(CompilerInstance* CI, CommentParser& commentParser)
+	BansheeCodeGeneratorASTConsumer(CompilerInstance* CI, CommentParser& commentParser)
 		: visitor(new BansheeCodeGeneratorASTVisitor(CI, commentParser))
-	{
-		
-	}
+	{ }
 
 	~BansheeCodeGeneratorASTConsumer()
 	{
@@ -123,11 +132,11 @@ private:
 	BansheeCodeGeneratorASTVisitor *visitor;
 };
 
-class BansheeCodeGeneratorFrontendAction : public ASTFrontendAction 
+class BansheeCodeGeneratorFrontendAction : public ASTFrontendAction
 {
 public:
 	BansheeCodeGeneratorFrontendAction(CommentParser& commentParser)
-		:mCommentParser(commentParser)
+		: mCommentParser(commentParser)
 	{ }
 
 	std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance& CI, StringRef file) override
@@ -153,6 +162,72 @@ public:
 
 private:
 	CommentParser mCommentParser;
+};
+
+class BansheeDocGeneratorASTConsumer : public ASTConsumer
+{
+public:
+	BansheeDocGeneratorASTConsumer(ASTContext& context, CommentParser& commentParser, const std::string& outputPath)
+		: mVisitor(&context, commentParser), mOutputPath(outputPath)
+	{ }
+
+	void HandleTranslationUnit(ASTContext& Context) override
+	{
+		mVisitor.TraverseDecl(Context.getTranslationUnitDecl());
+		if (!mVisitor.WriteJSON(mOutputPath))
+			mFailed = true;
+	}
+
+	bool HasFailed() const { return mFailed; }
+
+private:
+	BansheeDocGeneratorASTVisitor mVisitor;
+	std::string mOutputPath;
+	bool mFailed = false;
+};
+
+class BansheeDocGeneratorFrontendAction : public ASTFrontendAction
+{
+public:
+	BansheeDocGeneratorFrontendAction(const std::string& outputPath)
+		: mOutputPath(outputPath)
+	{ }
+
+	std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance& CI, StringRef file) override
+	{
+		mCommentParser.SetASTContext(CI.getASTContext());
+		auto consumer = std::make_unique<BansheeDocGeneratorASTConsumer>(CI.getASTContext(), mCommentParser, mOutputPath);
+		mConsumer = consumer.get();
+		return consumer;
+	}
+
+	bool HasFailed() const { return mConsumer != nullptr && mConsumer->HasFailed(); }
+
+private:
+	CommentParser mCommentParser;
+	std::string mOutputPath;
+	BansheeDocGeneratorASTConsumer* mConsumer = nullptr;
+};
+
+class BansheeDocGeneratorFrontendActionFactory : public FrontendActionFactory
+{
+public:
+	explicit BansheeDocGeneratorFrontendActionFactory(const std::string& outputPath)
+		: mOutputPath(outputPath)
+	{ }
+
+	std::unique_ptr<FrontendAction> create() override
+	{
+		auto action = std::make_unique<BansheeDocGeneratorFrontendAction>(mOutputPath);
+		mLastAction = action.get();
+		return action;
+	}
+
+	bool HasFailed() const { return mLastAction != nullptr && mLastAction->HasFailed(); }
+
+private:
+	std::string mOutputPath;
+	BansheeDocGeneratorFrontendAction* mLastAction = nullptr;
 };
 
 int main(int argc, const char** argv)
@@ -217,8 +292,24 @@ int main(int argc, const char** argv)
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "Any", "Utility/B3DAny.h", "Any", "", ExportedClassTypeCategory::Class);
 	TypeLookup::RegisterNativeToScriptTypeMappingWithExplicitPath(frameworkNamespace, "GUIContextMenu", "GUI/B3DGUIContextMenu.h", "ContextMenu", "Wrappers/B3DScriptContextMenu.h", ExportedClassTypeCategory::Class);
 
+	// Doc-gen and script binding generation are mutually exclusive per invocation.
+	if (DocGenJsonOption.getValue())
+	{
+		if (DocGenJsonOutputOption.getValue().empty())
+		{
+			errs() << "Error: -docgen-json requires -docgen-json-output=<path>.\n";
+			return 1;
+		}
+
+		auto factory = std::make_unique<BansheeDocGeneratorFrontendActionFactory>(DocGenJsonOutputOption.getValue());
+		int output = Tool.run(factory.get());
+		if (factory->HasFailed())
+			return 1;
+		return output;
+	}
+
 	// Parse C++ into an easy to read format
-	const std::unique_ptr<BansheeCodeGeneratorFrontendActionFactory> factory = std::unique_ptr<BansheeCodeGeneratorFrontendActionFactory>(new BansheeCodeGeneratorFrontendActionFactory);
+	auto factory = std::make_unique<BansheeCodeGeneratorFrontendActionFactory>();
 	int output = Tool.run(factory.get());
 
 	CommentParser& commentParser = factory->GetCommentParser();

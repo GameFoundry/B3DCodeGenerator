@@ -3,6 +3,18 @@
 
 struct FunctionTypeInfo;
 
+/**
+ * Controls how comment text is assembled by the parser.
+ * - Default collapses runs of whitespace and keeps the paragraph on one line.
+ * - PreserveFormatting keeps the raw text of every TextComment intact, and inserts a newline
+ *   between consecutive TextComments.
+ */
+enum class CommentParseMode
+{
+	Default,
+	PreserveFormatting,
+};
+
 /** Handles parsing of JavaDoc comments. */
 class CommentParser
 {
@@ -17,9 +29,10 @@ public:
 	 *
 	 * @param decl			Declaration to parse.
 	 * @param entry			Parsed comments, if successful.
+	 * @param mode			Controls whether to collapse whitespace (default) or preserve raw per-line formatting.
 	 * @return				True if comment parsing was successful.
 	 */
-	bool ParseComments(const Decl* decl, CommentEntry& entry);
+	bool ParseComments(const Decl* decl, CommentEntry& entry, CommentParseMode mode = CommentParseMode::Default);
 
 	/** Parses all comments for a class or a struct, and all of its methods and fields. Resulting information is registered in the global comment lookup table. */
 	void ParseAndRegisterAllComments(const CXXRecordDecl* decl);

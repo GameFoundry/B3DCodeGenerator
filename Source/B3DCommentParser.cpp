@@ -5,7 +5,7 @@
 #include "B3DParserUtility.h"
 #include "B3DGeneratorUtility.h"
 
-bool CommentParser::ParseComments(const Decl* decl, CommentEntry& output)
+bool CommentParser::ParseComments(const Decl* decl, CommentEntry& output, CommentParseMode mode)
 {
 	assert(decl != nullptr);
 	assert(mASTContext != nullptr);
@@ -20,6 +20,7 @@ bool CommentParser::ParseComments(const Decl* decl, CommentEntry& output)
 	comments::BlockCommandComment* returns = nullptr;
 	std::vector<comments::ParagraphComment*> headerParagraphs;
 	SmallVector<comments::ParamCommandComment*, 5> params;
+	SmallVector<comments::TParamCommandComment*, 3> tparams;
 
 	auto commentIter = comment->child_begin();
 	while (commentIter != comment->child_end())
@@ -62,13 +63,22 @@ bool CommentParser::ParseComments(const Decl* decl, CommentEntry& output)
 
 			break;
 		}
+		case comments::CommentKind::TParamCommandComment:
+		{
+			comments::TParamCommandComment* tparamComment = cast<comments::TParamCommandComment>(childComment);
+
+			if (tparamComment->hasParamName() && tparamComment->hasNonWhitespaceParagraph())
+				tparams.push_back(tparamComment);
+
+			break;
+		}
 		}
 
 		++commentIter;
 	}
 
 	bool hasAnyData = false;
-	auto parseParagraphComments = [&traits, &hasAnyData, this](const std::vector<comments::ParagraphComment*>& paragraphs, 
+	auto parseParagraphComments = [&traits, &hasAnyData, mode, this](const std::vector<comments::ParagraphComment*>& paragraphs,
 		SmallVector<CommentParagraph, 2>& output)
 	{
 		auto getTrimmedText = [](const StringRef& input, std::stringstream& output)
@@ -108,6 +118,12 @@ bool CommentParser::ParseComments(const Decl* decl, CommentEntry& output)
 			std::stringstream paragraphText;
 			auto childIter = paragraph->child_begin();
 
+			// In PreserveFormatting mode we insert a newline before every TextComment
+			// except the very first one in the paragraph, so consecutive TextComment
+			// siblings (each representing one source line) stay on separate output
+			// lines. Unused in Default mode.
+			bool emittedTextInParagraph = false;
+
 			uint32_t refsTotalSize = 0;
 			while (childIter != paragraph->child_end())
 			{
@@ -127,7 +143,17 @@ bool CommentParser::ParseComments(const Decl* decl, CommentEntry& output)
 							continue;
 						}
 
-						getTrimmedText(text, paragraphText);
+						if (mode == CommentParseMode::PreserveFormatting)
+						{
+							if (emittedTextInParagraph)
+								paragraphText << '\n';
+							paragraphText.write(text.data(), text.size());
+						}
+						else
+						{
+							getTrimmedText(text, paragraphText);
+						}
+						emittedTextInParagraph = true;
 						hasAnyData = true;
 					}
 				}
@@ -226,6 +252,14 @@ bool CommentParser::ParseComments(const Decl* decl, CommentEntry& output)
 		parseParagraphComments({ entry->getParagraph() }, paramEntry.Comments);
 
 		output.ParameterComments.push_back(paramEntry);
+	}
+
+	for (auto& entry : tparams)
+	{
+		CommentParameterEntry tparamEntry;
+		tparamEntry.Name = entry->getParamNameAsWritten().str();
+		parseParagraphComments({ entry->getParagraph() }, tparamEntry.Comments);
+		output.TemplateParameterComments.push_back(tparamEntry);
 	}
 
 	if (returns != nullptr)
