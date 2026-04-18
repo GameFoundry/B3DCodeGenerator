@@ -167,46 +167,40 @@ private:
 class BansheeDocGeneratorASTConsumer : public ASTConsumer
 {
 public:
-	BansheeDocGeneratorASTConsumer(ASTContext& context, CommentParser& commentParser, const std::string& outputPath)
-		: mVisitor(&context, commentParser), mOutputPath(outputPath)
+	BansheeDocGeneratorASTConsumer(ASTContext& context, CommentParser& commentParser, const std::string& outputPath, bool* failedFlag)
+		: mVisitor(&context, commentParser), mOutputPath(outputPath), mFailedFlag(failedFlag)
 	{ }
 
 	void HandleTranslationUnit(ASTContext& Context) override
 	{
 		mVisitor.TraverseDecl(Context.getTranslationUnitDecl());
 		if (!mVisitor.WriteJSON(mOutputPath))
-			mFailed = true;
+			*mFailedFlag = true;
 	}
-
-	bool HasFailed() const { return mFailed; }
 
 private:
 	BansheeDocGeneratorASTVisitor mVisitor;
 	std::string mOutputPath;
-	bool mFailed = false;
+	bool* mFailedFlag;
 };
 
 class BansheeDocGeneratorFrontendAction : public ASTFrontendAction
 {
 public:
-	BansheeDocGeneratorFrontendAction(const std::string& outputPath)
-		: mOutputPath(outputPath)
+	BansheeDocGeneratorFrontendAction(CommentParser& commentParser, const std::string& outputPath, bool* failedFlag)
+		: mCommentParser(commentParser), mOutputPath(outputPath), mFailedFlag(failedFlag)
 	{ }
 
 	std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance& CI, StringRef file) override
 	{
 		mCommentParser.SetASTContext(CI.getASTContext());
-		auto consumer = std::make_unique<BansheeDocGeneratorASTConsumer>(CI.getASTContext(), mCommentParser, mOutputPath);
-		mConsumer = consumer.get();
-		return consumer;
+		return std::make_unique<BansheeDocGeneratorASTConsumer>(CI.getASTContext(), mCommentParser, mOutputPath, mFailedFlag);
 	}
 
-	bool HasFailed() const { return mConsumer != nullptr && mConsumer->HasFailed(); }
-
 private:
-	CommentParser mCommentParser;
+	CommentParser& mCommentParser;
 	std::string mOutputPath;
-	BansheeDocGeneratorASTConsumer* mConsumer = nullptr;
+	bool* mFailedFlag;
 };
 
 class BansheeDocGeneratorFrontendActionFactory : public FrontendActionFactory
@@ -218,16 +212,15 @@ public:
 
 	std::unique_ptr<FrontendAction> create() override
 	{
-		auto action = std::make_unique<BansheeDocGeneratorFrontendAction>(mOutputPath);
-		mLastAction = action.get();
-		return action;
+		return std::make_unique<BansheeDocGeneratorFrontendAction>(mCommentParser, mOutputPath, &mFailed);
 	}
 
-	bool HasFailed() const { return mLastAction != nullptr && mLastAction->HasFailed(); }
+	bool HasFailed() const { return mFailed; }
 
 private:
+	CommentParser mCommentParser;
 	std::string mOutputPath;
-	BansheeDocGeneratorFrontendAction* mLastAction = nullptr;
+	bool mFailed = false;
 };
 
 int main(int argc, const char** argv)
