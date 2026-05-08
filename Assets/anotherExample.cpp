@@ -9,7 +9,7 @@ namespace stdd
 }
 
 template <typename T>
-using SPtr = stdd::shared_ptr<T>;
+using TShared = stdd::shared_ptr<T>;
 
 class ResourceHandleBase
 {
@@ -112,7 +112,7 @@ typedef GameObjectHandle<int> HGOInt;
 class __attribute__((annotate("se,f:TestOutput"))) MyClass2
 {
 	__attribute__((annotate("se")))
-	void testSPtr(const SPtr<int>& param)
+	void testTShared(const TShared<int>& param)
 	{
 		
 	}

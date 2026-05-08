@@ -104,7 +104,7 @@ static std::string GetCppNativeQualifiedTypeName(const VariableTypeInformation& 
 	else if(typeMappingInformation.IsClassType())
 	{
 		if(isVariable || typeInformation.TypeCategory == VariableTypeCategory::SharedPointer)
-			output << "SPtr<" + typeName + ">";
+			output << "TShared<" + typeName + ">";
 		else
 			output << typeName;
 	}
@@ -419,7 +419,7 @@ static std::string GetArgumentForInternalToNativeCall(const MethodInfo& methodIn
 		return fnGetHandleArgument(HandleType::GameObjectHandle);
 	case ExportedClassTypeCategory::Resource:
 		return fnGetHandleArgument(HandleType::ResourceHandle);
-	case ExportedClassTypeCategory::Class: // Input type is always a SPtr
+	case ExportedClassTypeCategory::Class: // Input type is always a TShared
 	case ExportedClassTypeCategory::ReflectableClass:
 	case ExportedClassTypeCategory::IReflectable:
 	{
@@ -929,7 +929,7 @@ static std::string GenerateScriptObjectToNativeObjectAsArrayElement(const Variab
 	{
 		if(typeMappingInformation.IsClassType())
 		{
-			// Cast from SPtr to the destination type
+			// Cast from TShared to the destination type
 			if (arrayElementTypeInformation.TypeCategory == VariableTypeCategory::General)
 			{
 				if(arrayElementTypeInformation.IsQualifierFlagSet(VariableQualifierFlags::IsPointer))
@@ -1835,7 +1835,7 @@ static std::string GenerateFieldConvertBlock(const std::string& name, const Vari
 				preActions << "\t\t" << argumentType << " " << argumentVariableName << ";" << std::endl;
 				preActions << GenerateScriptObjectToNativeObject(fieldInformation.TypeInformation, parameterTypeMappingInformation, name, "value." + name, argumentVariableName);
 
-				// Cast to the source type from SPtr
+				// Cast to the source type from TShared
 				if (fieldInformation.TypeInformation.TypeCategory == VariableTypeCategory::General)
 				{
 					if(fieldInformation.TypeInformation.IsQualifierFlagSet(VariableQualifierFlags::IsPointer))
@@ -2386,7 +2386,7 @@ static std::string GenerateInternalMethodBody(const ClassInfo& classInfo, const 
 		{
 			if (typeMappingInformation.IsClassType())
 			{
-				output << "\t\tSPtr<" << classInfo.NativeName << "> nativeObject = B3DMakeShared<" << classInfo.NativeName << ">(" << methodArgs.str() << ");" << std::endl;
+				output << "\t\tTShared<" << classInfo.NativeName << "> nativeObject = B3DMakeShared<" << classInfo.NativeName << ">(" << methodArgs.str() << ");" << std::endl;
 				isValid = true;
 			}
 		}
@@ -2396,7 +2396,7 @@ static std::string GenerateInternalMethodBody(const ClassInfo& classInfo, const 
 
 			if (typeMappingInformation.IsClassType())
 			{
-				output << "\t\tSPtr<" << classInfo.NativeName << "> nativeObject = " << fullMethodName << "(" << methodArgs.str() << ");" << std::endl;
+				output << "\t\tTShared<" << classInfo.NativeName << "> nativeObject = " << fullMethodName << "(" << methodArgs.str() << ");" << std::endl;
 				isValid = true;
 			}
 			else if (typeMappingInformation.TypeCategory == ::ExportedClassTypeCategory::Resource)
