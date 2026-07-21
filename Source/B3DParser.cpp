@@ -908,7 +908,7 @@ bool BansheeCodeGeneratorASTVisitor::TryParseEvent(ValueDecl* decl, const std::s
 	outEventInformation.MethodFlags = eventFlags;
 	outEventInformation.ExternalClass = className;
 	outEventInformation.Visibility = parsedEventInfo.Visibility;
-	outEventInformation.API = ParserUtility::ParseAPIFromExportFlags(parsedEventInfo.ExportFlags);
+	outEventInformation.Guard = ParserUtility::ParseGuardFromExportFlags(parsedEventInfo.ExportFlags);
 	mCommentParser.ParseComments(decl, outEventInformation.Documentation);
 	CommentParser::ClearParameterReferenceComments(outEventInformation.Documentation);
 
@@ -1028,7 +1028,8 @@ bool BansheeCodeGeneratorASTVisitor::TryParseDeclarationAsStruct(CXXRecordDecl* 
 	outStructInfo.RequiresInteropType = declaration->isPolymorphic();
 	outStructInfo.DocumentationGroup = scriptExportInformation.DocumentationGroup;
 	outStructInfo.TemplateParameters = templateParameters;
-	outStructInfo.API = ParserUtility::ParseAPIFromExportFlags(scriptExportInformation.ExportFlags);
+	outStructInfo.Assemblies = ParserUtility::ParseAssemblyFromExportFlags(scriptExportInformation.ExportFlags);
+	outStructInfo.Guard = ParserUtility::ParseGuardFromExportFlags(scriptExportInformation.ExportFlags);
 
 	mCommentParser.ParseComments(templatedDeclaration, outStructInfo.Documentation);
 	ParseNamespace(declaration, outStructInfo.Namespace);
@@ -1056,7 +1057,7 @@ bool BansheeCodeGeneratorASTVisitor::TryParseDeclarationAsStruct(CXXRecordDecl* 
 
 	outStructInfo.ScriptTypeDefinitionTypeName = scriptExportName;
 
-	TypeLookup::RegisterNativeToScriptTypeMapping(outStructInfo.Namespace, outStructInfo.NativeName, declarationFile, scriptExportName, scriptInteropExportName, scriptExportInformation.ExportedFileName, outStructInfo.API, ExportedClassTypeCategory::Struct);
+	TypeLookup::RegisterNativeToScriptTypeMapping(outStructInfo.Namespace, outStructInfo.NativeName, declarationFile, scriptExportName, scriptInteropExportName, scriptExportInformation.ExportedFileName, outStructInfo.Assemblies, ExportedClassTypeCategory::Struct);
 
 	std::unordered_map<FieldDecl*, std::pair<std::string, std::string>> defaultFieldValues;
 
@@ -1488,7 +1489,8 @@ bool BansheeCodeGeneratorASTVisitor::TryParseDeclarationAsClass(CXXRecordDecl* d
 	outClassInfo.NativeNameWithoutTemplateArguments = declarationName.str();
 	outClassInfo.Visibility = scriptExportInformation.Visibility;
 	outClassInfo.LifetimeTrackingMode = scriptExportInformation.LifetimeTrackingMode;
-	outClassInfo.API = ParserUtility::ParseAPIFromExportFlags(scriptExportInformation.ExportFlags);
+	outClassInfo.Assemblies = ParserUtility::ParseAssemblyFromExportFlags(scriptExportInformation.ExportFlags);
+	outClassInfo.Guard = ParserUtility::ParseGuardFromExportFlags(scriptExportInformation.ExportFlags);
 	outClassInfo.ClassFlags = 0;
 	outClassInfo.BaseClassName = ScriptExportAttributeParser::FindExportableBaseClassName(declaration);
 	outClassInfo.DocumentationGroup = scriptExportInformation.DocumentationGroup;
@@ -1544,7 +1546,7 @@ bool BansheeCodeGeneratorASTVisitor::TryParseDeclarationAsClass(CXXRecordDecl* d
 
 	outClassInfo.ScriptTypeDefinitionTypeName = scriptExportName;
 
-	TypeLookup::RegisterNativeToScriptTypeMapping(outClassInfo.Namespace, sourceClassName, declarationFile, scriptExportName, scriptInteropExportName, scriptExportInformation.ExportedFileName, outClassInfo.API, classType);
+	TypeLookup::RegisterNativeToScriptTypeMapping(outClassInfo.Namespace, sourceClassName, declarationFile, scriptExportName, scriptInteropExportName, scriptExportInformation.ExportedFileName, outClassInfo.Assemblies, classType);
 
 	std::stack<const CXXRecordDecl*> todo;
 	todo.push(declaration);
@@ -1575,7 +1577,7 @@ bool BansheeCodeGeneratorASTVisitor::TryParseDeclarationAsClass(CXXRecordDecl* d
 				methodInfo.ScriptName = scriptExportInformation.ExportedTypeName;
 				methodInfo.MethodFlags = (int)MethodFlags::Constructor;
 				methodInfo.Visibility = parsedMethodInfo.Visibility;
-				methodInfo.API = ParserUtility::ParseAPIFromExportFlags(parsedMethodInfo.ExportFlags);
+				methodInfo.Guard = ParserUtility::ParseGuardFromExportFlags(parsedMethodInfo.ExportFlags);
 				mCommentParser.ParseComments(ctorDecl, methodInfo.Documentation);
 
 				if((parsedMethodInfo.ExportFlags & (int)ExportFlags::InteropOnly))
@@ -1682,7 +1684,7 @@ bool BansheeCodeGeneratorASTVisitor::TryParseDeclarationAsClass(CXXRecordDecl* d
 			methodInfo.MethodFlags = methodFlags;
 			methodInfo.ExternalClass = sourceClassName;
 			methodInfo.Visibility = parsedMethodInfo.Visibility;
-			methodInfo.API = ParserUtility::ParseAPIFromExportFlags(parsedMethodInfo.ExportFlags);
+			methodInfo.Guard = ParserUtility::ParseGuardFromExportFlags(parsedMethodInfo.ExportFlags);
 			methodInfo.MetaData = parsedMethodInfo.MetaData;
 			mCommentParser.ParseComments(methodDecl, methodInfo.Documentation);
 
@@ -1867,7 +1869,7 @@ bool BansheeCodeGeneratorASTVisitor::TryParseDeclarationAsClass(CXXRecordDecl* d
 				getterInfo.NativeName = "Get" + fieldInfo.Name;
 				getterInfo.ScriptName = parsedFieldInfo.ExportedTypeName.empty() ? ParserUtility::ConvertToPascalCase(fieldInfo.Name) : parsedFieldInfo.ExportedTypeName;
 				getterInfo.Visibility = parsedFieldInfo.Visibility;
-				getterInfo.API = ParserUtility::ParseAPIFromExportFlags(parsedFieldInfo.ExportFlags);
+				getterInfo.Guard = ParserUtility::ParseGuardFromExportFlags(parsedFieldInfo.ExportFlags);
 				getterInfo.MethodFlags = (int)MethodFlags::PropertyGetter | (int)MethodFlags::FieldWrapper;
 				getterInfo.MetaData = fieldInfo.MetaData;
 
@@ -1889,7 +1891,7 @@ bool BansheeCodeGeneratorASTVisitor::TryParseDeclarationAsClass(CXXRecordDecl* d
 				setterInfo.Documentation = fieldInfo.Documentation;
 				setterInfo.Parameters.push_back(paramInfo);
 				setterInfo.Visibility = parsedFieldInfo.Visibility;
-				setterInfo.API = ParserUtility::ParseAPIFromExportFlags(parsedFieldInfo.ExportFlags);
+				setterInfo.Guard = ParserUtility::ParseGuardFromExportFlags(parsedFieldInfo.ExportFlags);
 				setterInfo.MethodFlags = (int)MethodFlags::PropertySetter | (int)MethodFlags::FieldWrapper;
 				setterInfo.MetaData = fieldInfo.MetaData;
 
@@ -1971,7 +1973,8 @@ bool BansheeCodeGeneratorASTVisitor::VisitEnumDecl(EnumDecl* decl)
 	enumEntry.ScriptName = scriptName;
 	enumEntry.ScriptTypeDefinitionTypeName = scriptName;
 	enumEntry.Visibility = scriptExportInformation.Visibility;
-	enumEntry.API = ParserUtility::ParseAPIFromExportFlags(scriptExportInformation.ExportFlags);
+	enumEntry.Assemblies = ParserUtility::ParseAssemblyFromExportFlags(scriptExportInformation.ExportFlags);
+	enumEntry.Guard = ParserUtility::ParseGuardFromExportFlags(scriptExportInformation.ExportFlags);
 	enumEntry.DocumentationGroup = scriptExportInformation.DocumentationGroup;
 	mCommentParser.ParseComments(decl, enumEntry.Documentation);
 	CommentParser::ClearParameterReferenceComments(enumEntry.Documentation);
@@ -1988,7 +1991,7 @@ bool BansheeCodeGeneratorASTVisitor::VisitEnumDecl(EnumDecl* decl)
 	std::string destFile = "B3DScript" + scriptExportInformation.ExportedFileName + ".generated.h";
 	std::string destFileEditor = "B3DScript" + scriptExportInformation.ExportedFileName + ".editor.generated.h";
 
-	TypeLookup::RegisterNativeToScriptTypeMapping(enumEntry.Namespace, sourceClassName.str(), declFile, scriptName, scriptName, scriptExportInformation.ExportedFileName, enumEntry.API, ExportedClassTypeCategory::Enum, builtinType->getKind());
+	TypeLookup::RegisterNativeToScriptTypeMapping(enumEntry.Namespace, sourceClassName.str(), declFile, scriptName, scriptName, scriptExportInformation.ExportedFileName, enumEntry.Assemblies, ExportedClassTypeCategory::Enum, builtinType->getKind());
 
 	auto iter = decl->enumerator_begin();
 	while (iter != decl->enumerator_end())

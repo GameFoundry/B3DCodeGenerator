@@ -133,7 +133,7 @@ StructInfo* TypeLookup::FindStructInformation(const std::string& typeName)
 
 ClassInfo* TypeLookup::FindClassInformation(const std::string& typeName, bool preferEditor)
 {
-	ClassInfo* frameworkClassInfo = nullptr;
+	ClassInfo* engineClassInfo = nullptr;
 	ClassInfo* editorClassInfo = nullptr;
 	for (auto& fileInfo : mFilesToGenerate)
 	{
@@ -142,14 +142,14 @@ ClassInfo* TypeLookup::FindClassInformation(const std::string& typeName, bool pr
 			if (classInfo.NativeName != typeName)
 				continue;
 
-			if(IsAPIFramework(classInfo.API))
+			if(IsInEngineAssembly(classInfo.Assemblies))
 			{
-				frameworkClassInfo = &classInfo;
+				engineClassInfo = &classInfo;
 
 				if(!preferEditor)
-					return frameworkClassInfo;
+					return engineClassInfo;
 			}
-			else if(IsAPIEditor(classInfo.API))
+			else if(IsInEditorAssembly(classInfo.Assemblies))
 			{
 				editorClassInfo = &classInfo;
 
@@ -160,9 +160,9 @@ ClassInfo* TypeLookup::FindClassInformation(const std::string& typeName, bool pr
 	}
 
 	if(preferEditor)
-		return frameworkClassInfo; // Editor version was not found (otherwise we would have returned above), but framework one could be, so return it
+		return engineClassInfo; // Editor version was not found (otherwise we would have returned above), but engine one could be, so return it
 
-	return editorClassInfo; // Framework version was not found (otherwise we would have returned above), but framework one could be, so return it
+	return editorClassInfo; // Engine version was not found (otherwise we would have returned above), but editor one could be, so return it
 }
 
 EnumInfo* TypeLookup::FindEnumInformation(const std::string& typeName)
@@ -228,20 +228,21 @@ void TypeLookup::RegisterEntryToGenerate(const std::string& fileName, StructInfo
 {
 	FileInfo& fileInfo = mFilesToGenerate[fileName];
 
-	if (IsAPIEditor(structInfo.API))
+	if (IsInEditorAssembly(structInfo.Assemblies))
 	{
 		// Editor only file
-		if(!IsAPIFramework(structInfo.API))
+		if(!IsInEngineAssembly(structInfo.Assemblies))
 		{
 			fileInfo.InEditor = true;
 			fileInfo.Structs.push_back(structInfo);
 		}
-		else // Editor and framework, add new file for editor
+		else // Editor and engine assemblies, add new file for editor
 		{
-			structInfo.API = ApiFlags::Framework;
+			structInfo.Assemblies = Assembly::Engine;
 			fileInfo.Structs.push_back(structInfo);
 
-			structInfo.API = ApiFlags::Editor;
+			structInfo.Assemblies = Assembly::Editor;
+			structInfo.Guard = ApiGuard::None; // Editor files are only built when the editor is present, no guard needed
 
 			const std::string editorFile = fileName + ".editor";
 
@@ -251,7 +252,7 @@ void TypeLookup::RegisterEntryToGenerate(const std::string& fileName, StructInfo
 			editorFileInfo.Structs.push_back(structInfo);
 		}
 	}
-	else // Non-editor, framework or engine
+	else // Engine assembly only
 	{
 		fileInfo.Structs.push_back(structInfo);
 	}
@@ -261,20 +262,21 @@ void TypeLookup::RegisterEntryToGenerate(const std::string& fileName, ClassInfo 
 {
 	FileInfo& fileInfo = mFilesToGenerate[fileName];
 
-	if (IsAPIEditor(classInfo.API))
+	if (IsInEditorAssembly(classInfo.Assemblies))
 	{
 		// Editor only file
-		if(!IsAPIFramework(classInfo.API))
+		if(!IsInEngineAssembly(classInfo.Assemblies))
 		{
 			fileInfo.InEditor = true;
 			fileInfo.Classes.push_back(classInfo);
 		}
-		else // Editor and framework, add new file for editor
+		else // Editor and engine assemblies, add new file for editor
 		{
-			classInfo.API = ApiFlags::Framework;
+			classInfo.Assemblies = Assembly::Engine;
 			fileInfo.Classes.push_back(classInfo);
 
-			classInfo.API = ApiFlags::Editor;
+			classInfo.Assemblies = Assembly::Editor;
+			classInfo.Guard = ApiGuard::None; // Editor files are only built when the editor is present, no guard needed
 
 			const std::string editorFile = fileName + ".editor";
 
@@ -284,7 +286,7 @@ void TypeLookup::RegisterEntryToGenerate(const std::string& fileName, ClassInfo 
 			editorFileInfo.Classes.push_back(classInfo);
 		}
 	}
-	else // Non-editor, framework or engine
+	else // Engine assembly only
 	{
 		fileInfo.Classes.push_back(classInfo);
 	}
@@ -294,20 +296,21 @@ void TypeLookup::RegisterEntryToGenerate(const std::string& fileName, EnumInfo e
 {
 	FileInfo& fileInfo = mFilesToGenerate[fileName];
 
-	if (IsAPIEditor(enumInfo.API))
+	if (IsInEditorAssembly(enumInfo.Assemblies))
 	{
 		// Editor only file
-		if(!IsAPIFramework(enumInfo.API))
+		if(!IsInEngineAssembly(enumInfo.Assemblies))
 		{
 			fileInfo.InEditor = true;
 			fileInfo.Enums.push_back(enumInfo);
 		}
-		else // Editor and framework, add new file for editor
+		else // Editor and engine assemblies, add new file for editor
 		{
-			enumInfo.API = ApiFlags::Framework;
+			enumInfo.Assemblies = Assembly::Engine;
 			fileInfo.Enums.push_back(enumInfo);
 
-			enumInfo.API = ApiFlags::Editor;
+			enumInfo.Assemblies = Assembly::Editor;
+			enumInfo.Guard = ApiGuard::None; // Editor files are only built when the editor is present, no guard needed
 
 			const std::string editorFile = fileName + ".editor";
 
@@ -317,19 +320,19 @@ void TypeLookup::RegisterEntryToGenerate(const std::string& fileName, EnumInfo e
 			editorFileInfo.Enums.push_back(enumInfo);
 		}
 	}
-	else // Non-editor, framework or engine
+	else // Engine assembly only
 	{
 		fileInfo.Enums.push_back(enumInfo);
 	}
 }
 
-void TypeLookup::RegisterNativeToScriptTypeMapping(const SmallVector<std::string, 4>& nameSpace, const std::string& nativeName, const std::string& nativeFilePath, const std::string& scriptName, const std::string& scriptInteropName, const std::string& scriptFileName, ApiFlags api, ExportedClassTypeCategory typeCategory, BuiltinType::Kind enumUnderlyingType)
+void TypeLookup::RegisterNativeToScriptTypeMapping(const SmallVector<std::string, 4>& nameSpace, const std::string& nativeName, const std::string& nativeFilePath, const std::string& scriptName, const std::string& scriptInteropName, const std::string& scriptFileName, Assembly assemblies, ExportedClassTypeCategory typeCategory, BuiltinType::Kind enumUnderlyingType)
 {
 	const std::string destinationFile = "B3DScript" + scriptFileName + ".generated.h";
 	std::string destinationFileEditor = destinationFile;
 
 	// Going to need separate file for editor?
-	if (IsAPIEditor(api) && IsAPIFramework(api))
+	if (IsInEditorAssembly(assemblies) && IsInEngineAssembly(assemblies))
 		destinationFileEditor = "B3DScript" + scriptFileName + ".editor.generated.h";
 
 	TypeMappingInformation typeMappingInformation = TypeMappingInformation(nameSpace, scriptName, scriptInteropName, typeCategory, nativeFilePath, destinationFile, destinationFileEditor);
@@ -784,7 +787,7 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 				propertyInfo.Documentation = methodInfo.Documentation;
 				propertyInfo.IsStatic = methodInfo.IsFlagSet(MethodFlags::Static);
 				propertyInfo.Visibility = methodInfo.Visibility;
-				propertyInfo.API = methodInfo.API;
+				propertyInfo.Guard = methodInfo.Guard;
 				propertyInfo.MetaData = methodInfo.MetaData;
 
 				if (isGetter)
@@ -844,7 +847,7 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 			if (classInfo.BaseClassName.empty())
 				continue;
 
-			bool isEditor = IsAPIEditor(classInfo.API);
+			bool isEditor = IsInEditorAssembly(classInfo.Assemblies);
 			ClassInfo* baseClassInfo = TypeLookup::FindClassInformation(classInfo.BaseClassName, isEditor);
 			if (baseClassInfo == nullptr)
 			{
@@ -1229,7 +1232,7 @@ void TypeLookup::FinalizeFilesToGenerate(CommentParser& commentParser)
 				{
 					const TypeMappingInformation& baseTypeInfo = TypeLookup::GetNativeToScriptTypeMapping(classInfo.BaseClassName);
 
-					if(IsAPIEditor(classInfo.API))
+					if(IsInEditorAssembly(classInfo.Assemblies))
 						fileInfo.second.ReferencedHeaderIncludes.push_back(baseTypeInfo.EditorInteropFile);
 					else
 						fileInfo.second.ReferencedHeaderIncludes.push_back(baseTypeInfo.InteropFile);
@@ -1495,7 +1498,13 @@ void TypeLookup::GatherIncludes(const VariableTypeInformation& typeInformation, 
 	}
 
 	if (underlyingTypeInformation.TypeCategory == VariableTypeCategory::AsyncOp)
+	{
 		output.RequiresAsyncOp = true;
+
+		// The generated conversion callback converts the async result type (e.g. resource references require
+		// ScriptResourceManager and ScriptRRefBase), so gather its requirements as well
+		GatherIncludes(underlyingTypeInformation.AssertGetUnderlyingType(), isEditor, output);
+	}
 
 	if(underlyingTypeInformation.TypeCategory == VariableTypeCategory::MonoReflectionType && typeInformation.IsArrayOrVector())
 		output.RequiresScriptAssemblyManager = true;
@@ -1577,7 +1586,7 @@ void TypeLookup::GatherIncludes(const FieldInfo& fieldInfo, bool isEditor, Inclu
 
 void TypeLookup::GatherIncludes(const ClassInfo& classInfo, IncludesInfo& output)
 {
-	bool isEditor = IsAPIEditor(classInfo.API);
+	bool isEditor = IsInEditorAssembly(classInfo.Assemblies);
 
 	for (auto& methodInfo : classInfo.Constructors)
 		GatherIncludes(methodInfo, isEditor, output);
@@ -1591,7 +1600,7 @@ void TypeLookup::GatherIncludes(const ClassInfo& classInfo, IncludesInfo& output
 
 void TypeLookup::GatherIncludes(const StructInfo& structInfo, IncludesInfo& output)
 {
-	bool isEditor = IsAPIEditor(structInfo.API);
+	bool isEditor = IsInEditorAssembly(structInfo.Assemblies);
 
 	if (structInfo.RequiresInteropType)
 	{

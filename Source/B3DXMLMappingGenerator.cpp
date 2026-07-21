@@ -179,7 +179,7 @@ std::string XMLMappingGenerator::GenerateXMLStruct(const StructInfo& structInfo,
 	return output.str();
 }
 
-std::string XMLMappingGenerator::GenerateXMLClass(const ClassInfo& classInfo, bool isGeneratingEditorCode, const std::string& indent)
+std::string XMLMappingGenerator::GenerateXMLClass(const ClassInfo& classInfo, const std::string& indent)
 {
 	std::stringstream output;
 
@@ -192,7 +192,7 @@ std::string XMLMappingGenerator::GenerateXMLClass(const ClassInfo& classInfo, bo
 	for (auto& entry : classInfo.Constructors)
 	{
 		bool interopOnly = entry.IsFlagSet(MethodFlags::InteropOnly);
-		if (IsAPIValid(entry.API, isGeneratingEditorCode) && !interopOnly)
+		if (!interopOnly)
 			output << GenerateXMLMethodInfo(entry, true, indent + "\t");
 	}
 
@@ -202,14 +202,13 @@ std::string XMLMappingGenerator::GenerateXMLClass(const ClassInfo& classInfo, bo
 		const bool isConstructor = entry.IsFlagSet(MethodFlags::Constructor);
 		const bool isProperty = entry.IsFlagSet(MethodFlags::PropertyGetter) || entry.IsFlagSet(MethodFlags::PropertySetter);
 
-		if (IsAPIValid(entry.API, isGeneratingEditorCode) && !interopOnly && !isProperty)
+		if (!interopOnly && !isProperty)
 			output << GenerateXMLMethodInfo(entry, isConstructor, indent + "\t");
 	}
 
    for(auto& entry : classInfo.Properties)
    {
-		if(IsAPIValid(entry.API, isGeneratingEditorCode))
-			output << GenerateXMLPropertyInfo(entry, indent + "\t");
+		output << GenerateXMLPropertyInfo(entry, indent + "\t");
    }
 
    for(auto& entry : classInfo.Events)
@@ -233,14 +232,14 @@ void XMLMappingGenerator::GenerateMappingXMLFile(bool editor, const std::string&
 		auto& enumInfos = fileInfo.second.Enums;
 		for (const auto& entry : enumInfos)
 		{
-			if (IsAPIValid(entry.API, editor))
+			if (IsAssemblyValid(entry.Assemblies, editor))
 				body << GenerateXMLEnum(entry, "\t");
 		}
 
 		auto& structInfos = fileInfo.second.Structs;
 		for (const auto& entry : structInfos)
 		{
-			if (IsAPIValid(entry.API, editor))
+			if (IsAssemblyValid(entry.Assemblies, editor))
 				body << GenerateXMLStruct(entry, "\t");
 		}
 
@@ -248,8 +247,8 @@ void XMLMappingGenerator::GenerateMappingXMLFile(bool editor, const std::string&
 		auto& classInfos = fileInfo.second.Classes;
 		for (const auto& entry : classInfos)
 		{
-			if (IsAPIValid(entry.API, editor))
-				body << GenerateXMLClass(entry, editor, "\t");
+			if (IsAssemblyValid(entry.Assemblies, editor))
+				body << GenerateXMLClass(entry, "\t");
 		}
 	}
 

@@ -28,5 +28,6 @@ public:
 	static std::string ConvertToPascalCase(const std::string& name);
 
 	static bool MapBuiltinPrimitiveTypeToCppType(BuiltinType::Kind kind, std::string& output);
-	static ApiFlags ParseAPIFromExportFlags(int exportFlags);
+	static Assembly ParseAssemblyFromExportFlags(int exportFlags);
+	static ApiGuard ParseGuardFromExportFlags(int exportFlags);
 };

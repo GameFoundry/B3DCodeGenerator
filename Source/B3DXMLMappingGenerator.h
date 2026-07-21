@@ -94,9 +94,8 @@ private:
 	 * Generates mapping information for a class.
 	 *
 	 * @param classInfo					Information about the class.
-	 * @param isGeneratingEditorCode	True if generating code for the editor.
 	 * @param indent					Indent level of the generated code.
 	 * @return							Generated XML entry.
 	 */
-	static std::string GenerateXMLClass(const ClassInfo& classInfo, bool isGeneratingEditorCode, const std::string& indent);
+	static std::string GenerateXMLClass(const ClassInfo& classInfo, const std::string& indent);
 };

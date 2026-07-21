@@ -14,12 +14,14 @@ enum class ExportFlags
 	ExternalConstructor = 1 << 4,
 	Exclude = 1 << 5,
 	InteropOnly = 1 << 6,
-	FrameworkAPI = 1 << 7,
-	EngineAPI = 1 << 8,
-	EditorAPI = 1 << 9,
-	SingletonClass = 1 << 10, /**< A getter method is provided that can be used for always retrieving an instance of this class. */
-	StaticClass = 1 << 11, /**< An instance of this class is never created, all methods and members are static. */
-	ExternalClass = 1 << 12, /**< Signifies that a class only contains external methods and itself should not be exported to script. */
+	EngineAssembly = 1 << 7, /**< Declaration is generated into the engine assembly. */
+	EditorAssembly = 1 << 8, /**< Declaration is generated into the editor assembly. */
+	FrameworkOnlyAPI = 1 << 9, /**< Generated code is only present in standalone framework builds. */
+	EngineOnlyAPI = 1 << 10, /**< Generated code is only present in engine builds. */
+	EditorOnlyAPI = 1 << 11, /**< Generated code is only present when editor support is enabled. */
+	SingletonClass = 1 << 12, /**< A getter method is provided that can be used for always retrieving an instance of this class. */
+	StaticClass = 1 << 13, /**< An instance of this class is never created, all methods and members are static. */
+	ExternalClass = 1 << 14, /**< Signifies that a class only contains external methods and itself should not be exported to script. */
 };
 
 /** Information used for controlling script export of a particular declaration. */

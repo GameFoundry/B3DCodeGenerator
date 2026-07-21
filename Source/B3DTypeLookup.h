@@ -58,7 +58,7 @@ struct TypeMappingInformation
 	SmallVector<std::string, 4> NativeNamespace; /**< Namespace in which the native type is located in. Used for e.g. forward declares in generated native interop code. */
 	std::string NativeFile; /**< File in which the native type is defined in. Used for resolving includes. */
 	std::string InteropFile; /**< File in which the interop for this type is defined in. Used for resolving includes. */
-	std::string EditorInteropFile; /**< Same as @p InteropFile, but if a type is exported in both framework and editor, then we need to generate two interop files. */
+	std::string EditorInteropFile; /**< Same as @p InteropFile, but if a type is exported into both the engine and editor assemblies, then we need to generate two interop files. */
 	ExportedClassTypeCategory TypeCategory; /**< Determines a high level category that this type belongs to. */
 	BuiltinType::Kind EnumUnderlyingType; /**< Underlying primitive type for enum or enum class. */
 };
@@ -88,7 +88,7 @@ struct IncludeInfo
 	IncludeType NativeIncludeFlags = IncludeType::None; /**< Required includes/forward declares containing the native type that's being exported. */
 	IncludeType InteropIncludeFlags = IncludeType::None; /**< Required includes/forward declares containing the interop type that's wrapping the native type. */
 	bool IsStruct = false; /**< True if the type represents a struct rather than a class. */
-	bool IsEditor = false; /**< True if the type is part of the editor API. */
+	bool IsEditor = false; /**< True if the type is generated into the editor assembly. */
 };
 
 /** Contains information about all includes required for a single generated type. */
@@ -146,11 +146,11 @@ public:
 	 * @param scriptName			Type name of the script type the native type maps to.
 	 * @param scriptInteropName		Type name of the script interop class, excluding the prefix.
 	 * @param scriptFileName		Name of the file (without extension) in which the script type will be generated in.
-	 * @param api					API to export the script type into.
+	 * @param assemblies			Assemblies to export the script type into.
 	 * @param typeCategory			Type category that describes the type being mapped.
 	 * @param enumUnderlyingType	Underlying storage type, if the type category is an enum.
 	 */
-	static void RegisterNativeToScriptTypeMapping(const SmallVector<std::string, 4>& nameSpace, const std::string& nativeName, const std::string& nativeFilePath, const std::string& scriptName, const std::string& scriptInteropName, const std::string& scriptFileName, ApiFlags api, ExportedClassTypeCategory typeCategory, BuiltinType::Kind enumUnderlyingType = BuiltinType::NullPtr);
+	static void RegisterNativeToScriptTypeMapping(const SmallVector<std::string, 4>& nameSpace, const std::string& nativeName, const std::string& nativeFilePath, const std::string& scriptName, const std::string& scriptInteropName, const std::string& scriptFileName, Assembly assemblies, ExportedClassTypeCategory typeCategory, BuiltinType::Kind enumUnderlyingType = BuiltinType::NullPtr);
 
 	/** Same as RegisterNativeToScriptTypeMapping, except the script file is provided as an explicit path rather than a file name. Useful for types that have custom interop wrappers. */
 	static void RegisterNativeToScriptTypeMappingWithExplicitPath(const SmallVector<std::string, 4>& nameSpace, const std::string& nativeName, const std::string& nativeFilePath, const std::string& scriptName, const std::string& scriptFilePath, ExportedClassTypeCategory typeCategory, BuiltinType::Kind enumUnderlyingType = BuiltinType::NullPtr);
@@ -214,7 +214,7 @@ private:
 	 * Gathers includes required for the specified type.
 	 *
 	 * @param	typeInformation		Information about the type.
-	 * @param	isEditor			True if the type is part of editor API.
+	 * @param	isEditor			True if the type is generated into the editor assembly.
 	 * @param	output				List of includes and forward declares required for the declaration. This will be appended with any new includes/forward declares.
 	 */
 	static void GatherIncludes(const VariableTypeInformation& typeInformation, bool isEditor, IncludesInfo& output);
@@ -223,7 +223,7 @@ private:
 	 * Gathers includes required for the specified method.
 	 *
 	 * @param	methodInfo			Information about the type.
-	 * @param	isEditor			True if the method is part of editor API.
+	 * @param	isEditor			True if the method is generated into the editor assembly.
 	 * @param	output				List of includes and forward declares required for the declaration. This will be appended with any new includes/forward declares.
 	 */
 	static void GatherIncludes(const MethodInfo& methodInfo, bool isEditor, IncludesInfo& output);
@@ -232,7 +232,7 @@ private:
 	 * Gathers includes required for the specified field.
 	 *
 	 * @param	fieldInfo			Information about the field.
-	 * @param	isEditor			True if the field is part of editor API.
+	 * @param	isEditor			True if the field is generated into the editor assembly.
 	 * @param	output				List of includes and forward declares required for the declaration. This will be appended with any new includes/forward declares.
 	 */
 	static void GatherIncludes(const FieldInfo& fieldInfo, bool isEditor, IncludesInfo& output);

@@ -63,13 +63,20 @@ enum class ScriptObjectLifetimeTrackingMode
 	ExplicitDestroy /**< Object provides an explicit destroy method that must be called to destroy it. */
 };
 
-/** Determines for which API we're exporting a declaration. */
-enum class ApiFlags
+/** Determines which script assemblies a declaration is generated into. */
+enum class Assembly
 {
-	Framework = 1 << 0, /**< Declaration is only part of the framework API. */
-	Engine = 1 << 1, /**< Declaration is only part of the engine API. */
-	Editor = 1 << 2, /**< Declaration is only part of the editor API. */
-	Any = Framework | Engine /**< Declaration is part of both the framework and the engine API (most common case). */
+	Engine = 1 << 0, /**< Declaration is generated into the engine assembly (most common case). */
+	Editor = 1 << 1 /**< Declaration is generated into the editor assembly. */
+};
+
+/** Determines which build configurations the generated code is restricted to, using preprocessor guards. */
+enum class ApiGuard
+{
+	None, /**< Generated code is present in all build configurations. */
+	FrameworkOnly, /**< Generated code is only present in standalone framework builds. */
+	EngineOnly, /**< Generated code is only present in engine builds. */
+	EditorOnly /**< Generated code is only present when editor support is enabled. */
 };
 
 /** Determines which meta-data to set for a member. @see MemberMetaData */
@@ -198,7 +205,7 @@ struct MethodInfo
 	std::string InteropName; /**< Name of the interop wrapper method in C++. */
 	std::string ScriptName; /**< Name of the method in C#. */
 	CSVisibility Visibility = CSVisibility::Public; /**< Visibility of the method in the class. */
-	ApiFlags API = ApiFlags::Framework; /**< Determines for which APIs is the method exported. */
+	ApiGuard Guard = ApiGuard::None; /**< Build configurations the generated method code is restricted to. */
 
 	ReturnInfo ReturnValue; /**< Return value, if any. If void, the type information will be empty. */
 	std::vector<VariableInformation> Parameters; /**< Input parameters for the method, if any. */
@@ -222,7 +229,7 @@ struct PropertyInfo
 	std::string SetterName; /**< Name of the setter method in C++. */
 
 	CSVisibility Visibility = CSVisibility::Public; /**< Visibility of the property in the class. */
-	ApiFlags API = ApiFlags::Framework; /**< Determines for which APIs is the property exported. */
+	ApiGuard Guard = ApiGuard::None; /**< Build configurations the generated property code is restricted to. */
 	bool IsStatic = false; /**< True if the property is static. */
 	MemberMetaData MetaData; /**< Additional meta-data to associate with the property. */
 	CommentEntry Documentation; /**< Documentation comments for the property. */
@@ -236,7 +243,8 @@ struct GeneratedTypeInformation
 	SmallVector<std::string, 4> Namespace; /**< Namespace the native type is defined in. */
 
 	CSVisibility Visibility = CSVisibility::Public; /**< Visibility of the type. */
-	ApiFlags API = ApiFlags::Framework; /**< Determines for which APIs is the type exported. */
+	Assembly Assemblies = Assembly::Engine; /**< Assemblies the type is generated into. */
+	ApiGuard Guard = ApiGuard::None; /**< Build configurations the generated type code is restricted to. */
 	std::string SingletonGetterName; /**< Name of the global getter method in case the class is a singleton. */
 
 	std::string NativeNameWithoutTemplateArguments; /**< Native name of the type, with template parameters stripped. */
@@ -395,25 +403,20 @@ enum FileType
 	FT_COUNT // Keep at end
 };
 
-inline bool IsAPIEditor(ApiFlags api)
+inline bool IsInEditorAssembly(Assembly assemblies)
 {
-	return ((int)api & (int)ApiFlags::Editor) != 0;
+	return ((int)assemblies & (int)Assembly::Editor) != 0;
 }
 
-inline bool IsAPIEngine(ApiFlags api)
+inline bool IsInEngineAssembly(Assembly assemblies)
 {
-	return ((int)api & (int)ApiFlags::Engine) != 0;
+	return ((int)assemblies & (int)Assembly::Engine) != 0;
 }
 
-inline bool IsAPIFramework(ApiFlags api)
+/** Determines if a declaration belongs to the assembly we're currently generating code for. */
+inline bool IsAssemblyValid(Assembly assemblies, bool editor)
 {
-	return ((int)api & (int)ApiFlags::Framework) != 0;
-}
-
-/** Determines if the provided API is usable depending on whether we're building the editor scripting or not. */
-inline bool IsAPIValid(ApiFlags api, bool editor)
-{
-   return (editor && IsAPIEditor(api)) || (!editor && (IsAPIEngine(api) || IsAPIFramework(api)));
+	return editor ? IsInEditorAssembly(assemblies) : IsInEngineAssembly(assemblies);
 }
 
 /** Removes C++ templates parameters from the provided type name. */

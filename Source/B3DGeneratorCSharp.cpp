@@ -83,21 +83,24 @@ static bool HasParameterlessConstructor(const ClassInfo& classInfo)
 	return false;
 }
 
-/** Generates a check for a preprocessor conditional depending on the API the code is currently being compiled for. */
-static std::string GenerateAPICheckBegin(ApiFlags api)
+/**
+ * Generates the start of a preprocessor conditional restricting the code to the build configurations chosen by the
+ * provided guard. Note that EditorOnly has no managed counterpart, as editor availability is only known at runtime.
+ */
+static std::string GenerateAPICheckBegin(ApiGuard guard)
 {
-	if(api == ApiFlags::Framework)
+	if(guard == ApiGuard::FrameworkOnly)
 		return "#if !IS_B3D\n";
-	else if(api == ApiFlags::Engine)
+	else if(guard == ApiGuard::EngineOnly)
 		return "#if IS_B3D\n";
 
 	return "";
 }
 
 /** Ends the preprocessor conditional started by GenerateAPICheckBegin(). These calls must match 1:1. */
-static std::string GenerateApiCheckEnd(ApiFlags api)
+static std::string GenerateApiCheckEnd(ApiGuard guard)
 {
-	if(api == ApiFlags::Framework || api == ApiFlags::Engine)
+	if(guard == ApiGuard::FrameworkOnly || guard == ApiGuard::EngineOnly)
 		return "#endif\n";
 
 	return "";
@@ -466,7 +469,7 @@ static std::string GenerateCSharpClass(const ClassInfo& classInformation)
 		if (!entry.IsFlagSet(MethodFlags::CSOnly))
 		{
 			// Generate interop
-			interops << GenerateAPICheckBegin(entry.API);
+			interops << GenerateAPICheckBegin(entry.Guard);
 			interops << "\t\t[MethodImpl(MethodImplOptions.InternalCall)]" << std::endl;
 			interops << "\t\tprivate static extern void Internal_" << entry.InteropName << "(" << typeMappingInformation.ScriptTypeName << " managedInstance";
 
@@ -474,14 +477,14 @@ static std::string GenerateCSharpClass(const ClassInfo& classInformation)
 				interops << ", " << GenerateCSharpMethodParameters(entry, true);
 
 			interops << ");\n";
-			interops << GenerateApiCheckEnd(entry.API);
+			interops << GenerateApiCheckEnd(entry.Guard);
 		}
 
 		bool interopOnly = entry.IsFlagSet(MethodFlags::InteropOnly);
 		if (interopOnly)
 			continue;
 
-		ctors << GenerateAPICheckBegin(entry.API);
+		ctors << GenerateAPICheckBegin(entry.Guard);
 		ctors << XMLCommentGenerator::GenerateXMLComment(entry.Documentation, "\t\t");
 
 		if (entry.Visibility == CSVisibility::Internal)
@@ -501,7 +504,7 @@ static std::string GenerateCSharpClass(const ClassInfo& classInformation)
 
 		ctors << ");" << std::endl;
 		ctors << "\t\t}" << std::endl;
-		ctors << GenerateApiCheckEnd(entry.API);
+		ctors << GenerateApiCheckEnd(entry.Guard);
 		ctors << std::endl;
 	}
 
@@ -534,11 +537,11 @@ static std::string GenerateCSharpClass(const ClassInfo& classInformation)
 		// Generate interop
 		if (!entry.IsFlagSet(MethodFlags::CSOnly))
 		{
-			interops << GenerateAPICheckBegin(entry.API);
+			interops << GenerateAPICheckBegin(entry.Guard);
 			interops << "\t\t[MethodImpl(MethodImplOptions.InternalCall)]" << std::endl;
 			interops << "\t\tprivate static extern " << GenerateCSharpInternalMethodSignature(classInformation, entry, typeMappingInformation) << ";";
 			interops << std::endl;
-			interops << GenerateApiCheckEnd(entry.API);
+			interops << GenerateApiCheckEnd(entry.Guard);
 		}
 
 		bool interopOnly = entry.IsFlagSet(MethodFlags::InteropOnly);
@@ -550,7 +553,7 @@ static std::string GenerateCSharpClass(const ClassInfo& classInformation)
 
 		if (isConstructor)
 		{
-			ctors << GenerateAPICheckBegin(entry.API);
+			ctors << GenerateAPICheckBegin(entry.Guard);
 			ctors << XMLCommentGenerator::GenerateXMLComment(entry.Documentation, "\t\t");
 
 			if (entry.Visibility == CSVisibility::Internal)
@@ -570,7 +573,7 @@ static std::string GenerateCSharpClass(const ClassInfo& classInformation)
 
 			ctors << ");" << std::endl;
 			ctors << "\t\t}" << std::endl;
-			ctors << GenerateApiCheckEnd(entry.API);
+			ctors << GenerateApiCheckEnd(entry.Guard);
 			ctors << std::endl;
 		}
 		else
@@ -588,7 +591,7 @@ static std::string GenerateCSharpClass(const ClassInfo& classInformation)
 					returnType = GetScriptQualifiedType(entry.ReturnValue.TypeInformation, returnTypeMappingInformation);
 				}
 
-				methods << GenerateAPICheckBegin(entry.API);
+				methods << GenerateAPICheckBegin(entry.Guard);
 				methods << XMLCommentGenerator::GenerateXMLComment(entry.Documentation, "\t\t");
 
 				if (entry.Visibility == CSVisibility::Internal)
@@ -644,7 +647,7 @@ static std::string GenerateCSharpClass(const ClassInfo& classInformation)
 					methods << "\t\t\treturn temp;" << std::endl;
 
 				methods << "\t\t}" << std::endl;
-				methods << GenerateApiCheckEnd(entry.API);
+				methods << GenerateApiCheckEnd(entry.Guard);
 				methods << std::endl;
 			}
 		}
@@ -656,7 +659,7 @@ static std::string GenerateCSharpClass(const ClassInfo& classInformation)
 		const TypeMappingInformation propertyTypeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(entry.TypeInformation);
 		const std::string propertyQualifiedTypeName = GetScriptQualifiedType(entry.TypeInformation, propertyTypeMappingInformation);
 
-		properties << GenerateAPICheckBegin(entry.API);
+		properties << GenerateAPICheckBegin(entry.Guard);
 		properties << XMLCommentGenerator::GenerateXMLComment(entry.Documentation, "\t\t");
 
 		bool defaultVisible = entry.Visibility != CSVisibility::Internal && entry.Visibility != CSVisibility::Private &&
@@ -732,7 +735,7 @@ static std::string GenerateCSharpClass(const ClassInfo& classInformation)
 		}
 
 		properties << "\t\t}" << std::endl;
-		properties << GenerateApiCheckEnd(entry.API);
+		properties << GenerateApiCheckEnd(entry.Guard);
 		properties << std::endl;
 	}
 
@@ -743,7 +746,7 @@ static std::string GenerateCSharpClass(const ClassInfo& classInformation)
 		bool isCallback = entry.IsFlagSet(MethodFlags::Callback);
 		bool isInternal = entry.IsFlagSet(MethodFlags::InteropOnly);
 
-		events << GenerateAPICheckBegin(entry.API);
+		events << GenerateAPICheckBegin(entry.Guard);
 		events << XMLCommentGenerator::GenerateXMLComment(entry.Documentation, "\t\t");
 		events << "\t\t";
 
@@ -777,12 +780,12 @@ static std::string GenerateCSharpClass(const ClassInfo& classInformation)
 				events << GenerateCSharpMethodParameters(entry, false);
 
 			events << ");\n";
-			events << GenerateApiCheckEnd(entry.API);
+			events << GenerateApiCheckEnd(entry.Guard);
 			events << "\n";
 		}
 
 		// Event interop
-		interops << GenerateAPICheckBegin(entry.API);
+		interops << GenerateAPICheckBegin(entry.Guard);
 
 		interops << "\t\tprivate ";
 
@@ -796,11 +799,11 @@ static std::string GenerateCSharpClass(const ClassInfo& classInformation)
 		else
 			interops << "\t\t\tCallback_" << entry.ScriptName << "(" << GenerateCSharpEventArguments(entry) << ");\n";
 		interops << "\t\t}" << std::endl;
-		interops << GenerateApiCheckEnd(entry.API);
+		interops << GenerateApiCheckEnd(entry.Guard);
 	}
 
 	std::stringstream output;
-	output << GenerateAPICheckBegin(classInformation.API);
+	output << GenerateAPICheckBegin(classInformation.Guard);
 
 	if(!classInformation.DocumentationGroup.empty())
 	{
@@ -859,7 +862,7 @@ static std::string GenerateCSharpClass(const ClassInfo& classInformation)
 		output << "\t/** @} */\n";
 	}
 
-	output << GenerateApiCheckEnd(classInformation.API);
+	output << GenerateApiCheckEnd(classInformation.Guard);
 
 	return output.str();
 }
@@ -868,7 +871,7 @@ static std::string GenerateCSharpClass(const ClassInfo& classInformation)
 static std::string GenerateCSharpStruct(const StructInfo& input)
 {
 	std::stringstream output;
-	output << GenerateAPICheckBegin(input.API);
+	output << GenerateAPICheckBegin(input.Guard);
 
 	if(!input.DocumentationGroup.empty())
 	{
@@ -1123,7 +1126,7 @@ static std::string GenerateCSharpStruct(const StructInfo& input)
 		output << "\t/** @} */\n";
 	}
 
-	output << GenerateApiCheckEnd(input.API);
+	output << GenerateApiCheckEnd(input.Guard);
 	return output.str();
 }
 
@@ -1131,7 +1134,7 @@ static std::string GenerateCSharpStruct(const StructInfo& input)
 static std::string GenerateCSharpEnum(const EnumInfo& input)
 {
 	std::stringstream output;
-	output << GenerateAPICheckBegin(input.API);
+	output << GenerateAPICheckBegin(input.Guard);
 
 	if(!input.DocumentationGroup.empty())
 	{
@@ -1179,7 +1182,7 @@ static std::string GenerateCSharpEnum(const EnumInfo& input)
 		output << "\t/** @} */\n";
 	}
 
-	output << GenerateApiCheckEnd(input.API);
+	output << GenerateApiCheckEnd(input.Guard);
 	return output.str();
 }
 

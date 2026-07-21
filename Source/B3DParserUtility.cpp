@@ -175,23 +175,34 @@ bool ParserUtility::IsBuiltinBaseType(const CXXRecordDecl* decl)
 	return false;
 }
 
-ApiFlags ParserUtility::ParseAPIFromExportFlags(int exportFlags)
+Assembly ParserUtility::ParseAssemblyFromExportFlags(int exportFlags)
 {
 	int output = 0;
 
-	if((exportFlags & (int)ExportFlags::EngineAPI) != 0)
-		output |= (int)ApiFlags::Engine;
+	if((exportFlags & (int)ExportFlags::EngineAssembly) != 0)
+		output |= (int)Assembly::Engine;
 
-	if((exportFlags & (int)ExportFlags::FrameworkAPI) != 0)
-		output |= (int)ApiFlags::Framework;
+	if((exportFlags & (int)ExportFlags::EditorAssembly) != 0)
+		output |= (int)Assembly::Editor;
 
-	if((exportFlags & (int)ExportFlags::EditorAPI) != 0)
-		output |= (int)ApiFlags::Editor;
+	if(output == 0)
+		output = (int)Assembly::Engine;
 
-	if((int)output == 0)
-		output = (int)ApiFlags::Any;
+	return (Assembly)output;
+}
 
-	return (ApiFlags)output;
+ApiGuard ParserUtility::ParseGuardFromExportFlags(int exportFlags)
+{
+	if((exportFlags & (int)ExportFlags::FrameworkOnlyAPI) != 0)
+		return ApiGuard::FrameworkOnly;
+
+	if((exportFlags & (int)ExportFlags::EngineOnlyAPI) != 0)
+		return ApiGuard::EngineOnly;
+
+	if((exportFlags & (int)ExportFlags::EditorOnlyAPI) != 0)
+		return ApiGuard::EditorOnly;
+
+	return ApiGuard::None;
 }
 
 bool ParserUtility::MapBuiltinPrimitiveTypeToCppType(BuiltinType::Kind kind, std::string& output)

@@ -115,11 +115,20 @@ void ScriptExportAttributeParser::ParseScriptExportAttributeCommand(const std::s
 		return defaultValue;
 	};
 
+	auto fnParseAssembly = [&typeName](const std::string& value, ExportFlags defaultValue)
+	{
+		if (value == "Engine") return ExportFlags::EngineAssembly;
+		if (value == "Editor") return ExportFlags::EditorAssembly;
+
+		outs() << "Warning: Invalid value provided for script export option \"Assembly\" on type " << typeName << ". Provided value: " << value << ".\n";
+		return defaultValue;
+	};
+
 	auto fnParseAPI = [&typeName](const std::string& value, ExportFlags defaultValue)
 	{
-		if (value == "Framework") return ExportFlags::FrameworkAPI;
-		if (value == "Engine") return ExportFlags::EngineAPI;
-		if (value == "Editor") return ExportFlags::EditorAPI;
+		if (value == "FrameworkOnly") return ExportFlags::FrameworkOnlyAPI;
+		if (value == "EngineOnly") return ExportFlags::EngineOnlyAPI;
+		if (value == "EditorOnly") return ExportFlags::EditorOnlyAPI;
 
 		outs() << "Warning: Invalid value provided for script export option \"API\" on type " << typeName << ". Provided value: " << value << ".\n";
 		return defaultValue;
@@ -155,6 +164,10 @@ void ScriptExportAttributeParser::ParseScriptExportAttributeCommand(const std::s
 	{
 		output.SetExportFlag(fnParseProperty(value, ExportFlags::None));
 	}
+	else if (name == "Assembly")
+	{
+		output.SetExportFlag(fnParseAssembly(value, ExportFlags::None));
+	}
 	else if (name == "API")
 	{
 		output.SetExportFlag(fnParseAPI(value, ExportFlags::None));
@@ -181,7 +194,7 @@ void ScriptExportAttributeParser::ParseScriptExportAttributeCommand(const std::s
 	}
 	else if (name == "InteropOnly")
 	{
-		if (fnParseBoolean(value, false)) 
+		if (fnParseBoolean(value, false))
 			output.SetExportFlag(ExportFlags::InteropOnly);
 	}
 	else if (name == "DocumentationGroup")

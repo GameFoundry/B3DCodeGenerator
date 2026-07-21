@@ -570,24 +570,29 @@ static std::string GetReturnValueForNativeCall(const std::string& access, const 
 	}
 }
 
-/** Generates a check for a preprocessor conditional depending on the API the code is currently being compiled for. */
-static std::string GenerateApiCheckBegin(ApiFlags api)
+/** Generates the start of a preprocessor conditional restricting the code to the build configurations chosen by the provided guard. */
+static std::string GenerateApiCheckBegin(ApiGuard guard)
 {
-	if(api == ApiFlags::Framework)
+	switch(guard)
+	{
+	case ApiGuard::FrameworkOnly:
 		return "#if !B3D_IS_ENGINE\n";
-	else if(api == ApiFlags::Engine)
+	case ApiGuard::EngineOnly:
 		return "#if B3D_IS_ENGINE\n";
-
-	return "";
+	case ApiGuard::EditorOnly:
+		return "#if B3D_WITH_EDITOR\n";
+	default:
+		return "";
+	}
 }
 
-/** Ends the preprocessor conditional started by GenerateAPICheckBegin(). These calls must match 1:1. */
-static std::string GenerateApiCheckEnd(ApiFlags api)
+/** Ends the preprocessor conditional started by GenerateApiCheckBegin(). These calls must match 1:1. */
+static std::string GenerateApiCheckEnd(ApiGuard guard)
 {
-	if(api == ApiFlags::Framework || api == ApiFlags::Engine)
-		return "#endif\n";
+	if(guard == ApiGuard::None)
+		return "";
 
-	return "";
+	return "#endif\n";
 }
 
 /** Generates code that checks for native object validity, and if invalid returns from the method. */
@@ -2699,7 +2704,7 @@ static std::string GenerateInternalEventCallbackBody(const ClassInfo& classInfo,
  */
 static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 {
-	const bool inEditor = IsAPIEditor(classInfo.API);
+	const bool inEditor = IsInEditorAssembly(classInfo.Assemblies);
 	const bool isBase = classInfo.IsFlagSet(ClassFlags::IsBase);
 	const bool classHasGlobalSingleInstance = classInfo.HasGlobalSingleInstance();
 	const bool isRootBase = classInfo.BaseClassName.empty();
@@ -2728,9 +2733,9 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 	{
 		for(auto& eventInfo : classInfo.Events)
 		{
-			stream << GenerateApiCheckBegin(eventInfo.API);
+			stream << GenerateApiCheckBegin(eventInfo.Guard);
 			stream << "\t\t" << GenerateEventCallbackSignature(classInfo, eventInfo, "") << ";" << std::endl;
-			stream << GenerateApiCheckEnd(eventInfo.API);
+			stream << GenerateApiCheckEnd(eventInfo.Guard);
 		}
 	};
 
@@ -2739,9 +2744,9 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 		const bool classHasGlobalSingleInstance = classInfo.HasGlobalSingleInstance();
 		for(auto& eventInfo : classInfo.Events)
 		{
-			stream << GenerateApiCheckBegin(eventInfo.API);
+			stream << GenerateApiCheckBegin(eventInfo.Guard);
 			stream << GenerateEventThunkSignature(eventInfo, classHasGlobalSingleInstance);
-			stream << GenerateApiCheckEnd(eventInfo.API);
+			stream << GenerateApiCheckEnd(eventInfo.Guard);
 		}
 	};
 
@@ -2755,14 +2760,14 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 			const bool isCallback = eventInfo.IsFlagSet(MethodFlags::Callback);
 			if(!isCallback)
 			{
-				stream << GenerateApiCheckBegin(eventInfo.API);
+				stream << GenerateApiCheckBegin(eventInfo.Guard);
 				stream << "\t\t";
 
 				if(isStatic || classHasGlobalSingleInstance)
 					stream << "static ";
 
 				stream << "HEvent " << eventInfo.NativeName << "Connection;\n";
-				stream << GenerateApiCheckEnd(eventInfo.API);
+				stream << GenerateApiCheckEnd(eventInfo.Guard);
 			}
 		}
 	};
@@ -2772,7 +2777,7 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 	std::string interopBaseClassName;
 
 	std::stringstream output;
-	output << GenerateApiCheckBegin(classInfo.API);
+	output << GenerateApiCheckBegin(classInfo.Guard);
 
 	// Generate a common base class if required
 	if(isBase && !classHasGlobalSingleInstance)
@@ -2950,9 +2955,9 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 		if (methodInfo.IsFlagSet(MethodFlags::CSOnly))
 			continue;
 
-		output << GenerateApiCheckBegin(methodInfo.API);
+		output << GenerateApiCheckBegin(methodInfo.Guard);
 		output << "\t\tstatic " << GenerateInternalMethodSignature(classInfo, methodInfo, interopClassThisPtrType, "") << ";" << std::endl;
-		output << GenerateApiCheckEnd(methodInfo.API);
+		output << GenerateApiCheckEnd(methodInfo.Guard);
 	}
 
 	for (auto& methodInfo : classInfo.Methods)
@@ -2960,13 +2965,13 @@ static std::string GenerateClassDeclaration(const ClassInfo& classInfo)
 		if (methodInfo.IsFlagSet(MethodFlags::CSOnly))
 			continue;
 
-		output << GenerateApiCheckBegin(methodInfo.API);
+		output << GenerateApiCheckBegin(methodInfo.Guard);
 		output << "\t\tstatic " << GenerateInternalMethodSignature(classInfo, methodInfo, interopClassThisPtrType, "") << ";" << std::endl;
-		output << GenerateApiCheckEnd(methodInfo.API);
+		output << GenerateApiCheckEnd(methodInfo.Guard);
 	}
 
 	output << "\t};" << std::endl;
-	output << GenerateApiCheckEnd(classInfo.API);
+	output << GenerateApiCheckEnd(classInfo.Guard);
 
 	return output.str();
 }
@@ -3006,9 +3011,9 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 			const bool isCallback = eventInfo.IsFlagSet(MethodFlags::Callback);
 			if(!isCallback && (isStatic || classHasGlobalSingleInstance))
 			{
-				stream << GenerateApiCheckBegin(eventInfo.API);
+				stream << GenerateApiCheckBegin(eventInfo.Guard);
 				stream << "\tHEvent " << className << "::" << eventInfo.NativeName << "Connection;\n";
-				stream << GenerateApiCheckEnd(eventInfo.API);
+				stream << GenerateApiCheckEnd(eventInfo.Guard);
 
 				hasEventHandles = true;
 			}
@@ -3022,9 +3027,9 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 	{
 		for(auto& eventInfo : classInfo.Events)
 		{
-			stream << GenerateApiCheckBegin(eventInfo.API);
+			stream << GenerateApiCheckBegin(eventInfo.Guard);
 			stream << "\t" << className << "::" << eventInfo.NativeName << "ThunkDefinition " << className << "::" << eventInfo.NativeName << "Thunk; \n";
-			stream << GenerateApiCheckEnd(eventInfo.API);
+			stream << GenerateApiCheckEnd(eventInfo.Guard);
 		}
 
 		if(!classInfo.Events.empty())
@@ -3037,10 +3042,10 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 		{
 			const MethodInfo& eventInfo = *I;
 
-			stream << GenerateApiCheckBegin(eventInfo.API);
+			stream << GenerateApiCheckBegin(eventInfo.Guard);
 			stream << "\t" << GenerateEventCallbackSignature(classInfo, eventInfo, className) << std::endl;
 			stream << GenerateInternalEventCallbackBody(classInfo, eventInfo);
-			stream << GenerateApiCheckEnd(eventInfo.API);
+			stream << GenerateApiCheckEnd(eventInfo.Guard);
 			stream << "\n";
 		}
 	};
@@ -3053,7 +3058,7 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 			const bool isCallback = eventInfo.IsFlagSet(MethodFlags::Callback);
 			if(!isStatic)
 			{
-				stream << GenerateApiCheckBegin(eventInfo.API);
+				stream << GenerateApiCheckBegin(eventInfo.Guard);
 
 				if(!isCallback)
 					stream << "\t\t"<< eventInfo.NativeName << "Connection = static_cast<" << classInfo.NativeName << "*>(GetNativeObject())->" << eventInfo.NativeName << ".Connect(";
@@ -3092,7 +3097,7 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 					stream << ")";
 
 				stream << ";\n";
-				stream << GenerateApiCheckEnd(eventInfo.API);
+				stream << GenerateApiCheckEnd(eventInfo.Guard);
 			}
 		}
 	};
@@ -3120,9 +3125,9 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 			const bool isCallback = eventInfo.IsFlagSet(MethodFlags::Callback);
 			if(!isCallback)
 			{
-				stream << GenerateApiCheckBegin(eventInfo.API);
+				stream << GenerateApiCheckBegin(eventInfo.Guard);
 				stream << "\t\t"<< eventInfo.NativeName << "Connection.Disconnect();\n";
-				stream << GenerateApiCheckEnd(eventInfo.API);
+				stream << GenerateApiCheckEnd(eventInfo.Guard);
 			}
 		}
 
@@ -3144,7 +3149,7 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 		interopBaseClassName = TypeLookup::GetScriptWrapperObjectTypeName(classInfo.BaseClassName) + "WrapperBase";
 
 	std::stringstream output;
-	output << GenerateApiCheckBegin(classInfo.API);
+	output << GenerateApiCheckBegin(classInfo.Guard);
 
 	if(isBase)
 	{
@@ -3239,9 +3244,9 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 		if(methodInfo.IsFlagSet(MethodFlags::CSOnly))
 			continue;
 
-		output << GenerateApiCheckBegin(methodInfo.API);
+		output << GenerateApiCheckBegin(methodInfo.Guard);
 		output << "\t\tsInteropMetaData.ScriptClass->AddInternalCall(\"Internal_" << methodInfo.InteropName << "\", (void*)&" << interopClassName << "::Internal" << methodInfo.InteropName << ");" << std::endl;
-		output << GenerateApiCheckEnd(methodInfo.API);
+		output << GenerateApiCheckEnd(methodInfo.Guard);
 	}
 
 	for(auto& methodInfo : classInfo.Methods)
@@ -3249,16 +3254,16 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 		if(methodInfo.IsFlagSet(MethodFlags::CSOnly))
 			continue;
 
-		output << GenerateApiCheckBegin(methodInfo.API);
+		output << GenerateApiCheckBegin(methodInfo.Guard);
 		output << "\t\tsInteropMetaData.ScriptClass->AddInternalCall(\"Internal_" << methodInfo.InteropName << "\", (void*)&" << interopClassName << "::Internal" << methodInfo.InteropName << ");" << std::endl;
-		output << GenerateApiCheckEnd(methodInfo.API);
+		output << GenerateApiCheckEnd(methodInfo.Guard);
 	}
 
 	output << std::endl;
 
 	for(auto& eventInfo : classInfo.Events)
 	{
-		output << GenerateApiCheckBegin(eventInfo.API);
+		output << GenerateApiCheckBegin(eventInfo.Guard);
 		output << "\t\t" << eventInfo.NativeName << "Thunk = ";
 		output << "(" << eventInfo.NativeName << "ThunkDefinition)sInteropMetaData.ScriptClass->GetMethodExact(";
 		output << "\"Internal_" << eventInfo.InteropName << "\", \"";
@@ -3277,7 +3282,7 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 		}
 
 		output << "\")->GetThunk();" << std::endl;
-		output << GenerateApiCheckEnd(eventInfo.API);
+		output << GenerateApiCheckEnd(eventInfo.Guard);
 	}
 
 	output << "\t}" << std::endl;
@@ -3418,10 +3423,10 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 		if (methodInfo.IsFlagSet(MethodFlags::CSOnly))
 			continue;
 
-		output << GenerateApiCheckBegin(methodInfo.API);
+		output << GenerateApiCheckBegin(methodInfo.Guard);
 		output << "\t" << GenerateInternalMethodSignature(classInfo, methodInfo, interopClassThisPtrType, interopClassName) << std::endl;
 		output << GenerateInternalMethodBody(classInfo, methodInfo, interopClassName, typeMappingInformation);
-		output << GenerateApiCheckEnd(methodInfo.API);
+		output << GenerateApiCheckEnd(methodInfo.Guard);
 
 		if ((I + 1) != classInfo.Methods.end())
 			output << std::endl;
@@ -3438,10 +3443,10 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 		if (methodInfo.IsFlagSet(MethodFlags::FieldWrapper))
 			continue;
 
-		output << GenerateApiCheckBegin(methodInfo.API);
+		output << GenerateApiCheckBegin(methodInfo.Guard);
 		output << "\t" << GenerateInternalMethodSignature(classInfo, methodInfo, interopClassThisPtrType, interopClassName) << std::endl;
 		output << GenerateInternalMethodBody(classInfo, methodInfo, interopClassName, typeMappingInformation);
-		output << GenerateApiCheckEnd(methodInfo.API);
+		output << GenerateApiCheckEnd(methodInfo.Guard);
 
 		if ((I + 1) != classInfo.Methods.end())
 			output << std::endl;
@@ -3471,23 +3476,23 @@ static std::string GenerateClassDefinition(const ClassInfo& classInfo)
 
 		assert(getterInfo && setterInfo);
 
-		output << GenerateApiCheckBegin(getterInfo->API);
+		output << GenerateApiCheckBegin(getterInfo->Guard);
 		output << "\t" << GenerateInternalMethodSignature(classInfo, *getterInfo, interopClassThisPtrType, interopClassName) << std::endl;
 		output << GenerateInternalFieldGetterBody(classInfo, *I, *getterInfo, typeMappingInformation);
-		output << GenerateApiCheckEnd(getterInfo->API);
+		output << GenerateApiCheckEnd(getterInfo->Guard);
 		
 		output << std::endl;
 
-		output << GenerateApiCheckBegin(setterInfo->API);
+		output << GenerateApiCheckBegin(setterInfo->Guard);
 		output << "\t" << GenerateInternalMethodSignature(classInfo, *setterInfo, interopClassThisPtrType, interopClassName) << std::endl;
 		output << GenerateInternalFieldSetterBody(classInfo, *I, *setterInfo, typeMappingInformation);
-		output << GenerateApiCheckEnd(setterInfo->API);
+		output << GenerateApiCheckEnd(setterInfo->Guard);
 			
 		if ((I + 1) != classInfo.Fields.end())
 			output << std::endl;
 	}
 
-	output << GenerateApiCheckEnd(classInfo.API);
+	output << GenerateApiCheckEnd(classInfo.Guard);
 
 	return output.str();
 }
@@ -3503,7 +3508,7 @@ static std::string GenerateStructDeclaration(const StructInfo& structInfo)
 	const TypeMappingInformation typeMappingInformation = TypeLookup::GetNativeToScriptTypeMapping(structInfo.NativeName);
 
 	std::stringstream output;
-	output << GenerateApiCheckBegin(structInfo.API);
+	output << GenerateApiCheckBegin(structInfo.Guard);
 
 	if(structInfo.RequiresInteropType)
 	{
@@ -3524,7 +3529,7 @@ static std::string GenerateStructDeclaration(const StructInfo& structInfo)
 
 	output << "\tclass ";
 
-	bool inEditor = IsAPIEditor (structInfo.API);
+	bool inEditor = IsInEditorAssembly(structInfo.Assemblies);
 	if (!inEditor)
 		output << sFrameworkDllExportMacro << " ";
 	else
@@ -3561,7 +3566,7 @@ static std::string GenerateStructDeclaration(const StructInfo& structInfo)
 	output << "\n";
 
 	output << "\t};\n";
-	output << GenerateApiCheckEnd(structInfo.API);
+	output << GenerateApiCheckEnd(structInfo.Guard);
 
 	return output.str();
 }
@@ -3578,7 +3583,7 @@ std::string GenerateStructDefinition(const StructInfo& structInfo)
 	const std::string interopClassName = TypeLookup::GetScriptWrapperObjectTypeName(structInfo.NativeName);
 
 	std::stringstream output;
-	output << GenerateApiCheckBegin(structInfo.API);
+	output << GenerateApiCheckBegin(structInfo.Guard);
 
 	// Constructor
 	output << "\t" << interopClassName << "::" << interopClassName << "()\n";
@@ -3652,7 +3657,7 @@ std::string GenerateStructDefinition(const StructInfo& structInfo)
 		output << "\t}\n\n";
 	}
 
-	output << GenerateApiCheckEnd(structInfo.API);
+	output << GenerateApiCheckEnd(structInfo.Guard);
 	return output.str();
 }
 
