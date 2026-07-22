@@ -282,16 +282,16 @@ bool BansheeCodeGeneratorASTVisitor::ParseTypeInformation(QualType type, Variabl
 							}
 							catch(const std::invalid_argument& ex)
 							{
-								errs() << "Error: Cannot convert TInlineArray size template argument to a number, ignoring it.\n";
+								errs() << "Warning: Cannot convert TInlineArray size template argument to a number, ignoring it.\n";
 							}
 							catch(const std::out_of_range& ex)
 							{
-								errs() << "Error: Cannot convert TInlineArray size template argument to a number, ignoring it.\n";
+								errs() << "Warning: Cannot convert TInlineArray size template argument to a number, ignoring it.\n";
 							}
 							
 						}
 						else
-							errs() << "Error: Template argument for TInlineArray cannot be constantly evaluated, ignoring it.\n";
+							errs() << "Warning: Template argument for TInlineArray cannot be constantly evaluated, ignoring it.\n";
 					}
 
 					outType.ArraySize = inlineVectorSize;
@@ -970,7 +970,7 @@ std::string BansheeCodeGeneratorASTVisitor::ParseTemplateArguments(const std::st
 			std::string tmplArgExprValue, exprType;
 			if (!TryEvaluateExpression(tmplArg.getAsExpr(), tmplArgExprValue, exprType))
 			{
-				outs() << "Error: Template argument for type \"" << className << "\" cannot be constantly evaluated, ignoring it.\n";
+				outs() << "Warning: Template argument for type \"" << className << "\" cannot be constantly evaluated, ignoring it.\n";
 				tmplArgExprValue = "unknown";
 			}
 
@@ -1143,7 +1143,7 @@ bool BansheeCodeGeneratorASTVisitor::TryParseDeclarationAsStruct(CXXRecordDecl* 
 			{
 				if (!TryEvaluateExpression(paramDecl->getDefaultArg(), paramInfo.DefaultValue, paramInfo.DefaultValueType))
 				{
-					outs() << "Error: Constructor parameter \"" << paramDecl->getName().str() << "\" has a default "
+					outs() << "Warning: Constructor parameter \"" << paramDecl->getName().str() << "\" has a default "
 						<< "argument that cannot be constantly evaluated, ignoring it.\n";
 					skippedDefaultArgument = true;
 				}
@@ -1604,7 +1604,7 @@ bool BansheeCodeGeneratorASTVisitor::TryParseDeclarationAsClass(CXXRecordDecl* d
 					{
 						if(!TryEvaluateExpression(paramDecl->getDefaultArg(), paramInfo.DefaultValue, paramInfo.DefaultValueType))
 						{
-							outs() << "Error: Constructor parameter \"" << paramDecl->getName().str() << "\" has a default "
+							outs() << "Warning: Constructor parameter \"" << paramDecl->getName().str() << "\" has a default "
 								   << "argument that cannot be constantly evaluated, ignoring it.\n";
 							skippedDefaultArg = true;
 						}
@@ -1791,7 +1791,7 @@ bool BansheeCodeGeneratorASTVisitor::TryParseDeclarationAsClass(CXXRecordDecl* d
 
 					if(!TryEvaluateExpression(defaultArg, parameterInformation.DefaultValue, parameterInformation.DefaultValueType))
 					{
-						outs() << "Error: Method parameter \"" << paramDecl->getName().str() << "\" has a default "
+						outs() << "Warning: Method parameter \"" << paramDecl->getName().str() << "\" has a default "
 							   << "argument that cannot be constantly evaluated, ignoring it.\n";
 						skippedDefaultArg = true;
 					}
