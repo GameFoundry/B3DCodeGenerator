@@ -1,3 +1,6 @@
+.vs
+.idea
+_ReSharper.Caches
 Debug
 Release
 x64
@@ -11,4 +14,3 @@ Dependencies
 cmake-build-debug
 cmake-build-release
 cmake-build-relwithdebinfo
-.idea
