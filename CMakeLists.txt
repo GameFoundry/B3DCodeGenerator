@@ -8,9 +8,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/CMake/Mo
 
 # If part of B3D framework project, use its tooling to auto-download pre-built LLVM/Clang
 if (DEFINED B3D_FRAMEWORK_ROOT_FOLDER)
-	if(B3D_USE_BUNDLED_LIBRARIES)
-		B3DCheckAndUpdatePrebuiltDependency(LLVM)
-	endif()
+	B3DCheckAndUpdatePrebuiltDependency(LLVM BUILD_SCRIPT B3DBuildLLVM.sh)
 endif()
 
 find_package(Clang)
